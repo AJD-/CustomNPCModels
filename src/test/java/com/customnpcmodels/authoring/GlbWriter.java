@@ -51,7 +51,7 @@ import java.util.Map;
  *       can weld exactly, and {@code _RS_HSL}, the packed color, so an unedited color comes back
  *       bit-for-bit. The reader trusts neither blindly - see {@link GltfToMeshConverter}.</li>
  *   <li><b>Face data with no glTF equivalent</b> - render types, render priorities, the model
- *       priority - rides in the primitive's {@code extras}. Transparency is {@code COLOR_0} alpha.</li>
+ *       priority - rides in the mesh's {@code extras}. Transparency is {@code COLOR_0} alpha.</li>
  *   <li><b>The rig</b> is a skin with one joint per vertex group, arranged by {@link JointTree}, and
  *       every vertex bound to its group's joint with a weight of 1.</li>
  *   <li><b>Each clip</b> is an animation named after its sequence id, keyed at the live frame start
@@ -220,8 +220,10 @@ final class GlbWriter
 		primitive.attributes = new LinkedHashMap<>();
 		primitive.attributes.put("POSITION", bin.floats(positions, "VEC3", Gltf.ARRAY_BUFFER, true));
 		primitive.attributes.put("COLOR_0", bin.floats(colors, "VEC4", Gltf.ARRAY_BUFFER, false));
-		primitive.attributes.put(RS_VERTEX, bin.unsignedShorts(rsVertex, "SCALAR", Gltf.ARRAY_BUFFER));
-		primitive.attributes.put(RS_HSL, bin.unsignedShorts(rsHsl, "SCALAR", Gltf.ARRAY_BUFFER));
+		// Floats, not shorts: Blender's importer only keeps scalar custom attributes stored as float
+		// or unsigned byte, and both values fit a float's 24-bit mantissa exactly
+		primitive.attributes.put(RS_VERTEX, bin.floats(toDoubles(rsVertex), "SCALAR", Gltf.ARRAY_BUFFER, false));
+		primitive.attributes.put(RS_HSL, bin.floats(toDoubles(rsHsl), "SCALAR", Gltf.ARRAY_BUFFER, false));
 		if (rigged)
 		{
 			primitive.attributes.put("JOINTS_0", bin.unsignedShorts(joints, "VEC4", Gltf.ARRAY_BUFFER));
@@ -236,11 +238,13 @@ final class GlbWriter
 		primitive.indices = corners <= 0xFFFF
 			? bin.unsignedShorts(indices, "SCALAR", Gltf.ELEMENT_ARRAY_BUFFER)
 			: bin.unsignedInts(indices, "SCALAR", Gltf.ELEMENT_ARRAY_BUFFER);
-		primitive.extras = extras(mesh);
 
+		// On the mesh, not the primitive: Blender keeps a mesh's extras as custom properties and
+		// exports them again, but drops a primitive's
 		Gltf.MeshDef meshDef = new Gltf.MeshDef();
 		meshDef.name = "mesh_" + mesh.getId();
 		meshDef.primitives.add(primitive);
+		meshDef.extras = extras(mesh);
 		gltf.meshes.add(meshDef);
 
 		Gltf.Node meshNode = new Gltf.Node();
@@ -289,6 +293,16 @@ final class GlbWriter
 			array.add(value);
 		}
 		return array;
+	}
+
+	private static double[] toDoubles(int[] values)
+	{
+		double[] doubles = new double[values.length];
+		for (int i = 0; i < values.length; i++)
+		{
+			doubles[i] = values[i];
+		}
+		return doubles;
 	}
 
 	/**

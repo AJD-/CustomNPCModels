@@ -315,6 +315,35 @@ public class GltfStaticTest
 		assertEquals("the untouched face keeps its exact color", mesh.getFaceColors()[1], back.getFaceColors()[1]);
 	}
 
+	/**
+	 * Blender's importer drops a scalar custom attribute unless it is float or unsigned byte, and its
+	 * exporter keeps a primitive's extras nowhere - so the hints are floats and the extras sit on the
+	 * mesh, where both survive a Blender round trip.
+	 */
+	@Test
+	public void testTheHintsAreStoredWhereBlenderKeepsThem()
+	{
+		Gltf gltf = Glb.read(GlbWriter.write(new TestMesh().build(), new ArrayList<>())).gltf;
+		Gltf.Primitive primitive = gltf.meshes.get(0).primitives.get(0);
+		assertEquals(Gltf.FLOAT, gltf.accessors.get(primitive.attributes.get(GlbWriter.RS_VERTEX)).componentType);
+		assertEquals(Gltf.FLOAT, gltf.accessors.get(primitive.attributes.get(GlbWriter.RS_HSL)).componentType);
+		assertNull(primitive.extras);
+		assertTrue(gltf.meshes.get(0).extras.has(GlbWriter.EXTRA_PRIORITY));
+	}
+
+	/** Files written before the extras moved to the mesh still read the same. */
+	@Test
+	public void testExtrasOnThePrimitiveAreStillRead()
+	{
+		Mesh mesh = new TestMesh().build();
+		byte[] legacy = edit(GlbWriter.write(mesh, new ArrayList<>()), gltf ->
+		{
+			gltf.meshes.get(0).primitives.get(0).extras = gltf.meshes.get(0).extras;
+			gltf.meshes.get(0).extras = null;
+		});
+		assertSameMesh(mesh, GltfToMeshConverter.convert(legacy, mesh.getId(), 1, Collections.emptyMap()).mesh);
+	}
+
 	private static void assertRefused(byte[] glb, String expected)
 	{
 		try

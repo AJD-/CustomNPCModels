@@ -109,6 +109,29 @@ tasks.register('exportGltf', JavaExec) {
 	}
 }
 
+// Reports how far a .glb - typically one re-exported from Blender - has moved from the NPC it came
+// from: converter warnings, moved vertex groups, recolored faces and per-sequence pose error, eg:
+//   ./gradlew compareGltf -Pnpc=5779 -Pglb=assets-dev/giant-mole.glb
+//   ./gradlew compareGltf -Pnpc=5779 -Pglb=assets-dev/giant-mole.glb -Pseqs=3309,3313
+tasks.register('compareGltf', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.authoring.GltfComparer'
+	workingDir = rootDir
+
+	if (project.hasProperty('npc')) {
+		systemProperty 'customnpcmodels.npc', project.property('npc')
+	}
+	if (project.hasProperty('glb')) {
+		systemProperty 'customnpcmodels.glb', project.property('glb')
+	}
+	if (project.hasProperty('seqs')) {
+		systemProperty 'customnpcmodels.seqs', project.property('seqs')
+	}
+	if (project.hasProperty('cacheDir')) {
+		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
+	}
+}
+
 // Builds the asset bundle from the authoring manifest (models.json) and the .glb files beside it.
 // Reads no geometry from any cache - only the live sequences' frame counts and lengths, which the
 // clips are sampled against. -Pdev writes the gitignored dev bundle on the test classpath instead

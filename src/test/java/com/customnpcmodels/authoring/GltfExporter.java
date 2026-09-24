@@ -127,22 +127,7 @@ public class GltfExporter
 		String name = npc.name == null ? "npc-" + npc.id : npc.name;
 		System.out.println(name + " (id " + npc.id + ")");
 
-		List<Mesh> parts = new ArrayList<>();
-		for (int modelId : npc.models)
-		{
-			ModelDefinition model = CacheFiles.decodeModel(store, modelId);
-			if (model == null)
-			{
-				throw new IOException("Model " + modelId + " does not decode");
-			}
-			parts.add(MeshFactory.toMesh(modelId, model));
-		}
-		Mesh mesh = MeshMerger.merge(id, parts);
-		mesh = new Mesh(id, mesh.getPriority(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
-			mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(), mesh.getFaceColors(),
-			mesh.getFaceRenderTypes(), mesh.getFaceTransparencies(), mesh.getFaceRenderPriorities(),
-			mesh.getFaceTextures(), mesh.getTextureCoords(), mesh.getTexIndices1(), mesh.getTexIndices2(),
-			mesh.getTexIndices3(), mesh.getVertexGroups());
+		Mesh mesh = npcMesh(store, npc);
 
 		Map<Integer, Rig> rigs = new LinkedHashMap<>();
 		List<Clip> clips = new ArrayList<>();
@@ -202,5 +187,27 @@ public class GltfExporter
 		System.out.println("  wrote " + out.resolve(file).toAbsolutePath() + " (" + glb.length / 1024 + " KB, "
 			+ mesh.getVerticesCount() + " verts, " + mesh.getFaceCount() + " faces, " + clips.size() + " clips)");
 		System.out.println("  manifest " + out.resolve(Manifest.FILE_NAME).toAbsolutePath());
+	}
+
+	/** The NPC's model parts merged into one mesh, as the plugin merges them at spawn, under its synthetic id. */
+	static Mesh npcMesh(Store store, NpcDefinition npc) throws IOException
+	{
+		int id = ID_BASE + npc.id;
+		List<Mesh> parts = new ArrayList<>();
+		for (int modelId : npc.models)
+		{
+			ModelDefinition model = CacheFiles.decodeModel(store, modelId);
+			if (model == null)
+			{
+				throw new IOException("Model " + modelId + " does not decode");
+			}
+			parts.add(MeshFactory.toMesh(modelId, model));
+		}
+		Mesh mesh = MeshMerger.merge(id, parts);
+		return new Mesh(id, mesh.getPriority(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
+			mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(), mesh.getFaceColors(),
+			mesh.getFaceRenderTypes(), mesh.getFaceTransparencies(), mesh.getFaceRenderPriorities(),
+			mesh.getFaceTextures(), mesh.getTextureCoords(), mesh.getTexIndices1(), mesh.getTexIndices2(),
+			mesh.getTexIndices3(), mesh.getVertexGroups());
 	}
 }

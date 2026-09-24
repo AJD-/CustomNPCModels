@@ -89,6 +89,8 @@ final class GltfToMeshConverter
 		Rig rig;
 		final List<Clip> clips = new ArrayList<>();
 		final List<String> report = new ArrayList<>();
+		/** Whether vertices were welded by {@code _RS_VERTEX}, so they keep the exported mesh's numbering. */
+		boolean keptVertexNumbering;
 	}
 
 	private final Glb glb;
@@ -245,7 +247,9 @@ final class GltfToMeshConverter
 			Gltf.MeshDef meshDef = gltf.meshes.get(gltf.nodes.get(node).mesh);
 			for (Gltf.Primitive primitive : meshDef.primitives)
 			{
-				readPrimitive(geometry, primitive, skin == null ? world : null, groupOfSlot);
+				// The writer puts them on the mesh, which Blender preserves; older files had them per primitive
+				JsonObject extras = primitive.extras != null ? primitive.extras : meshDef.extras;
+				readPrimitive(geometry, primitive, extras, skin == null ? world : null, groupOfSlot);
 			}
 		}
 
@@ -262,7 +266,8 @@ final class GltfToMeshConverter
 		return geometry;
 	}
 
-	private void readPrimitive(Geometry geometry, Gltf.Primitive primitive, double[] staticWorld, int[] groupOfSlot)
+	private void readPrimitive(Geometry geometry, Gltf.Primitive primitive, JsonObject extras, double[] staticWorld,
+		int[] groupOfSlot)
 	{
 		if (primitive.mode != null && primitive.mode != Gltf.TRIANGLES)
 		{
@@ -350,7 +355,7 @@ final class GltfToMeshConverter
 			geometry.triangles.add(new int[]{base + indices[face * 3], base + indices[face * 3 + 1], base + indices[face * 3 + 2]});
 		}
 
-		readExtras(geometry, primitive.extras, faces);
+		readExtras(geometry, extras, faces);
 	}
 
 	/** Per vertex, the group of its heaviest joint across JOINTS_0/WEIGHTS_0 and JOINTS_1/WEIGHTS_1. */
@@ -459,6 +464,7 @@ final class GltfToMeshConverter
 	{
 		int splits = geometry.positions.size();
 		int[] welded = weldByRsVertex(geometry);
+		result.keptVertexNumbering = welded != null;
 		if (welded == null)
 		{
 			welded = weldByPosition(geometry);
@@ -563,8 +569,14 @@ final class GltfToMeshConverter
 	private int[] weldByRsVertex(Geometry geometry)
 	{
 		int splits = geometry.positions.size();
-		if (splits == 0 || geometry.rsVertex.contains(null))
+		if (splits == 0)
 		{
+			return null;
+		}
+		if (geometry.rsVertex.contains(null))
+		{
+			result.report.add("The file has no " + GlbWriter.RS_VERTEX + " on some vertices, so vertices were welded "
+				+ "by position instead - in Blender, export with Data > Mesh > Attributes on");
 			return null;
 		}
 

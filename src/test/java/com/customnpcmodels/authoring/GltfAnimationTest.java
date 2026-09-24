@@ -252,31 +252,12 @@ public class GltfAnimationTest
 	/** The largest distance any vertex lands from where the original puts it, over every frame. */
 	static double worstPoseError(Mesh original, GltfToMeshConverter.Result converted, int... sequences) throws Exception
 	{
-		Skinner skinner = new Skinner();
-		int n = original.getVerticesCount();
-		assertEquals(n, converted.mesh.getVerticesCount());
-		float[] ox = new float[n], oy = new float[n], oz = new float[n];
-		float[] cx = new float[n], cy = new float[n], cz = new float[n];
-
 		double worst = 0;
 		for (int s = 0; s < sequences.length; s++)
 		{
 			Clip originalClip = LiveFixtures.clip(sequences[s]);
-			Clip convertedClip = converted.clips.get(s);
-			assertEquals(originalClip.getFrameCount(), convertedClip.getFrameCount());
-
-			for (int frame = 0; frame < originalClip.getFrameCount(); frame++)
-			{
-				skinner.pose(original, LiveFixtures.rig(originalClip.getRigId()), originalClip, frame, ox, oy, oz);
-				skinner.pose(converted.mesh, converted.rig, convertedClip, frame, cx, cy, cz);
-				for (int v = 0; v < n; v++)
-				{
-					double dx = ox[v] - cx[v];
-					double dy = oy[v] - cy[v];
-					double dz = oz[v] - cz[v];
-					worst = Math.max(worst, Math.sqrt(dx * dx + dy * dy + dz * dz));
-				}
-			}
+			worst = Math.max(worst, PoseComparison.worstPoseError(original, LiveFixtures.rig(originalClip.getRigId()),
+				originalClip, converted.mesh, converted.rig, converted.clips.get(s)));
 		}
 		return worst;
 	}

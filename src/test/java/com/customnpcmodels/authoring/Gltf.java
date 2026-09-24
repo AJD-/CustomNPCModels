@@ -90,6 +90,7 @@ final class Gltf
 	{
 		String name;
 		List<Primitive> primitives = new ArrayList<>();
+		JsonObject extras;
 	}
 
 	static final class Primitive

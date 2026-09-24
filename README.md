@@ -86,6 +86,48 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
   `custom-assets-dev.dat` on the test classpath instead. `./gradlew run` loads it on top of the
   shipped bundle, and the Hub jar never can. This is how a cache export is round-tripped into the
   game to compare against the original.
+- `./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]` reports how far a `.glb` has
+  moved from the NPC it was exported from, without starting the client: converter warnings, which
+  vertex groups moved at rest, which faces were recolored, and the worst vertex error over every
+  frame of each sequence. An untouched Blender round trip should show nothing moved or recolored and
+  the same pose errors as the file Blender was given.
+
+### Editing an export in Blender
+
+Tested with Blender 5.2. Every setting below was measured with `compareGltf`. With any of them
+wrong, the file still converts, but it comes out wrong without saying so.
+
+1. Export the NPC with every sequence you want to keep, into `assets-dev`:
+   `./gradlew exportGltf -Pnpc=5779 -Pseqs=3309,3310,3311,3312,3313,3314,3315 -Pout=assets-dev`
+2. In a new Blender file, delete the default objects and set **Output > Frame Rate to 50 fps
+   before importing**. A game tick is 0.02 s, so at 50 fps every key lands on a whole frame.
+3. **File > Import > glTF 2.0**, with *Merge Vertices* off (the default) and *Disable Bone Shape* on.
+   Otherwise the importer adds a stray Icosphere, and an unskinned mesh in the export is refused.
+4. Edit the mesh:
+   - Select vertices through their vertex group (`group_N`) and move, scale or sculpt them. Every copy
+     of a vertex moves together, so the original vertex numbering survives. Deleting vertices, or
+     moving one copy of a vertex apart from the others, is fine too. The converter then welds by
+     position and says so.
+   - Recolor in Vertex Paint with **face selection masking**, filling whole faces. A face takes the
+     average of its three corners, so a half-painted face comes out muddy.
+   - Moving vertices well away from their bone draws a "Joint for group N sits ... from the
+     centroid" warning. That is expected when you meant to do it. The animation still carries them.
+5. **File > Export > glTF 2.0**, format glTF Binary, with:
+   - *Data > Mesh > Attributes* **on**. This keeps `_RS_VERTEX` and `_RS_HSL`, the original vertex
+     numbering and exact colors. Without them vertices are renumbered and unedited colors can drift.
+   - *Data > Mesh > Use Vertex Color* **Active**. *Material* loses transparency.
+   - *Include > Custom Properties* **on**. This carries the model priority and per-face render
+     types, which ride in the mesh's extras.
+   - *Animation > Animation Mode* **Actions**, so each sequence exports as its own animation named after it.
+   - *Animation > Always Sample Animations* **off**. This keeps the step keys exactly as imported.
+     Sampling at 24 fps puts a whole tile of error into every clip.
+   - *Draco Mesh Compression* off.
+6. Save it beside the export, e.g. `assets-dev/giant-mole-edited.glb`, and point the manifest entry's
+   `glb` at it. Check it with `./gradlew compareGltf -Pnpc=5779 -Pglb=assets-dev/giant-mole-edited.glb`,
+   then build it into the dev bundle with `./gradlew generateAssets -PassetsDir=assets-dev -Pdev`
+   and start `./gradlew run`.
+
+The edited file is still Jagex geometry. Keep it in `assets-dev` and never in `assets`.
 
 ### What the glTF must look like
 
