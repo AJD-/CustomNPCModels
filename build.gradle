@@ -2,6 +2,12 @@ plugins {
 	id 'java'
 }
 
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(11)
+	}
+}
+
 repositories {
 	mavenLocal()
 	maven {
@@ -14,20 +20,31 @@ repositories {
 }
 
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.example.ExamplePluginTest'
+def pluginMainClass = 'com.customnpcmodels.CustomNpcModelsPluginTest'
 
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
 
 	compileOnly 'org.projectlombok:lombok:1.18.30'
 	annotationProcessor 'org.projectlombok:lombok:1.18.30'
+	testCompileOnly 'org.projectlombok:lombok:1.18.30'
+	testAnnotationProcessor 'org.projectlombok:lombok:1.18.30'
 
 	testImplementation 'junit:junit:4.12'
+	// Test-only. RendererHostTest needs stand-in renderers, which only a mock can supply
+	testImplementation 'org.mockito:mockito-core:4.11.0'
 	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
+	// Dev tooling only - decodes the live OSRS cache for the glTF exporter and for the sequence
+	// metadata the generator samples clips against. Not in the Hub jar, which is built from the
+	// main sourceSet and does not reference it.
+	testImplementation(group: 'net.runelite', name:'cache', version: runeLiteVersion) {
+		// The client already brings logback; without this every run warns about two bindings
+		exclude group: 'org.slf4j', module: 'slf4j-simple'
+	}
 }
 
-group = 'com.example'
+group = 'com.customnpcmodels'
 
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
@@ -38,8 +55,80 @@ tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass
 
-	jvmArgs "-ea"
-	args "--developer-mode", "--debug"
+	jvmArgs "--add-opens=java.base/java.lang=ALL-UNNAMED",
+			"--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+			"--add-opens=java.base/java.util=ALL-UNNAMED",
+			"--add-exports=java.base/sun.security.action=ALL-UNNAMED",
+			"--add-exports=java.desktop/sun.awt=ALL-UNNAMED",
+			"--add-exports=java.desktop/sun.font=ALL-UNNAMED",
+			"-ea"
+	args "--developer-mode", "--debug", "--disable-telemetry"
+}
+
+// Prints NPC definitions from the live OSRS cache - model ids, recolors, scale and the sequences
+// an authored model has to be keyed to, eg:
+//   ./gradlew dumpNpcDefinitions -Pnpc=5779
+//   ./gradlew dumpNpcDefinitions -Pnpc="giant mole" -PcacheDir=/path/to/LIVE
+tasks.register('dumpNpcDefinitions', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.cache.ModernNpcDumper'
+	workingDir = rootDir
+
+	if (project.hasProperty('npc')) {
+		args project.property('npc').toString().split(',')
+	}
+	if (project.hasProperty('cacheDir')) {
+		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
+	}
+	if (project.hasProperty('max')) {
+		systemProperty 'customnpcmodels.maxMatches', project.property('max')
+	}
+}
+
+// Exports an NPC from the live cache as a .glb plus a manifest stub, to seed Blender work or to
+// round-trip an asset that already animates correctly. The output is Jagex geometry: it goes to a
+// gitignored directory and is never committed or bundled for release, eg:
+//   ./gradlew exportGltf -Pnpc=5779
+//   ./gradlew exportGltf -Pnpc=5779 -Pseqs=3309,3313 -Pout=assets-dev
+tasks.register('exportGltf', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.authoring.GltfExporter'
+	workingDir = rootDir
+
+	if (project.hasProperty('npc')) {
+		systemProperty 'customnpcmodels.npc', project.property('npc')
+	}
+	if (project.hasProperty('seqs')) {
+		systemProperty 'customnpcmodels.seqs', project.property('seqs')
+	}
+	if (project.hasProperty('out')) {
+		systemProperty 'customnpcmodels.out', project.property('out')
+	}
+	if (project.hasProperty('cacheDir')) {
+		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
+	}
+}
+
+// Builds the asset bundle from the authoring manifest (models.json) and the .glb files beside it.
+// Reads no geometry from any cache - only the live sequences' frame counts and lengths, which the
+// clips are sampled against. -Pdev writes the gitignored dev bundle on the test classpath instead
+// of the shipped one, eg:
+//   ./gradlew generateAssets
+//   ./gradlew generateAssets -PassetsDir=assets-dev -Pdev
+tasks.register('generateAssets', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.authoring.AssetGenerator'
+	workingDir = rootDir
+
+	if (project.hasProperty('assetsDir')) {
+		systemProperty 'customnpcmodels.assetsDir', project.property('assetsDir')
+	}
+	if (project.hasProperty('dev')) {
+		systemProperty 'customnpcmodels.dev', 'true'
+	}
+	if (project.hasProperty('cacheDir')) {
+		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
+	}
 }
 
 tasks.register('shadowJar', Jar) {

@@ -8,3 +8,6 @@ nbactions.xml
 nb-configuration.xml
 nbproject/
 *.class
+# Cache-derived authoring output - Jagex geometry, never commit
+assets-dev/
+src/test/resources/com/customnpcmodels/custom-assets-dev.dat
