@@ -31,6 +31,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,10 @@ import java.util.Map;
  *       bit-for-bit. The reader trusts neither blindly - see {@link GltfToMeshConverter}.</li>
  *   <li><b>Face data with no glTF equivalent</b> - render types, render priorities, the model
  *       priority - rides in the mesh's {@code extras}. Transparency is {@code COLOR_0} alpha.</li>
+ *   <li><b>Parts.</b> A mesh merged from several models is written as one glTF mesh per model, each
+ *       with its own slice of the per-face extras and an {@code rsPart} index that keeps the face
+ *       order when an editor writes the parts back in another order. A single part is written as
+ *       one mesh with no index.</li>
  *   <li><b>The rig</b> is a skin with one joint per vertex group, arranged by {@link JointTree}, and
  *       every vertex bound to its group's joint with a weight of 1.</li>
  *   <li><b>Each clip</b> is an animation named after its sequence id, keyed at the live frame start
@@ -69,6 +74,7 @@ final class GlbWriter
 	static final String EXTRA_RENDER_TYPES = "rsRenderTypes";
 	static final String EXTRA_RENDER_PRIORITIES = "rsRenderPriorities";
 	static final String EXTRA_TRANSPARENCIES = "rsTransparencies";
+	static final String EXTRA_PART = "rsPart";
 
 	private GlbWriter()
 	{
@@ -80,19 +86,41 @@ final class GlbWriter
 		return write(mesh, null, new ArrayList<>(), new LinkedHashMap<>(), report);
 	}
 
+	/** The whole mesh as a single part. */
+	static byte[] write(Mesh mesh, Map<Integer, Rig> rigs, List<Clip> clips, Map<Integer, SequenceTiming> timings,
+		List<String> report)
+	{
+		return write(mesh, MeshPart.whole(mesh.getFaceCount()), rigs, clips, timings, report);
+	}
+
 	/**
+	 * @param parts   contiguous runs of the mesh's faces covering all of it, in face order; each
+	 *                becomes a glTF mesh of its own when there is more than one
 	 * @param rigs    the rigs the clips name, by id
 	 * @param timings per clip sequence id, how the live sequence plays; a clip without one is keyed
 	 *                one cycle per frame and reported
 	 */
-	static byte[] write(Mesh mesh, Map<Integer, Rig> rigs, List<Clip> clips, Map<Integer, SequenceTiming> timings,
-		List<String> report)
+	static byte[] write(Mesh mesh, List<MeshPart> parts, Map<Integer, Rig> rigs, List<Clip> clips,
+		Map<Integer, SequenceTiming> timings, List<String> report)
 	{
 		Gltf gltf = new Gltf();
 		gltf.asset.generator = "Custom NPC Models authoring pipeline";
 		Glb.BinBuilder bin = new Glb.BinBuilder(gltf);
 
 		int faces = mesh.getFaceCount();
+		int covered = 0;
+		for (MeshPart part : parts)
+		{
+			if (part.firstFace != covered)
+			{
+				throw new IllegalArgumentException("Part " + part + " does not follow on from face " + covered);
+			}
+			covered += part.faceCount;
+		}
+		if (covered != faces)
+		{
+			throw new IllegalArgumentException("Parts cover " + covered + " of the mesh's " + faces + " faces");
+		}
 		if (mesh.getFaceTextures() != null)
 		{
 			long textured = 0;
@@ -138,7 +166,8 @@ final class GlbWriter
 		}
 
 		// Vertices no face uses still belong to the mesh - they keep its vertex numbering, and a group
-		// centroid counts them - so they ride along after the face corners, referenced by no triangle
+		// centroid counts them - so they ride along after the last part's face corners, referenced by
+		// no triangle
 		boolean[] referenced = new boolean[mesh.getVerticesCount()];
 		for (int face = 0; face < faces; face++)
 		{
@@ -155,9 +184,65 @@ final class GlbWriter
 			}
 		}
 
+		Gltf.Scene scene = new Gltf.Scene();
+		scene.nodes = new ArrayList<>();
+		gltf.scenes.add(scene);
+		gltf.scene = 0;
+
+		// One glTF mesh per part, so Blender imports each as an object of its own and the painter can
+		// hide it. A single part keeps the layout files had before parts existed.
+		boolean multiPart = parts.size() > 1;
+		List<Gltf.Node> meshNodes = new ArrayList<>();
+		int[] unbound = new int[1];
+		for (int p = 0; p < parts.size(); p++)
+		{
+			MeshPart part = parts.get(p);
+			boolean last = p == parts.size() - 1;
+			Gltf.Primitive primitive = writePrimitive(bin, mesh, part, last ? loose : Collections.emptyList(),
+				groupOf, tree, unbound);
+
+			// On the mesh, not the primitive: Blender keeps a mesh's extras as custom properties and
+			// exports them again, but drops a primitive's
+			Gltf.MeshDef meshDef = new Gltf.MeshDef();
+			meshDef.name = multiPart ? part.name : "mesh_" + mesh.getId();
+			meshDef.primitives.add(primitive);
+			meshDef.extras = extras(mesh, part, multiPart ? p : -1);
+			gltf.meshes.add(meshDef);
+
+			Gltf.Node meshNode = new Gltf.Node();
+			meshNode.name = meshDef.name;
+			meshNode.mesh = gltf.meshes.size() - 1;
+			gltf.nodes.add(meshNode);
+			scene.nodes.add(gltf.nodes.size() - 1);
+			meshNodes.add(meshNode);
+		}
+		if (unbound[0] > 0)
+		{
+			report.add(unbound[0] + " vertex copies sit on vertices in no group; bound to the first joint");
+		}
+
+		if (rigged)
+		{
+			writeSkin(gltf, bin, meshNodes, scene, tree);
+			writeAnimations(gltf, bin, mesh, tree, rigs, clips, timings, report);
+		}
+
+		byte[] data = bin.finish();
+		return Glb.write(gltf, data);
+	}
+
+	/**
+	 * One part's faces as a primitive: three vertices per face, then any loose vertices, which no
+	 * triangle names.
+	 */
+	private static Gltf.Primitive writePrimitive(Glb.BinBuilder bin, Mesh mesh, MeshPart part, List<Integer> loose,
+		int[] groupOf, JointTree tree, int[] unbound)
+	{
+		boolean rigged = tree != null;
+
 		// Three vertices per face, corners in reversed order: the Y flip into glTF space is a
 		// reflection, and without the reversal every face would point inward
-		int corners = faces * 3;
+		int corners = part.faceCount * 3;
 		int splits = corners + loose.size();
 		double[] positions = new double[splits * 3];
 		double[] colors = new double[splits * 4];
@@ -165,7 +250,6 @@ final class GlbWriter
 		int[] rsHsl = new int[splits];
 		int[] joints = rigged ? new int[splits * 4] : null;
 		double[] weights = rigged ? new double[splits * 4] : null;
-		int unbound = 0;
 
 		for (int split = 0; split < splits; split++)
 		{
@@ -174,7 +258,7 @@ final class GlbWriter
 			int transparency = 0;
 			if (split < corners)
 			{
-				int face = split / 3;
+				int face = part.firstFace + split / 3;
 				int[] order = {mesh.getFaceIndices1()[face], mesh.getFaceIndices3()[face], mesh.getFaceIndices2()[face]};
 				vertex = order[split % 3];
 				hsl = mesh.getFaceColors()[face] & 0xFFFF;
@@ -203,16 +287,12 @@ final class GlbWriter
 				int joint = groupOf[vertex] == -1 ? -1 : tree.jointOfGroup(groupOf[vertex]);
 				if (joint == -1)
 				{
-					unbound++;
+					unbound[0]++;
 					joint = 0;
 				}
 				joints[split * 4] = joint;
 				weights[split * 4] = 1;
 			}
-		}
-		if (unbound > 0)
-		{
-			report.add(unbound + " vertex copies sit on vertices in no group; bound to the first joint");
 		}
 
 		Gltf.Primitive primitive = new Gltf.Primitive();
@@ -238,59 +318,40 @@ final class GlbWriter
 		primitive.indices = corners <= 0xFFFF
 			? bin.unsignedShorts(indices, "SCALAR", Gltf.ELEMENT_ARRAY_BUFFER)
 			: bin.unsignedInts(indices, "SCALAR", Gltf.ELEMENT_ARRAY_BUFFER);
-
-		// On the mesh, not the primitive: Blender keeps a mesh's extras as custom properties and
-		// exports them again, but drops a primitive's
-		Gltf.MeshDef meshDef = new Gltf.MeshDef();
-		meshDef.name = "mesh_" + mesh.getId();
-		meshDef.primitives.add(primitive);
-		meshDef.extras = extras(mesh);
-		gltf.meshes.add(meshDef);
-
-		Gltf.Node meshNode = new Gltf.Node();
-		meshNode.name = meshDef.name;
-		meshNode.mesh = 0;
-		gltf.nodes.add(meshNode);
-
-		Gltf.Scene scene = new Gltf.Scene();
-		scene.nodes = new ArrayList<>();
-		scene.nodes.add(0);
-		gltf.scenes.add(scene);
-		gltf.scene = 0;
-
-		if (rigged)
-		{
-			writeSkin(gltf, bin, meshNode, scene, tree);
-			writeAnimations(gltf, bin, mesh, tree, rigs, clips, timings, report);
-		}
-
-		byte[] data = bin.finish();
-		return Glb.write(gltf, data);
+		return primitive;
 	}
 
-	private static JsonObject extras(Mesh mesh)
+	/**
+	 * @param partIndex the part's place in the mesh, recorded so the reader can restore face order
+	 *                  whatever order an editor writes the parts back in; -1 for a single part
+	 */
+	private static JsonObject extras(Mesh mesh, MeshPart part, int partIndex)
 	{
 		JsonObject extras = new JsonObject();
 		extras.addProperty(EXTRA_PRIORITY, mesh.getPriority());
 		extras.addProperty(EXTRA_TRANSPARENCIES, mesh.getFaceTransparencies() != null);
 		if (mesh.getFaceRenderTypes() != null)
 		{
-			extras.add(EXTRA_RENDER_TYPES, jsonBytes(mesh.getFaceRenderTypes()));
+			extras.add(EXTRA_RENDER_TYPES, jsonBytes(mesh.getFaceRenderTypes(), part));
 		}
 		if (mesh.getFaceRenderPriorities() != null)
 		{
-			extras.add(EXTRA_RENDER_PRIORITIES, jsonBytes(mesh.getFaceRenderPriorities()));
+			extras.add(EXTRA_RENDER_PRIORITIES, jsonBytes(mesh.getFaceRenderPriorities(), part));
+		}
+		if (partIndex >= 0)
+		{
+			extras.addProperty(EXTRA_PART, partIndex);
 		}
 		return extras;
 	}
 
-	/** Per-face bytes as a JSON array, in face order. */
-	private static JsonArray jsonBytes(byte[] values)
+	/** A part's per-face bytes as a JSON array, in face order. */
+	private static JsonArray jsonBytes(byte[] values, MeshPart part)
 	{
 		JsonArray array = new JsonArray();
-		for (byte value : values)
+		for (int face = part.firstFace; face < part.firstFace + part.faceCount; face++)
 		{
-			array.add(value);
+			array.add(values[face]);
 		}
 		return array;
 	}
@@ -306,10 +367,12 @@ final class GlbWriter
 	}
 
 	/**
-	 * Node layout: 0 the mesh, 1 an armature root with no transform, then one node per joint named
-	 * {@code group_N} after the vertex group it carries.
+	 * Node layout: first one node per part mesh, then an armature root with no transform, then one
+	 * node per joint named {@code group_N} after the vertex group it carries. Every part mesh is
+	 * skinned to the one rig.
 	 */
-	private static void writeSkin(Gltf gltf, Glb.BinBuilder bin, Gltf.Node meshNode, Gltf.Scene scene, JointTree tree)
+	private static void writeSkin(Gltf gltf, Glb.BinBuilder bin, List<Gltf.Node> meshNodes, Gltf.Scene scene,
+		JointTree tree)
 	{
 		Gltf.Node armature = new Gltf.Node();
 		armature.name = "armature";
@@ -353,7 +416,10 @@ final class GlbWriter
 		skin.inverseBindMatrices = bin.floats(inverseBinds, "MAT4", null, false);
 		gltf.skins = new ArrayList<>();
 		gltf.skins.add(skin);
-		meshNode.skin = 0;
+		for (Gltf.Node meshNode : meshNodes)
+		{
+			meshNode.skin = 0;
+		}
 	}
 
 	private static double[] restGltf(JointTree tree, int joint)

@@ -32,6 +32,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -178,6 +179,9 @@ final class GltfToMeshConverter
 	/**
 	 * The nodes whose meshes are converted, in the order their triangles become faces. Anything that
 	 * edits faces by index, such as the painter, must walk the file in this same order.
+	 *
+	 * <p>That is scene order, unless every mesh carries the writer's part index: then it is part
+	 * order, which is the original face order however an editor reordered the objects.
 	 */
 	static List<Integer> meshNodes(Gltf gltf)
 	{
@@ -189,7 +193,30 @@ final class GltfToMeshConverter
 				meshNodes.add(node);
 			}
 		}
+
+		Map<Integer, Integer> partOf = new HashMap<>();
+		for (int node : meshNodes)
+		{
+			Integer part = partIndex(gltf.meshes.get(gltf.nodes.get(node).mesh));
+			if (part == null)
+			{
+				return meshNodes;
+			}
+			partOf.put(node, part);
+		}
+		meshNodes.sort(Comparator.comparingInt(partOf::get));
 		return meshNodes;
+	}
+
+	/** A mesh's part index, looked for where {@link #readGeometry} looks for extras, or null. */
+	private static Integer partIndex(Gltf.MeshDef meshDef)
+	{
+		JsonObject extras = meshDef.extras;
+		if (extras == null && !meshDef.primitives.isEmpty())
+		{
+			extras = meshDef.primitives.get(0).extras;
+		}
+		return extras != null && extras.has(GlbWriter.EXTRA_PART) ? extras.get(GlbWriter.EXTRA_PART).getAsInt() : null;
 	}
 
 	/** Every node reachable from the default scene, or from every root when there is no scene. */

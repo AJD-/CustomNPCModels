@@ -47,6 +47,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -137,6 +138,9 @@ public class GltfPainter
 
 	/** Per face, the faces sharing an edge with it; built on first fill. */
 	private List<int[]> neighbours;
+
+	/** Faces of the parts unticked in the Parts list. */
+	private final BitSet hiddenFaces = new BitSet();
 
 	public static void main(String[] args)
 	{
@@ -313,6 +317,26 @@ public class GltfPainter
 		recentColors.setPreferredSize(new Dimension(220, 52));
 		panel.add(left(recentColors));
 
+		List<MeshPart> parts = document.parts();
+		if (parts.size() > 1)
+		{
+			panel.add(Box.createVerticalStrut(10));
+			panel.add(heading("Parts"));
+			JPanel list = new JPanel();
+			list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+			for (MeshPart part : parts)
+			{
+				JCheckBox shown = new JCheckBox(part.name + " (" + part.faceCount + " faces)", true);
+				shown.setToolTipText("Untick to hide this part while painting; it is still saved");
+				shown.addActionListener(e -> showPart(part, shown.isSelected()));
+				list.add(shown);
+			}
+			JScrollPane partsScroll = new JScrollPane(list);
+			partsScroll.setPreferredSize(new Dimension(220, Math.min(160, parts.size() * 24 + 4)));
+			partsScroll.setBorder(BorderFactory.createEmptyBorder());
+			panel.add(left(partsScroll));
+		}
+
 		if (notice != null)
 		{
 			panel.add(Box.createVerticalStrut(10));
@@ -322,6 +346,13 @@ public class GltfPainter
 		}
 		panel.add(Box.createVerticalGlue());
 		return panel;
+	}
+
+	/** Hides or shows a part's faces; hidden faces cannot be painted, filled into or picked from. */
+	private void showPart(MeshPart part, boolean shown)
+	{
+		hiddenFaces.set(part.firstFace, part.firstFace + part.faceCount, !shown);
+		viewport.setHiddenFaces(hiddenFaces);
 	}
 
 	private static JLabel heading(String text)
@@ -536,7 +567,7 @@ public class GltfPainter
 		updateTitle();
 	}
 
-	/** Paints every face connected to {@code start} by edges that has its color. */
+	/** Paints every visible face connected to {@code start} by edges that has its color. */
 	private void fill(int start)
 	{
 		if (start < 0 || stroke == null)
@@ -561,7 +592,7 @@ public class GltfPainter
 			document.paint(face, current);
 			for (int next : adjacent.get(face))
 			{
-				if (!seen[next] && document.color(next) == from)
+				if (!seen[next] && document.color(next) == from && !viewport.isHidden(next))
 				{
 					seen[next] = true;
 					queue.add(next);

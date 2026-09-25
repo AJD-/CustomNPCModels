@@ -36,6 +36,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 import java.util.Arrays;
+import java.util.BitSet;
 import javax.swing.JComponent;
 
 /**
@@ -85,6 +86,9 @@ final class PaintViewport extends JComponent
 	private BufferedImage image;
 	private int[] faceBuffer = new int[0];
 	private int hoverFace = -1;
+
+	/** Faces left out of the drawing, and so out of picking - a part the author has hidden. */
+	private BitSet hiddenFaces = new BitSet();
 
 	/**
 	 * @param ambient  the NPC definition's ambient byte, 0 when it has none
@@ -137,13 +141,54 @@ final class PaintViewport extends JComponent
 		repaint();
 	}
 
-	/** Centers the model and fits it in view. */
+	/**
+	 * Hides faces from the drawing. A hidden face cannot be picked either, so nothing can paint it
+	 * until it is shown again. Shading is unchanged: lighting still counts every face.
+	 */
+	void setHiddenFaces(BitSet hidden)
+	{
+		hiddenFaces = (BitSet) hidden.clone();
+		if (hoverFace >= 0 && hiddenFaces.get(hoverFace))
+		{
+			hoverFace = -1;
+		}
+		repaint();
+	}
+
+	boolean isHidden(int face)
+	{
+		return hiddenFaces.get(face);
+	}
+
+	/** Centers the visible part of the model - all of it when nothing is visible - and fits it in view. */
 	void frame()
 	{
+		boolean[] framed = new boolean[mesh.getVerticesCount()];
+		boolean anyVisible = hiddenFaces.cardinality() < mesh.getFaceCount();
+		if (hiddenFaces.isEmpty() || !anyVisible)
+		{
+			Arrays.fill(framed, true);
+		}
+		else
+		{
+			for (int face = hiddenFaces.nextClearBit(0); face < mesh.getFaceCount(); face = hiddenFaces.nextClearBit(face + 1))
+			{
+				framed[mesh.getFaceIndices1()[face]] = true;
+				framed[mesh.getFaceIndices2()[face]] = true;
+				framed[mesh.getFaceIndices3()[face]] = true;
+			}
+		}
+
 		double[] min = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE};
 		double[] max = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+		boolean any = false;
 		for (int v = 0; v < mesh.getVerticesCount(); v++)
 		{
+			if (!framed[v])
+			{
+				continue;
+			}
+			any = true;
 			double[] p = {mesh.getVerticesX()[v], mesh.getVerticesY()[v], mesh.getVerticesZ()[v]};
 			for (int k = 0; k < 3; k++)
 			{
@@ -154,7 +199,7 @@ final class PaintViewport extends JComponent
 		radius = 1;
 		for (int k = 0; k < 3; k++)
 		{
-			target[k] = mesh.getVerticesCount() == 0 ? 0 : (min[k] + max[k]) / 2;
+			target[k] = any ? (min[k] + max[k]) / 2 : 0;
 			radius = Math.max(radius, (max[k] - min[k]) / 2);
 		}
 		distance = radius * 3.2;
@@ -252,7 +297,7 @@ final class PaintViewport extends JComponent
 
 		for (int face = 0; face < mesh.getFaceCount(); face++)
 		{
-			if (gameLighting && lit3[face] == HIDDEN)
+			if (gameLighting && lit3[face] == HIDDEN || hiddenFaces.get(face))
 			{
 				continue;
 			}

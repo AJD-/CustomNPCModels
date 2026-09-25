@@ -35,6 +35,7 @@ import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import org.junit.Test;
 
 /**
@@ -189,6 +190,46 @@ public class GlbPaintDocumentTest
 		Mesh back = convert(document.save());
 		assertEquals(RED, back.getFaceColors()[0]);
 		assertArrayEquals(mesh.getFaceTransparencies(), back.getFaceTransparencies());
+	}
+
+	/** A file written in parts lists them, named and in face order, for the painter to hide. */
+	@Test
+	public void testPartsAreListedInFaceOrder() throws Exception
+	{
+		List<MeshPart> parts = GltfStaticTest.moleParts();
+		byte[] glb = GlbWriter.write(LiveFixtures.mole(), parts, null, new ArrayList<>(), Collections.emptyMap(),
+			new ArrayList<>());
+		List<MeshPart> listed = GlbPaintDocument.load(glb).parts();
+
+		assertEquals(parts.size(), listed.size());
+		for (int p = 0; p < parts.size(); p++)
+		{
+			assertEquals(parts.get(p).name, listed.get(p).name);
+			assertEquals(parts.get(p).firstFace, listed.get(p).firstFace);
+			assertEquals(parts.get(p).faceCount, listed.get(p).faceCount);
+		}
+		assertEquals(1, GlbPaintDocument.load(GlbWriter.write(new TestMesh().build(), new ArrayList<>())).parts().size());
+	}
+
+	/** Painting a face of one part rewrites that part only; every other part's faces keep their colors. */
+	@Test
+	public void testPaintingOnePartLeavesTheOthers() throws Exception
+	{
+		List<MeshPart> parts = GltfStaticTest.moleParts();
+		byte[] glb = GlbWriter.write(LiveFixtures.mole(), parts, null, new ArrayList<>(), Collections.emptyMap(),
+			new ArrayList<>());
+		GlbPaintDocument document = GlbPaintDocument.load(glb);
+		short[] expected = convert(glb).getFaceColors().clone();
+		MeshPart last = parts.get(parts.size() - 1);
+		for (int face = last.firstFace; face < last.firstFace + last.faceCount; face += 3)
+		{
+			document.paint(face, RED);
+			expected[face] = RED;
+		}
+
+		byte[] saved = document.save();
+		assertArrayEquals(expected, convert(saved).getFaceColors());
+		assertEquals(parts.size(), GlbPaintDocument.load(saved).parts().size());
 	}
 
 	/** A real NPC: every seventh face repainted, everything else exactly as before. */

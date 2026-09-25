@@ -51,7 +51,8 @@ import net.runelite.cache.fs.Store;
  * the same NPC - to seed Blender work from something that already animates correctly, or to
  * round-trip it through the pipeline and into the game for comparison with the original.
  *
- * <p>The NPC's model parts are merged into one mesh, exactly as the plugin merges them at spawn. Its
+ * <p>The NPC's model parts are merged into one mesh, exactly as the plugin merges them at spawn, and
+ * each part is written as a glTF mesh of its own so it can be hidden in Blender or the painter. Its
  * recolors and scale go into the manifest entry rather than the mesh, the same split the plugin
  * applies them in, so the round-tripped model is dressed exactly as the original.
  *
@@ -127,7 +128,16 @@ public class GltfExporter
 		String name = npc.name == null ? "npc-" + npc.id : npc.name;
 		System.out.println(name + " (id " + npc.id + ")");
 
-		Mesh mesh = npcMesh(store, npc);
+		List<Mesh> partMeshes = partMeshes(store, npc);
+		Mesh mesh = merge(npc, partMeshes);
+		List<MeshPart> parts = partRanges(npc, partMeshes);
+		if (parts.size() > 1)
+		{
+			for (MeshPart part : parts)
+			{
+				System.out.println("  " + part);
+			}
+		}
 
 		Map<Integer, Rig> rigs = new LinkedHashMap<>();
 		List<Clip> clips = new ArrayList<>();
@@ -148,7 +158,7 @@ public class GltfExporter
 		}
 
 		List<String> report = new ArrayList<>();
-		byte[] glb = GlbWriter.write(mesh, rigs, clips, timings, report);
+		byte[] glb = GlbWriter.write(mesh, parts, rigs, clips, timings, report);
 		for (String line : report)
 		{
 			System.out.println("  " + line);
@@ -192,7 +202,12 @@ public class GltfExporter
 	/** The NPC's model parts merged into one mesh, as the plugin merges them at spawn, under its synthetic id. */
 	static Mesh npcMesh(Store store, NpcDefinition npc) throws IOException
 	{
-		int id = ID_BASE + npc.id;
+		return merge(npc, partMeshes(store, npc));
+	}
+
+	/** The NPC's models, decoded, in definition order. */
+	static List<Mesh> partMeshes(Store store, NpcDefinition npc) throws IOException
+	{
 		List<Mesh> parts = new ArrayList<>();
 		for (int modelId : npc.models)
 		{
@@ -203,6 +218,35 @@ public class GltfExporter
 			}
 			parts.add(MeshFactory.toMesh(modelId, model));
 		}
+		return parts;
+	}
+
+	/**
+	 * Where each model's faces land in the merged mesh: the merge appends every part's faces after
+	 * the last's, so each is one run. A single model is the whole mesh.
+	 */
+	static List<MeshPart> partRanges(NpcDefinition npc, List<Mesh> parts)
+	{
+		if (parts.size() == 1)
+		{
+			return MeshPart.whole(parts.get(0).getFaceCount());
+		}
+
+		List<MeshPart> ranges = new ArrayList<>();
+		int firstFace = 0;
+		for (int i = 0; i < parts.size(); i++)
+		{
+			int faces = parts.get(i).getFaceCount();
+			ranges.add(new MeshPart(MeshPart.name(i, npc.models[i]), firstFace, faces));
+			firstFace += faces;
+		}
+		return ranges;
+	}
+
+	/** The parts merged under the NPC's synthetic id. */
+	static Mesh merge(NpcDefinition npc, List<Mesh> parts)
+	{
+		int id = ID_BASE + npc.id;
 		Mesh mesh = MeshMerger.merge(id, parts);
 		return new Mesh(id, mesh.getPriority(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
 			mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(), mesh.getFaceColors(),

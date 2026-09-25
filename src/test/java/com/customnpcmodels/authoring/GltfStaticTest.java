@@ -181,6 +181,79 @@ public class GltfStaticTest
 		}
 	}
 
+	/** The Giant Mole's faces as its four models, the way the exporter splits it. */
+	static List<MeshPart> moleParts() throws Exception
+	{
+		List<MeshPart> parts = new ArrayList<>();
+		int firstFace = 0;
+		for (int i = 0; i < LiveFixtures.MOLE_PARTS.length; i++)
+		{
+			int faces = LiveFixtures.mesh(LiveFixtures.MOLE_PARTS[i]).getFaceCount();
+			parts.add(new MeshPart(MeshPart.name(i, LiveFixtures.MOLE_PARTS[i]), firstFace, faces));
+			firstFace += faces;
+		}
+		return parts;
+	}
+
+	/**
+	 * A merged mesh written as one glTF mesh per model comes back exactly as the single-mesh file
+	 * does: each part carries its own slice of the per-face extras, and seam vertices shared between
+	 * parts weld back into one by their original index.
+	 */
+	@Test
+	public void testAMeshWrittenAsPartsRoundTripsExactly() throws Exception
+	{
+		Mesh mesh = LiveFixtures.mole();
+		List<MeshPart> parts = moleParts();
+		List<String> report = new ArrayList<>();
+		byte[] glb = GlbWriter.write(mesh, parts, null, new ArrayList<>(), Collections.emptyMap(), report);
+
+		Gltf gltf = Glb.read(glb).gltf;
+		assertEquals(parts.size(), gltf.meshes.size());
+		for (int p = 0; p < parts.size(); p++)
+		{
+			assertEquals(parts.get(p).name, gltf.meshes.get(p).name);
+			assertEquals(p, gltf.meshes.get(p).extras.get(GlbWriter.EXTRA_PART).getAsInt());
+		}
+
+		GltfToMeshConverter.Result result = GltfToMeshConverter.convert(glb, mesh.getId(), 1, Collections.emptyMap());
+		report.addAll(result.report);
+		assertSameMesh(mesh, result.mesh);
+		assertEquals(Collections.emptyList(), report);
+	}
+
+	/**
+	 * An editor may write the parts back in another order. The part index restores the original face
+	 * order, which is what render order and anything painted by face index depend on.
+	 */
+	@Test
+	public void testPartsComeBackInTheirOwnOrderWhateverOrderTheFileListsThem() throws Exception
+	{
+		Mesh mesh = LiveFixtures.mole();
+		byte[] glb = GlbWriter.write(mesh, moleParts(), null, new ArrayList<>(), Collections.emptyMap(), new ArrayList<>());
+		byte[] reordered = edit(glb, gltf -> Collections.reverse(gltf.scenes.get(0).nodes));
+
+		// The writer puts part N in mesh N, so the meshes a node order visits spell out the part order
+		Gltf gltf = Glb.read(reordered).gltf;
+		List<Integer> fileOrder = new ArrayList<>();
+		for (int node : gltf.scenes.get(0).nodes)
+		{
+			if (gltf.nodes.get(node).mesh != null)
+			{
+				fileOrder.add(gltf.nodes.get(node).mesh);
+			}
+		}
+		List<Integer> readOrder = new ArrayList<>();
+		for (int node : GltfToMeshConverter.meshNodes(gltf))
+		{
+			readOrder.add(gltf.nodes.get(node).mesh);
+		}
+		assertEquals(java.util.Arrays.asList(3, 2, 1, 0), fileOrder);
+		assertEquals(java.util.Arrays.asList(0, 1, 2, 3), readOrder);
+
+		assertSameMesh(mesh, GltfToMeshConverter.convert(reordered, mesh.getId(), 1, Collections.emptyMap()).mesh);
+	}
+
 	/**
 	 * The winding check that does not go through the reader: every triangle in the file, taken in the
 	 * file's own corner order, must face the same way as the engine face it came from - which glTF

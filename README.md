@@ -79,7 +79,10 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
   is textured.
 - `./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]` exports an NPC from the live cache
   as a `.glb`, with its rig and animations, plus a manifest entry binding it back to the same NPC.
-  Use it to seed Blender work from something that already animates correctly. **The output is Jagex
+  Use it to seed Blender work from something that already animates correctly. An NPC built from
+  several models gets one mesh per model, named `part_NN_model_<id>`, so each can be hidden on its
+  own. A vertex group that every exported clip scales to nothing, such as an effect only an attack
+  shows, is reported: it is visible in the rest pose but not in those clips. **The output is Jagex
   geometry.** It defaults to the gitignored `build/gltf/` and must never be committed or bundled for
   release.
 - `./gradlew generateAssets -PassetsDir=assets-dev -Pdev` writes the gitignored
@@ -98,6 +101,8 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
   changes nothing but the colors: geometry, rig, animations and everything Blender added stay as they
   were. The first save keeps the original beside it as `<file>.bak`. Without `-Pglb` it asks for a
   file. For color-only edits this is easier than Vertex Paint, and the result still opens in Blender.
+  A file with more than one mesh lists them under **Parts**. Untick one to hide it, and brush, fill
+  and color pick all skip it. It is still saved.
 
 ### Editing an export in Blender
 
@@ -123,6 +128,11 @@ wrong, the file still converts, but it comes out wrong without saying so.
      `paintGltf` after export.
    - Moving vertices well away from their bone draws a "Joint for group N sits ... from the
      centroid" warning. That is expected when you meant to do it. The animation still carries them.
+   - Each of the NPC's models is its own object (`part_NN_model_<id>`), so one can be hidden in the
+     outliner while you work on the rest. Keep them as separate objects. A joined mesh keeps only one
+     part's per-face render types and priorities, so they are dropped with a warning. The objects may
+     export in any order: each carries its part index, and the converter puts the faces back in their
+     original order.
 5. **File > Export > glTF 2.0**, format glTF Binary, with:
    - *Data > Mesh > Attributes* **on**. This keeps `_RS_VERTEX` and `_RS_HSL`, the original vertex
      numbering and exact colors. Without them vertices are renumbered and unedited colors can drift.

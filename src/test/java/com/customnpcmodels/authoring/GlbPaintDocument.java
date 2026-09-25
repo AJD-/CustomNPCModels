@@ -49,7 +49,8 @@ import java.util.Set;
  *
  * Face {@code n} is the converter's face {@code n} - the file is walked in
  * {@link GltfToMeshConverter#meshNodes} order - and its starting color is the one the converter
- * gives it, so what the painter shows is exactly what the game would draw.
+ * gives it, so what the painter shows is exactly what the game would draw. Each mesh node's faces
+ * are one run of that numbering, listed by {@link #parts} so the painter can hide them.
  *
  * <h2>Saving</h2>
  *
@@ -87,6 +88,7 @@ final class GlbPaintDocument
 	private final Glb glb;
 	private final JsonObject json;
 	private final List<Slot> slots = new ArrayList<>();
+	private final List<MeshPart> parts = new ArrayList<>();
 	private final Mesh mesh;
 	private final short[] originalColors;
 	private final short[] colors;
@@ -111,6 +113,7 @@ final class GlbPaintDocument
 					+ "would paint every copy; make the copies single-user in Blender");
 			}
 
+			int partFirstFace = face;
 			JsonArray primitives = meshJson(meshIndex).getAsJsonArray("primitives");
 			for (int p = 0; p < primitives.size(); p++)
 			{
@@ -119,6 +122,11 @@ final class GlbPaintDocument
 				face += slot.faces;
 				slots.add(slot);
 			}
+
+			String name = gltf.nodes.get(node).name != null ? gltf.nodes.get(node).name
+				: gltf.meshes.get(meshIndex).name != null ? gltf.meshes.get(meshIndex).name
+				: "Part " + (parts.size() + 1);
+			parts.add(new MeshPart(name, partFirstFace, face - partFirstFace));
 		}
 
 		if (face != mesh.getFaceCount())
@@ -138,6 +146,15 @@ final class GlbPaintDocument
 	int faceCount()
 	{
 		return colors.length;
+	}
+
+	/**
+	 * The file's meshes, one per node in face order, each named after its node - for an exported
+	 * multi-model NPC, one per model.
+	 */
+	List<MeshPart> parts()
+	{
+		return Collections.unmodifiableList(parts);
 	}
 
 	short color(int face)
