@@ -38,14 +38,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.runelite.api.gameval.AnimationID;
+import net.runelite.api.gameval.NpcID;
+import net.runelite.cache.NpcManager;
 import net.runelite.cache.definitions.ModelDefinition;
+import net.runelite.cache.definitions.NpcDefinition;
 import net.runelite.cache.definitions.SequenceDefinition;
 import net.runelite.cache.fs.Store;
 
 /**
  * Real geometry and animation for the tests to check the pipeline against, decoded from the live
- * cache: the Giant Mole, the first authoring subject, and the skeleton, whose mesh and clips are
- * already proven correct in game by Retro NPC Swapper.
+ * cache: the Giant Mole, the first authoring subject, the skeleton, whose mesh and clips are
+ * already proven correct in game by Retro NPC Swapper, and Commander Zilyana, whose clips collapse a
+ * group to nothing.
  *
  * <p>Nothing here is written anywhere. A test that asks for a fixture with no live cache on the
  * machine is skipped rather than failed.
@@ -61,7 +65,16 @@ final class LiveFixtures
 	static final int SKELETON_READY = 262;
 	static final int SKELETON_WALK = 259;
 
+	/**
+	 * Commander Zilyana, whose model carries an effect sphere on a group of its own that her standing
+	 * and walking clips scale to nothing on every frame.
+	 */
+	static final int ZILYANA = NpcID.GODWARS_SARADOMIN_AVATAR;
+	static final int ZILYANA_READY = AnimationID.GODWARS_SARADOMIN_READY;
+	static final int ZILYANA_WALK = AnimationID.GODWARS_SARADOMIN_WALK;
+
 	private static Store store;
+	private static NpcManager npcs;
 	private static final Map<Integer, Mesh> meshes = new HashMap<>();
 	private static final Map<Integer, Clip> clips = new HashMap<>();
 	private static final Map<Integer, Rig> rigs = new LinkedHashMap<>();
@@ -102,6 +115,19 @@ final class LiveFixtures
 			parts.add(mesh(part));
 		}
 		return MeshMerger.merge(MOLE_PARTS[0], parts);
+	}
+
+	static synchronized NpcDefinition npc(int npcId) throws IOException
+	{
+		if (npcs == null)
+		{
+			NpcManager manager = new NpcManager(store());
+			manager.load();
+			npcs = manager;
+		}
+		NpcDefinition npc = npcs.get(npcId);
+		assumeTrue("npc " + npcId + " has no models", npc != null && npc.models != null);
+		return npc;
 	}
 
 	static synchronized Clip clip(int sequenceId) throws IOException

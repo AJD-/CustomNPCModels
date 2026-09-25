@@ -374,6 +374,12 @@ final class GlbWriter
 		int firstJoint = gltf.nodes.size() - tree.groups.length;
 		int groupCount = mesh.getVertexGroups().length;
 
+		// Joints every exported frame scales to nothing: geometry that only shows in the rest pose, or
+		// in a sequence that was not exported, which is otherwise a mystery once it is in Blender
+		boolean[] alwaysCollapsed = new boolean[tree.groups.length];
+		Arrays.fill(alwaysCollapsed, true);
+		boolean anyClip = false;
+
 		for (Clip clip : clips)
 		{
 			Rig rig = rigs.get(clip.getRigId());
@@ -417,6 +423,7 @@ final class GlbWriter
 					double[] rest = restGltf(tree, joint);
 					double[] moved = Mat4.multiply(Mat4.GLTF_FROM_RS, rsGroups[tree.groups[joint]], Mat4.RS_FROM_GLTF);
 					world[joint] = Mat4.multiply(moved, Mat4.translation(rest[0], rest[1], rest[2]));
+					alwaysCollapsed[joint] &= isCollapsed(world[joint]);
 
 					double[] local = tree.parents[joint] == -1
 						? world[joint]
@@ -466,7 +473,54 @@ final class GlbWriter
 				}
 			}
 			gltf.animations.add(animation);
+			anyClip = true;
 		}
+
+		for (int joint = 0; anyClip && joint < tree.groups.length; joint++)
+		{
+			if (alwaysCollapsed[joint])
+			{
+				report.add("Vertex group " + tree.groups[joint] + " (" + facesTouching(mesh, tree.groups[joint])
+					+ " faces) is scaled to zero in every exported clip; it is only visible in the rest pose, "
+					+ "or in sequences not exported (try -Pseqs)");
+			}
+		}
+	}
+
+	/** Whether a transform's linear part has scaled every axis to nothing. */
+	private static boolean isCollapsed(double[] m)
+	{
+		for (int col = 0; col < 3; col++)
+		{
+			double x = m[col * 4];
+			double y = m[col * 4 + 1];
+			double z = m[col * 4 + 2];
+			if (Math.sqrt(x * x + y * y + z * z) >= Mat4.COLLAPSED)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** The faces with at least one corner in the group. */
+	private static int facesTouching(Mesh mesh, int group)
+	{
+		boolean[] member = new boolean[mesh.getVerticesCount()];
+		for (int vertex : mesh.getVertexGroup(group))
+		{
+			member[vertex] = true;
+		}
+		int faces = 0;
+		for (int face = 0; face < mesh.getFaceCount(); face++)
+		{
+			if (member[mesh.getFaceIndices1()[face]] || member[mesh.getFaceIndices2()[face]]
+				|| member[mesh.getFaceIndices3()[face]])
+			{
+				faces++;
+			}
+		}
+		return faces;
 	}
 
 	private static void channel(Gltf.Animation animation, int input, int output, int node, String path)

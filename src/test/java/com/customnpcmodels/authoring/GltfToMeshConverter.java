@@ -963,19 +963,28 @@ final class GltfToMeshConverter
 				// Whatever linear change is left after the ancestors, split into the rotate op and then
 				// the scale op the engine applies after it about the same pivot: remaining = S * R,
 				// with S along the model axes. That is exact whenever the rows of what remains are
-				// orthogonal - always, for a joint that only rotates - and approximate otherwise.
+				// orthogonal - always, for a joint that only rotates - and approximate otherwise. A row
+				// scaled to nothing, as when a clip hides a group, is completed around the others.
 				double[] remaining = Mat4.multiply(target[slot], Mat4.invert(after));
+				double[][] rows = new double[3][3];
 				double[] scale = new double[3];
+				for (int row = 0; row < 3; row++)
+				{
+					for (int col = 0; col < 3; col++)
+					{
+						rows[row][col] = Mat4.get(remaining, row, col);
+					}
+					scale[row] = Math.sqrt(rows[row][0] * rows[row][0] + rows[row][1] * rows[row][1]
+						+ rows[row][2] * rows[row][2]);
+				}
+				double[][] unitRows = Mat4.unitAxes(rows, scale);
 				double[] rotation = Mat4.identity();
 				for (int row = 0; row < 3; row++)
 				{
-					double r0 = Mat4.get(remaining, row, 0);
-					double r1 = Mat4.get(remaining, row, 1);
-					double r2 = Mat4.get(remaining, row, 2);
-					scale[row] = Math.sqrt(r0 * r0 + r1 * r1 + r2 * r2);
-					Mat4.set(rotation, row, 0, r0 / scale[row]);
-					Mat4.set(rotation, row, 1, r1 / scale[row]);
-					Mat4.set(rotation, row, 2, r2 / scale[row]);
+					for (int col = 0; col < 3; col++)
+					{
+						Mat4.set(rotation, row, col, unitRows[row][col]);
+					}
 				}
 				worstSkew = Math.max(worstSkew, Mat4.shear(transpose(rotation)));
 

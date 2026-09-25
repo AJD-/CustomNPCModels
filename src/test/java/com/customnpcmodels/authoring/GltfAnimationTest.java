@@ -34,6 +34,7 @@ import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.Skinner;
 import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -185,6 +186,91 @@ public class GltfAnimationTest
 				assertEquals("angles " + ax + "," + ay + "," + az, r[i], back[i], 1e-3);
 			}
 		}
+	}
+
+	/**
+	 * A clip that scales a group to nothing leaves its joint with no axes to read a rotation from. Any
+	 * rotation is then exact, but it must be a real one: glTF has no room for NaN keys.
+	 */
+	@Test
+	public void testToTrsOfAFullyCollapsedMatrix()
+	{
+		double[] m = Mat4.multiply(Mat4.translation(0.5, 1, -2), Mat4.scale(0, 0, 0));
+		double[][] trs = Mat4.toTrs(m);
+
+		assertUnitQuaternion(trs[1]);
+		assertArrayEquals(new double[]{0, 0, 0}, trs[2], 1e-12);
+		assertArrayEquals(m, Mat4.fromTrs(trs[0], trs[1], trs[2]), 1e-9);
+	}
+
+	/**
+	 * With one or two axes collapsed the survivors still carry a real rotation, which must come back,
+	 * and the missing axes are completed around them.
+	 */
+	@Test
+	public void testToTrsOfAPartlyCollapsedMatrix()
+	{
+		double[] rotation = Mat4.rsRotation(40, 90, 17);
+		double[][] scales = {{0, 1.5, 2}, {1, 0, 1}, {3, 2, 0}, {0, 0, 3}, {0, 2, 0}, {1.5, 0, 0}};
+		for (double[] s : scales)
+		{
+			double[] m = Mat4.multiply(Mat4.translation(1, 2, 3), rotation, Mat4.scale(s[0], s[1], s[2]));
+			double[][] trs = Mat4.toTrs(m);
+
+			String label = s[0] + "," + s[1] + "," + s[2];
+			assertUnitQuaternion(trs[1]);
+			assertArrayEquals(label, s, trs[2], 1e-3);
+			assertArrayEquals(label, m, Mat4.fromTrs(trs[0], trs[1], trs[2]), 1e-3);
+		}
+	}
+
+	private static void assertUnitQuaternion(double[] q)
+	{
+		for (double component : q)
+		{
+			assertTrue("quaternion " + Arrays.toString(q), Double.isFinite(component));
+		}
+		assertEquals(1, Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]), 1e-9);
+	}
+
+	/**
+	 * Commander Zilyana's model carries an effect sphere on group 100, which her standing and walking
+	 * clips scale to nothing on every frame. The file must hold real keys for it, say that the group
+	 * is hidden in everything exported, and round-trip with the sphere still collapsed. The sphere
+	 * itself lands exactly; the bound is looser than the skeleton's because the standing clip (6966)
+	 * shears group 25, which both halves report (measured: 2.73 units standing, 1.97 walking).
+	 */
+	@Test
+	public void testACollapsedGroupExportsCleanlyAndRoundTrips() throws Exception
+	{
+		Mesh mesh = GltfExporter.npcMesh(LiveFixtures.store(), LiveFixtures.npc(LiveFixtures.ZILYANA));
+		int[] sequences = {LiveFixtures.ZILYANA_READY, LiveFixtures.ZILYANA_WALK};
+		List<Clip> clips = new ArrayList<>();
+		for (int sequence : sequences)
+		{
+			clips.add(LiveFixtures.clip(sequence));
+		}
+		List<String> report = new ArrayList<>();
+		Glb glb = Glb.read(GlbWriter.write(mesh, LiveFixtures.rigs(), clips, timings(sequences), report));
+
+		for (Gltf.Animation animation : glb.gltf.animations)
+		{
+			for (Gltf.Sampler sampler : animation.samplers)
+			{
+				for (double value : glb.readDoubles(sampler.output))
+				{
+					assertTrue("animation " + animation.name + " has a non-finite key", Double.isFinite(value));
+				}
+			}
+		}
+		assertTrue("writer " + report, report.stream().anyMatch(line ->
+			line.startsWith("Vertex group 100 (80 faces) is scaled to zero in every exported clip")));
+
+		GltfToMeshConverter.Result result = roundTrip(mesh, new ArrayList<>(), sequences);
+		double worst = worstPoseError(mesh, result, sequences);
+		System.out.println("Zilyana round trip: worst vertex error " + worst + " units; writer " + report
+			+ "; reader " + result.report);
+		assertTrue("worst vertex error " + worst, worst < 3.0);
 	}
 
 	/**

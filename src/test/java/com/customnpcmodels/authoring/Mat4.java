@@ -195,27 +195,105 @@ final class Mat4
 	/**
 	 * Splits an affine matrix into translation, rotation quaternion and per-axis scale. Assumes no
 	 * shear; {@link #shear} measures how far that assumption is off.
+	 *
+	 * <p>An axis scaled to nothing - a clip hiding a group - has no direction to read, so it is
+	 * completed around the others by {@link #unitAxes} and keeps a scale of 0.
 	 */
 	static double[][] toTrs(double[] m)
 	{
 		double[] t = {m[12], m[13], m[14]};
-		double[] s = {
-			Math.sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]),
-			Math.sqrt(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]),
-			Math.sqrt(m[8] * m[8] + m[9] * m[9] + m[10] * m[10])};
+		double[][] columns = {{m[0], m[1], m[2]}, {m[4], m[5], m[6]}, {m[8], m[9], m[10]}};
+		double[] s = {length(columns[0]), length(columns[1]), length(columns[2])};
 		if (determinant3(m) < 0)
 		{
 			s[0] = -s[0];
 		}
 
+		double[][] axes = unitAxes(columns, s);
 		double[] r = identity();
-		for (int row = 0; row < 3; row++)
+		for (int col = 0; col < 3; col++)
 		{
-			r[row] = m[row] / s[0];
-			r[4 + row] = m[4 + row] / s[1];
-			r[8 + row] = m[8 + row] / s[2];
+			System.arraycopy(axes[col], 0, r, col * 4, 3);
 		}
 		return new double[][]{t, matrixToQuaternion(r), s};
+	}
+
+	/** Below this length an axis has collapsed, and its direction is whatever completes the basis. */
+	static final double COLLAPSED = 1e-9;
+
+	/**
+	 * Three axes divided by their (signed) lengths, with any collapsed one completed from the rest so
+	 * the result is still a rotation: from the other two by a cross product, around a lone survivor
+	 * by a perpendicular pair, and the identity when all three are gone. Surviving axes are not
+	 * re-orthogonalised, so shear still shows where it did before.
+	 */
+	static double[][] unitAxes(double[][] axes, double[] lengths)
+	{
+		double[][] unit = new double[3][];
+		int survivors = 0;
+		for (int i = 0; i < 3; i++)
+		{
+			if (Math.abs(lengths[i]) >= COLLAPSED)
+			{
+				unit[i] = new double[]{axes[i][0] / lengths[i], axes[i][1] / lengths[i], axes[i][2] / lengths[i]};
+				survivors++;
+			}
+		}
+
+		if (survivors == 2)
+		{
+			int missing = unit[0] == null ? 0 : unit[1] == null ? 1 : 2;
+			double[] completed = cross(unit[(missing + 1) % 3], unit[(missing + 2) % 3]);
+			if (length(completed) >= COLLAPSED)
+			{
+				unit[missing] = scaled(completed, 1 / length(completed));
+				return unit;
+			}
+			// The two survivors are parallel, so they only fix one direction between them
+			unit[(missing + 2) % 3] = null;
+			survivors = 1;
+		}
+
+		if (survivors == 1)
+		{
+			int kept = unit[0] != null ? 0 : unit[1] != null ? 1 : 2;
+			double[] a = unit[kept];
+			double[] helper = new double[3];
+			int leastParallel = 0;
+			for (int i = 1; i < 3; i++)
+			{
+				if (Math.abs(a[i]) < Math.abs(a[leastParallel]))
+				{
+					leastParallel = i;
+				}
+			}
+			helper[leastParallel] = 1;
+			double dot = a[0] * helper[0] + a[1] * helper[1] + a[2] * helper[2];
+			double[] next = {helper[0] - dot * a[0], helper[1] - dot * a[1], helper[2] - dot * a[2]};
+			next = scaled(next, 1 / length(next));
+			unit[(kept + 1) % 3] = next;
+			unit[(kept + 2) % 3] = cross(a, next);
+		}
+		else if (survivors == 0)
+		{
+			unit = new double[][]{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+		}
+		return unit;
+	}
+
+	private static double length(double[] v)
+	{
+		return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+	}
+
+	private static double[] cross(double[] a, double[] b)
+	{
+		return new double[]{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+	}
+
+	private static double[] scaled(double[] v, double factor)
+	{
+		return new double[]{v[0] * factor, v[1] * factor, v[2] * factor};
 	}
 
 	/** The largest dot product between two distinct basis columns once normalized: 0 for no shear. */
