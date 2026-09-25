@@ -26,6 +26,7 @@ package com.customnpcmodels.authoring;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -66,7 +67,18 @@ final class Glb
 
 	static byte[] write(Gltf gltf, byte[] bin)
 	{
-		byte[] json = pad(GSON.toJson(gltf).getBytes(StandardCharsets.UTF_8), (byte) ' ');
+		return container(GSON.toJson(gltf), bin);
+	}
+
+	/** Writes a document edited as a JSON tree, keeping every field the typed model does not know. */
+	static byte[] write(JsonObject json, byte[] bin)
+	{
+		return container(GSON.toJson(json), bin);
+	}
+
+	private static byte[] container(String jsonText, byte[] bin)
+	{
+		byte[] json = pad(jsonText.getBytes(StandardCharsets.UTF_8), (byte) ' ');
 		byte[] body = pad(bin, (byte) 0);
 
 		int length = 12 + 8 + json.length + (body.length > 0 ? 8 + body.length : 0);
@@ -81,6 +93,49 @@ final class Glb
 	}
 
 	static Glb read(byte[] data)
+	{
+		Chunks chunks = chunks(data);
+		Gltf gltf = GSON.fromJson(chunks.json, Gltf.class);
+		if (gltf == null || gltf.asset == null || gltf.asset.version == null || !gltf.asset.version.startsWith("2."))
+		{
+			throw new GltfException("Not a glTF 2.0 document");
+		}
+		if (gltf.extensionsRequired != null && !gltf.extensionsRequired.isEmpty())
+		{
+			throw new GltfException("The file requires extensions " + gltf.extensionsRequired
+				+ ", which this pipeline does not read - export without compression or quantization");
+		}
+		if (gltf.buffers != null)
+		{
+			if (gltf.buffers.size() > 1)
+			{
+				throw new GltfException("The file has " + gltf.buffers.size() + " buffers; only the .glb's own is read");
+			}
+			if (!gltf.buffers.isEmpty() && gltf.buffers.get(0).uri != null)
+			{
+				throw new GltfException("The file's buffer is external (" + gltf.buffers.get(0).uri
+					+ "); export as a single .glb");
+			}
+		}
+		return new Glb(gltf, chunks.bin);
+	}
+
+	/**
+	 * The JSON chunk as a tree, for edits that must keep what the typed model drops - materials,
+	 * images, extensions. Read the file with {@link #read} as well, which does the validation.
+	 */
+	static JsonObject readJson(byte[] data)
+	{
+		return GSON.fromJson(chunks(data).json, JsonObject.class);
+	}
+
+	private static final class Chunks
+	{
+		String json;
+		byte[] bin;
+	}
+
+	private static Chunks chunks(byte[] data)
 	{
 		ByteBuffer in = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
 		if (data.length < 20 || in.getInt() != MAGIC)
@@ -118,29 +173,10 @@ final class Glb
 			}
 		}
 
-		Gltf gltf = GSON.fromJson(json, Gltf.class);
-		if (gltf == null || gltf.asset == null || gltf.asset.version == null || !gltf.asset.version.startsWith("2."))
-		{
-			throw new GltfException("Not a glTF 2.0 document");
-		}
-		if (gltf.extensionsRequired != null && !gltf.extensionsRequired.isEmpty())
-		{
-			throw new GltfException("The file requires extensions " + gltf.extensionsRequired
-				+ ", which this pipeline does not read - export without compression or quantization");
-		}
-		if (gltf.buffers != null)
-		{
-			if (gltf.buffers.size() > 1)
-			{
-				throw new GltfException("The file has " + gltf.buffers.size() + " buffers; only the .glb's own is read");
-			}
-			if (!gltf.buffers.isEmpty() && gltf.buffers.get(0).uri != null)
-			{
-				throw new GltfException("The file's buffer is external (" + gltf.buffers.get(0).uri
-					+ "); export as a single .glb");
-			}
-		}
-		return new Glb(gltf, bin);
+		Chunks chunks = new Chunks();
+		chunks.json = json;
+		chunks.bin = bin;
+		return chunks;
 	}
 
 	/** The accessor flattened to doubles, integer components normalized when the accessor says so. */

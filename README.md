@@ -91,6 +91,13 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
   vertex groups moved at rest, which faces were recolored, and the worst vertex error over every
   frame of each sequence. An untouched Blender round trip should show nothing moved or recolored and
   the same pose errors as the file Blender was given.
+- `./gradlew paintGltf [-Pglb=<file>]` opens a `.glb` in a window for painting face colors. It shows
+  the model lit the way the plugin lights it. Click or drag over faces to paint them, fill a
+  connected patch of one color, or Alt+click a face to pick up its color. Every color on offer is one
+  the engine can draw, and each face takes exactly one. Saving writes back to the same file and
+  changes nothing but the colors: geometry, rig, animations and everything Blender added stay as they
+  were. The first save keeps the original beside it as `<file>.bak`. Without `-Pglb` it asks for a
+  file. For color-only edits this is easier than Vertex Paint, and the result still opens in Blender.
 
 ### Editing an export in Blender
 
@@ -103,13 +110,17 @@ wrong, the file still converts, but it comes out wrong without saying so.
    before importing**. A game tick is 0.02 s, so at 50 fps every key lands on a whole frame.
 3. **File > Import > glTF 2.0**, with *Merge Vertices* off (the default) and *Disable Bone Shape* on.
    Otherwise the importer adds a stray Icosphere, and an unskinned mesh in the export is refused.
+   The model then looks grey in the default Solid view. The colors did come in, but Solid view
+   shades by the material's viewport color. To see them, switch *Viewport Shading* to
+   **Material Preview**, or open the Solid shading options and set *Color* to **Attribute**.
 4. Edit the mesh:
    - Select vertices through their vertex group (`group_N`) and move, scale or sculpt them. Every copy
      of a vertex moves together, so the original vertex numbering survives. Deleting vertices, or
      moving one copy of a vertex apart from the others, is fine too. The converter then welds by
      position and says so.
    - Recolor in Vertex Paint with **face selection masking**, filling whole faces. A face takes the
-     average of its three corners, so a half-painted face comes out muddy.
+     average of its three corners, so a half-painted face comes out muddy. Or leave color for
+     `paintGltf` after export.
    - Moving vertices well away from their bone draws a "Joint for group N sits ... from the
      centroid" warning. That is expected when you meant to do it. The animation still carries them.
 5. **File > Export > glTF 2.0**, format glTF Binary, with:

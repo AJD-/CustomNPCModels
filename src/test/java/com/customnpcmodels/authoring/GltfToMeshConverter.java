@@ -119,28 +119,8 @@ final class GltfToMeshConverter
 
 	private void run(int meshId, int rigId, Map<String, SequenceTiming> animations)
 	{
-		nodeParents = new int[gltf.nodes.size()];
-		Arrays.fill(nodeParents, -1);
-		for (int node = 0; node < gltf.nodes.size(); node++)
-		{
-			List<Integer> children = gltf.nodes.get(node).children;
-			if (children != null)
-			{
-				for (int child : children)
-				{
-					nodeParents[child] = node;
-				}
-			}
-		}
-
-		List<Integer> meshNodes = new ArrayList<>();
-		for (int node : sceneNodes())
-		{
-			if (gltf.nodes.get(node).mesh != null)
-			{
-				meshNodes.add(node);
-			}
-		}
+		nodeParents = nodeParents(gltf);
+		List<Integer> meshNodes = meshNodes(gltf);
 		if (meshNodes.isEmpty())
 		{
 			throw new GltfException("The file has no mesh");
@@ -176,8 +156,44 @@ final class GltfToMeshConverter
 		}
 	}
 
+	/** Per node, its parent node, or -1. */
+	private static int[] nodeParents(Gltf gltf)
+	{
+		int[] nodeParents = new int[gltf.nodes.size()];
+		Arrays.fill(nodeParents, -1);
+		for (int node = 0; node < gltf.nodes.size(); node++)
+		{
+			List<Integer> children = gltf.nodes.get(node).children;
+			if (children != null)
+			{
+				for (int child : children)
+				{
+					nodeParents[child] = node;
+				}
+			}
+		}
+		return nodeParents;
+	}
+
+	/**
+	 * The nodes whose meshes are converted, in the order their triangles become faces. Anything that
+	 * edits faces by index, such as the painter, must walk the file in this same order.
+	 */
+	static List<Integer> meshNodes(Gltf gltf)
+	{
+		List<Integer> meshNodes = new ArrayList<>();
+		for (int node : sceneNodes(gltf, nodeParents(gltf)))
+		{
+			if (gltf.nodes.get(node).mesh != null)
+			{
+				meshNodes.add(node);
+			}
+		}
+		return meshNodes;
+	}
+
 	/** Every node reachable from the default scene, or from every root when there is no scene. */
-	private List<Integer> sceneNodes()
+	private static List<Integer> sceneNodes(Gltf gltf, int[] nodeParents)
 	{
 		List<Integer> roots = new ArrayList<>();
 		if (gltf.scenes != null && !gltf.scenes.isEmpty())

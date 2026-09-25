@@ -11,3 +11,5 @@ nbproject/
 # Cache-derived authoring output - Jagex geometry, never commit
 assets-dev/
 src/test/resources/com/customnpcmodels/custom-assets-dev.dat
+# paintGltf keeps the file as it was before the first save
+*.glb.bak

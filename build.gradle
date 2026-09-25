@@ -132,6 +132,19 @@ tasks.register('compareGltf', JavaExec) {
 	}
 }
 
+// Opens a .glb in a window for painting face colors, then saves it back in place - keeping the
+// original as <file>.bak - with nothing but the colors changed. Without -Pglb it asks for a file, eg:
+//   ./gradlew paintGltf -Pglb=assets-dev/giant-mole.glb
+tasks.register('paintGltf', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.authoring.GltfPainter'
+	workingDir = rootDir
+
+	if (project.hasProperty('glb')) {
+		systemProperty 'customnpcmodels.glb', project.property('glb')
+	}
+}
+
 // Builds the asset bundle from the authoring manifest (models.json) and the .glb files beside it.
 // Reads no geometry from any cache - only the live sequences' frame counts and lengths, which the
 // clips are sampled against. -Pdev writes the gitignored dev bundle on the test classpath instead
