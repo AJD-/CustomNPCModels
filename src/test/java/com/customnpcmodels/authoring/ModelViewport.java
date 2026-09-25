@@ -35,9 +35,11 @@ import java.awt.Polygon;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import javax.swing.JComponent;
 
@@ -51,6 +53,10 @@ import javax.swing.JComponent;
  * <p>Lighting is always computed on the rest mesh - the plugin bakes it once and never again - while
  * what is drawn is whatever {@link #x}, {@link #y} and {@link #z} hold: the rest pose unless a
  * subclass poses them.
+ *
+ * <p>Face transparency is honoured as the renderer does it. Models carry fully transparent faces the
+ * game never shows - the Giant Mole has one on each limb and its head - which drawn opaque look like
+ * stray triangles at the joints.
  */
 abstract class ModelViewport extends JComponent
 {
@@ -65,6 +71,9 @@ abstract class ModelViewport extends JComponent
 	/** Lighter's faceColors3 sentinels. */
 	private static final int FLAT_SHADED = -1;
 	private static final int HIDDEN = -2;
+
+	/** A face's transparency byte at which the renderer draws nothing of it: alpha is 1 - t / 255. */
+	private static final int FULLY_TRANSPARENT = 255;
 
 	private static final int BACKGROUND = 0x2B2B30;
 	private static final double NEAR = 1;
@@ -316,9 +325,14 @@ abstract class ModelViewport extends JComponent
 		Arrays.fill(pixels, BACKGROUND);
 		Arrays.fill(faceBuffer, -1);
 
+		// Opaque faces first, then see-through ones over them, farthest first, as the renderer does
+		byte[] transparencies = mesh.getFaceTransparencies();
+		List<double[][]> seeThrough = new ArrayList<>();
+		List<Integer> seeThroughFaces = new ArrayList<>();
 		for (int face = 0; face < mesh.getFaceCount(); face++)
 		{
-			if (gameLighting && lit3[face] == HIDDEN || hiddenFaces.get(face))
+			int transparency = transparencies == null ? 0 : transparencies[face] & 0xFF;
+			if (gameLighting && lit3[face] == HIDDEN || hiddenFaces.get(face) || transparency == FULLY_TRANSPARENT)
 			{
 				continue;
 			}
@@ -327,10 +341,33 @@ abstract class ModelViewport extends JComponent
 			{
 				continue;
 			}
-			int[] rgb = cornerColors(face);
-			fillTriangle(pixels, depth, width, height, face, p, rgb);
+			if (transparency != 0)
+			{
+				seeThrough.add(p);
+				seeThroughFaces.add(face);
+				continue;
+			}
+			fillTriangle(pixels, depth, width, height, face, p, cornerColors(face), 1);
+		}
+
+		Integer[] order = new Integer[seeThrough.size()];
+		for (int i = 0; i < order.length; i++)
+		{
+			order[i] = i;
+		}
+		Arrays.sort(order, Comparator.comparingDouble(i -> -meanDepth(seeThrough.get(i))));
+		for (int i : order)
+		{
+			int face = seeThroughFaces.get(i);
+			double alpha = (FULLY_TRANSPARENT - (transparencies[face] & 0xFF)) / (double) FULLY_TRANSPARENT;
+			fillTriangle(pixels, depth, width, height, face, seeThrough.get(i), cornerColors(face), alpha);
 		}
 		return image;
+	}
+
+	private static double meanDepth(double[][] p)
+	{
+		return (p[0][2] + p[1][2] + p[2][2]) / 3;
 	}
 
 	private int[] cornerColors(int face)
@@ -410,8 +447,13 @@ abstract class ModelViewport extends JComponent
 		return new double[]{x * cosYaw - z1 * sinYaw, -y1, x * sinYaw + z1 * cosYaw};
 	}
 
-	/** Z-buffered, Gouraud-shaded; depth is interpolated as 1/z so it is right under perspective. */
-	private void fillTriangle(int[] pixels, float[] depth, int width, int height, int face, double[][] p, int[] rgb)
+	/**
+	 * Z-buffered, Gouraud-shaded; depth is interpolated as 1/z so it is right under perspective. A
+	 * see-through face ({@code alpha} below 1) is blended over what is drawn and leaves the depth
+	 * alone, so what is behind it still shows; it is still what the pointer picks.
+	 */
+	private void fillTriangle(int[] pixels, float[] depth, int width, int height, int face, double[][] p, int[] rgb,
+		double alpha)
 	{
 		double x0 = p[0][0], y0 = p[0][1];
 		double x1 = p[1][0], y1 = p[1][1];
@@ -450,11 +492,28 @@ abstract class ModelViewport extends JComponent
 				{
 					continue;
 				}
-				depth[at] = inverseZ;
 				faceBuffer[at] = face;
-				pixels[at] = blend(rgb, w0, w1, w2);
+				int color = blend(rgb, w0, w1, w2);
+				if (alpha < 1)
+				{
+					pixels[at] = mix(pixels[at], color, alpha);
+				}
+				else
+				{
+					depth[at] = inverseZ;
+					pixels[at] = color;
+				}
 			}
 		}
+	}
+
+	/** {@code over} laid on {@code under} at the given opacity. */
+	private static int mix(int under, int over, double alpha)
+	{
+		int r = (int) Math.round((under >> 16 & 255) * (1 - alpha) + (over >> 16 & 255) * alpha);
+		int g = (int) Math.round((under >> 8 & 255) * (1 - alpha) + (over >> 8 & 255) * alpha);
+		int b = (int) Math.round((under & 255) * (1 - alpha) + (over & 255) * alpha);
+		return r << 16 | g << 8 | b;
 	}
 
 	private static int blend(int[] rgb, double w0, double w1, double w2)
