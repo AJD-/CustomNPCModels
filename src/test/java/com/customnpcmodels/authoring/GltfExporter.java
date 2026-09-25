@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import net.runelite.cache.NpcManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.NpcDefinition;
@@ -60,12 +61,18 @@ import net.runelite.cache.fs.Store;
  * committed or bundled for release; bundle it only with {@code generateAssets -Pdev}.
  *
  * <p>Run with {@code ./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]}. Without
- * {@code -Pseqs} the NPC's standing and walking sequences are exported.
+ * {@code -Pseqs} every sequence on the NPC's rig is exported - see {@link #defaultSequences}.
  */
 public class GltfExporter
 {
 	/** Synthetic ids for an exported NPC: this plus the NPC id, clear of anything a cache uses. */
 	static final int ID_BASE = 1_000_000;
+
+	/**
+	 * The most sequences a rig can animate and still be taken as one NPC's. Monster rigs measured 7 to
+	 * 14 (Giant Mole, Zulrah, Commander Zilyana); the humanoid rig animates thousands.
+	 */
+	static final int MAX_RIG_SEQUENCES = 64;
 
 	public static void main(String[] args) throws IOException
 	{
@@ -108,18 +115,65 @@ public class GltfExporter
 			}
 			else
 			{
-				if (npc.standingAnimation != -1)
-				{
-					sequences.add(npc.standingAnimation);
-				}
-				if (npc.walkingAnimation != -1)
-				{
-					sequences.add(npc.walkingAnimation);
-				}
+				sequences.addAll(defaultSequences(store, npc, System.out::println));
 			}
 
 			export(store, npc, sequences, out);
 		}
+	}
+
+	/**
+	 * The sequences an NPC is exported with when none are named: its definition's own - standing,
+	 * walking, turning, running, crawling - then every other sequence animating the same rig, which
+	 * is where attacks, blocks and deaths live, since the definition never names those.
+	 *
+	 * <p>A rig shared by more than {@link #MAX_RIG_SEQUENCES} sequences - the humanoid rig is shared by
+	 * thousands - cannot say which are this NPC's, so only the definition's own are taken and the
+	 * author is told to name the rest with {@code -Pseqs}.
+	 */
+	static Set<Integer> defaultSequences(Store store, NpcDefinition npc, Consumer<String> report) throws IOException
+	{
+		Set<Integer> own = new LinkedHashSet<>();
+		for (int sequence : new int[]{
+			npc.standingAnimation, npc.walkingAnimation,
+			npc.idleRotateLeftAnimation, npc.idleRotateRightAnimation,
+			npc.rotate180Animation, npc.rotateLeftAnimation, npc.rotateRightAnimation,
+			npc.runAnimation, npc.runRotate180Animation, npc.runRotateLeftAnimation, npc.runRotateRightAnimation,
+			npc.crawlAnimation, npc.crawlRotate180Animation, npc.crawlRotateLeftAnimation, npc.crawlRotateRightAnimation})
+		{
+			if (sequence != -1)
+			{
+				own.add(sequence);
+			}
+		}
+
+		int rig = -1;
+		for (int sequence : own)
+		{
+			rig = CacheFiles.framemapOf(store, sequence);
+			if (rig != -1)
+			{
+				break;
+			}
+		}
+		if (rig == -1)
+		{
+			return own;
+		}
+
+		List<Integer> shared = CacheFiles.sequencesByFramemap(store).getOrDefault(rig, new ArrayList<>());
+		if (shared.size() > MAX_RIG_SEQUENCES)
+		{
+			report.accept("  rig " + rig + " animates " + shared.size() + " sequences, too many to tell which are this "
+				+ "NPC's; exporting its definition's " + own.size() + ". Name any others with -Pseqs");
+			return own;
+		}
+
+		Set<Integer> sequences = new LinkedHashSet<>(own);
+		sequences.addAll(shared);
+		report.accept("  exporting " + sequences.size() + " sequences: " + own.size() + " from the definition, "
+			+ (sequences.size() - own.size()) + " more on rig " + rig);
+		return sequences;
 	}
 
 	static void export(Store store, NpcDefinition npc, Set<Integer> sequences, Path out) throws IOException

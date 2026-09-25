@@ -79,6 +79,10 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
   is textured.
 - `./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]` exports an NPC from the live cache
   as a `.glb`, with its rig and animations, plus a manifest entry binding it back to the same NPC.
+  Without `-Pseqs` it exports every sequence that animates the NPC's rig. That covers the attacks,
+  blocks and deaths the NPC definition never names. A rig shared by more than 64 sequences, such as
+  the humanoid rig, gets only the definition's own sequences (standing, walking, turning, running),
+  and the export says to name the rest with `-Pseqs`.
   Use it to seed Blender work from something that already animates correctly. An NPC built from
   several models gets one mesh per model, named `part_NN_model_<id>`, so each can be hidden on its
   own. A vertex group that every exported clip scales to nothing, such as an effect only an attack
@@ -109,8 +113,9 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
 Tested with Blender 5.2. Every setting below was measured with `compareGltf`. With any of them
 wrong, the file still converts, but it comes out wrong without saying so.
 
-1. Export the NPC with every sequence you want to keep, into `assets-dev`:
-   `./gradlew exportGltf -Pnpc=5779 -Pseqs=3309,3310,3311,3312,3313,3314,3315 -Pout=assets-dev`
+1. Export the NPC into `assets-dev`. Every sequence on its rig comes along; pass `-Pseqs` to
+   choose them yourself:
+   `./gradlew exportGltf -Pnpc=5779 -Pout=assets-dev`
 2. In a new Blender file, delete the default objects and set **Output > Frame Rate to 50 fps
    before importing**. A game tick is 0.02 s, so at 50 fps every key lands on a whole frame.
 3. **File > Import > glTF 2.0**, with *Merge Vertices* off (the default) and *Disable Bone Shape* on.

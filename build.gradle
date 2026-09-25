@@ -87,7 +87,8 @@ tasks.register('dumpNpcDefinitions', JavaExec) {
 
 // Exports an NPC from the live cache as a .glb plus a manifest stub, to seed Blender work or to
 // round-trip an asset that already animates correctly. The output is Jagex geometry: it goes to a
-// gitignored directory and is never committed or bundled for release, eg:
+// gitignored directory and is never committed or bundled for release. Without -Pseqs it takes every
+// sequence on the NPC's rig (only the definition's own on a widely shared rig such as the humanoid's), eg:
 //   ./gradlew exportGltf -Pnpc=5779
 //   ./gradlew exportGltf -Pnpc=5779 -Pseqs=3309,3313 -Pout=assets-dev
 tasks.register('exportGltf', JavaExec) {

@@ -28,7 +28,12 @@ import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Rig;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import net.runelite.cache.ConfigType;
 import net.runelite.cache.IndexType;
 import net.runelite.cache.definitions.FrameDefinition;
@@ -202,6 +207,89 @@ public final class CacheFiles
 		}
 
 		return rigId == -1 ? null : new Clip(sequenceId, rigId, transforms, dx, dy, dz);
+	}
+
+	/**
+	 * Every frame-based sequence in the cache, grouped by the framemap (rig) its first frame names,
+	 * in ascending sequence id. Sequences with no frames - the newer skeletal ones - are left out.
+	 *
+	 * <p>The sequence table is decoded once and each frame archive read once, so a whole-cache scan
+	 * takes seconds rather than the minutes {@link #loadSequence} per id would.
+	 */
+	public static Map<Integer, List<Integer>> sequencesByFramemap(Store store) throws IOException
+	{
+		Archive table = store.getIndex(IndexType.CONFIGS).getArchive(ConfigType.SEQUENCE.getId());
+		if (table == null)
+		{
+			return Collections.emptyMap();
+		}
+		SequenceLoader loader = new SequenceLoader()
+			.configureForRevision(store.getIndex(IndexType.CONFIGS).getRevision());
+
+		// Frame archive id to, per frame file in it, the framemap that frame names
+		Map<Integer, Map<Integer, Integer>> framemaps = new HashMap<>();
+		Map<Integer, List<Integer>> byFramemap = new TreeMap<>();
+		for (FSFile file : table.getFiles(store.getStorage().loadArchive(table)).getFiles())
+		{
+			SequenceDefinition sequence = loader.load(file.getFileId(), file.getContents());
+			if (sequence.frameIDs == null || sequence.frameIDs.length == 0)
+			{
+				continue;
+			}
+			int packed = sequence.frameIDs[0];
+			Map<Integer, Integer> archive = framemaps.computeIfAbsent(packed >> 16, id -> framemapsOfArchive(store, id));
+			Integer framemap = archive.get(packed & 0xFFFF);
+			if (framemap != null)
+			{
+				byFramemap.computeIfAbsent(framemap, id -> new ArrayList<>()).add(file.getFileId());
+			}
+		}
+		for (List<Integer> sequences : byFramemap.values())
+		{
+			Collections.sort(sequences);
+		}
+		return byFramemap;
+	}
+
+	/** Per frame file in a frame archive, the framemap its first two bytes name; empty when unreadable. */
+	private static Map<Integer, Integer> framemapsOfArchive(Store store, int archiveId)
+	{
+		Map<Integer, Integer> framemaps = new HashMap<>();
+		try
+		{
+			Archive archive = store.getIndex(IndexType.ANIMATIONS).getArchive(archiveId);
+			byte[] container = archive == null ? null : store.getStorage().loadArchive(archive);
+			if (container == null)
+			{
+				return framemaps;
+			}
+			for (FSFile frame : archive.getFiles(container).getFiles())
+			{
+				byte[] data = frame.getContents();
+				if (data != null && data.length >= 2)
+				{
+					framemaps.put(frame.getFileId(), (data[0] & 0xFF) << 8 | data[1] & 0xFF);
+				}
+			}
+		}
+		catch (IOException | RuntimeException e)
+		{
+			// An unreadable archive just contributes no sequences
+		}
+		return framemaps;
+	}
+
+	/** The framemap a sequence's first frame names, or -1 for a sequence with no readable frames. */
+	public static int framemapOf(Store store, int sequenceId) throws IOException
+	{
+		SequenceDefinition sequence = loadSequence(store, sequenceId);
+		if (sequence == null || sequence.frameIDs == null || sequence.frameIDs.length == 0)
+		{
+			return -1;
+		}
+		int packed = sequence.frameIDs[0];
+		byte[] data = loadFile(store, IndexType.ANIMATIONS, packed >> 16, packed & 0xFFFF);
+		return data == null || data.length < 2 ? -1 : (data[0] & 0xFF) << 8 | data[1] & 0xFF;
 	}
 
 	public static FramemapDefinition loadFramemap(Store store, int framemapId, Map<Integer, Rig> rigs)
