@@ -177,7 +177,7 @@ public class GltfPainter
 		this.path = path.toAbsolutePath();
 		document = GlbPaintDocument.load(Files.readAllBytes(this.path));
 
-		Manifest.Model entry = manifestEntry(this.path);
+		Manifest.Model entry = Manifest.entryFor(this.path);
 		int ambient = entry != null && entry.ambient != null ? entry.ambient : 0;
 		int contrast = entry != null && entry.contrast != null ? entry.contrast : 0;
 		notice = entry != null && entry.recolors != null && !entry.recolors.isEmpty()
@@ -189,26 +189,6 @@ public class GltfPainter
 		setCurrent(mostUsedColor());
 		refreshModelColors();
 		updateTitle();
-	}
-
-	/** The manifest entry beside the file that names it, for its lighting and recolors. */
-	private static Manifest.Model manifestEntry(Path glb)
-	{
-		try
-		{
-			for (Manifest.Model model : Manifest.read(glb.getParent()).models)
-			{
-				if (glb.getFileName().toString().equals(model.glb))
-				{
-					return model;
-				}
-			}
-		}
-		catch (IOException | RuntimeException ex)
-		{
-			// Only lighting and a notice depend on it
-		}
-		return null;
 	}
 
 	// --- Layout ---------------------------------------------------------------------------------
