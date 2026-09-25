@@ -103,6 +103,15 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
   file. For color-only edits this is easier than Vertex Paint, and the result still opens in Blender.
   A file with more than one mesh lists them under **Parts**. Untick one to hide it, and brush, fill
   and color pick all skip it. It is still saved.
+- `./gradlew viewAnimations [-Pglb=<file>]` plays a `.glb`'s animations as the game will draw them.
+  Each animation becomes the clip `generateAssets` would build, sampled at its live sequence's frames,
+  and the plugin's own skinner poses it. Frames step with nothing in between, and each is held as
+  long as the sequence says. The model is lit once at rest, then scaled and recolored as
+  `models.json` says. An animation plays against the sequence its `models.json` entry maps it to, or
+  the sequence its name is when there is no mapping. That is how `exportGltf` names them. Sequence
+  timings come from the live cache (`-PcacheDir` to use another). An animation with no live sequence
+  is listed but can't be played, and it says why. Space plays and pauses, the arrow keys step a
+  frame, and the converter's warnings are under **Conversion report**.
 
 ### Editing an export in Blender
 
