@@ -146,6 +146,23 @@ tasks.register('paintGltf', JavaExec) {
 	}
 }
 
+// Plays a .glb's animations as the game will draw them: each sampled at its live sequence's frames
+// and posed by the plugin's skinner, lit at rest and scaled and recolored as models.json says. Reads
+// sequence timings from the live cache. Without -Pglb it asks for a file, eg:
+//   ./gradlew viewAnimations -Pglb=assets-dev/giant-mole.glb
+tasks.register('viewAnimations', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.authoring.GltfAnimationViewer'
+	workingDir = rootDir
+
+	if (project.hasProperty('glb')) {
+		systemProperty 'customnpcmodels.glb', project.property('glb')
+	}
+	if (project.hasProperty('cacheDir')) {
+		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
+	}
+}
+
 // Builds the asset bundle from the authoring manifest (models.json) and the .glb files beside it.
 // Reads no geometry from any cache - only the live sequences' frame counts and lengths, which the
 // clips are sampled against. -Pdev writes the gitignored dev bundle on the test classpath instead

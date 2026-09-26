@@ -127,6 +127,29 @@ final class Manifest
 		return manifest;
 	}
 
+	/**
+	 * The entry in the manifest beside a {@code .glb} that names it, or null when there is none or the
+	 * manifest cannot be read - the authoring tools only take lighting, scale and recolors from it.
+	 */
+	static Model entryFor(Path glb)
+	{
+		try
+		{
+			for (Model model : read(glb.toAbsolutePath().getParent()).models)
+			{
+				if (glb.getFileName().toString().equals(model.glb))
+				{
+					return model;
+				}
+			}
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			// Treated as no entry
+		}
+		return null;
+	}
+
 	void write(Path dir) throws IOException
 	{
 		Files.createDirectories(dir);
