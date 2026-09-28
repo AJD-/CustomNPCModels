@@ -13,8 +13,12 @@ so nothing changes while neither is rendering. 117 HD's optional **Legacy render
 The plugin detects all of this and stands down until a supported renderer holds the renderer slot
 again. 117 HD isn't a dependency.
 
-Only one model-substituting plugin can hold the renderer slot at a time. While **Retro NPC Swapper**
-is drawing, this plugin stands down, and the reverse is also true.
+**Retro NPC Swapper** (2.3.0 and later) runs alongside this plugin. Each draws the NPCs it swaps, and
+any NPC this plugin has a custom model for is left to it entirely: Retro swaps neither that NPC's
+model nor its animations. Older versions of Retro NPC Swapper can't share the renderer, so whichever
+of the two starts first draws and the other stands down. Turn on the `Fix Interact Highlight
+outlines` option in only one of the two plugins. Each turns Interact Highlight's NPC outlines off and
+restores them on its own, so with both on, those settings can be restored wrong.
 
 <details>
 <summary>How it works</summary>
@@ -34,14 +38,16 @@ is drawing, this plugin stands down, and the reverse is also true.
   instead of the original. It does this by turning those two settings off in Interact Highlight
   while active, then restoring them when this plugin stops.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
+- Retro NPC Swapper compatibility: both plugins wrap the renderer, and each can stack on top of the
+  other. They're loaded by separate classloaders, so each wrapper exposes the renderer beneath it
+  through a plain Java `Supplier`. Neither needs the other's classes. This plugin tells Retro which
+  NPC ids it's drawing with a RuneLite `PluginMessage` (namespace `npc-model-swap`), and Retro leaves
+  those alone. When this plugin stops, or stands down in the Wilderness, it withdraws those claims
+  and Retro takes the NPCs back.
 
 </details>
 
-## Authoring
-
-All tooling lives in the test sourceSet and never ships. `./gradlew run` starts a development
-client with the plugin loaded.
-
+## Authoring Custom Assets
 ### The manifest
 
 `assets/models.json` lists what gets bundled. Each entry names a `.glb` beside it, the synthetic
@@ -72,7 +78,50 @@ name to the live sequence it stands in for:
 It reads no geometry from the game cache, only the live sequences' frame counts and lengths, which
 the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
 
-### Tools
+<details>
+<summary>Trying an edit in game</summary>
+
+This walkthrough recolors an existing NPC and draws it in the development client, without Blender.
+It uses the Giant Mole (id 5779). The same steps work for any NPC.
+
+1. Find the NPC's id: `./gradlew dumpNpcDefinitions -Pnpc="giant mole"`.
+2. Export it into `assets-dev`:
+   `./gradlew exportGltf -Pnpc=5779 -Pout=assets-dev`
+   This writes `assets-dev/giant-mole.glb` and an `assets-dev/models.json` entry binding it back to
+   NPC 5779. Without `-Pout`, the export goes to `build/gltf/`, which `./gradlew clean` deletes.
+3. Paint it: `./gradlew paintGltf -Pglb=assets-dev/giant-mole.glb`, then save. The first save keeps
+   the original as `giant-mole.glb.bak`.
+4. Optionally check the result before going in game:
+   - `./gradlew viewAnimations -Pglb=assets-dev/giant-mole.glb` plays every animation as the game
+     will draw it.
+   - `./gradlew compareGltf -Pnpc=5779 -Pglb=assets-dev/giant-mole.glb` should list your faces as
+     recolored and show 0.00 units moved at rest.
+5. Build the development bundle:
+   `./gradlew generateAssets -PassetsDir=assets-dev -Pdev`
+   It should end with `Wrote ...src\test\resources\com\customnpcmodels\custom-assets-dev.dat`.
+   **Don't leave out `-Pdev`.** Without it, the export is written into the shipped bundle,
+   `src/main/resources/com/customnpcmodels/custom-assets.dat`, which goes into the Hub jar. That
+   export is Jagex geometry. If this happens, delete that file.
+6. Prepare the development client. `./gradlew run` uses your normal RuneLite profile, including its
+   Plugin Hub plugins and their settings, so:
+   - Turn on **GPU** or **117 HD**. 117 HD's **Legacy renderer** isn't supported.
+   - **Retro NPC Swapper** 2.3.0 or later can stay on: it leaves your NPC to this plugin. Turn off
+     an older version, and any other plugin that substitutes models. Those can't share the renderer,
+     so whichever takes it first wins and this plugin quietly stands down. This can be done after the
+     client has started, and the swap happens within a tick. The profile is shared with your normal
+     client, so turn it back on there afterwards.
+7. Start the client with `./gradlew run`, log in (see
+   [Using Jagex Accounts](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts)), and go to
+   the NPC. Custom models are off in the Wilderness and on PvP worlds by default.
+8. After changing the `.glb` or `models.json`, run `generateAssets` again and **restart
+   `./gradlew run`**. The bundle is read when the client starts, from the copy Gradle makes in
+   `build/resources/test`. Toggling the plugin doesn't pick up a new one.
+
+If the model still doesn't change, see the "Debugging" section below.
+</details>
+
+<details>
+<summary>Authoring Tools</summary>
 
 - `./gradlew dumpNpcDefinitions -Pnpc=<ids or name>` prints live NPC definitions: model parts,
   scale, recolors, the standing and walking sequences with their frame counts, and whether any part
@@ -89,9 +138,11 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
   shows, is reported: it is visible in the rest pose but not in those clips. **The output is Jagex
   geometry.** It defaults to the gitignored `build/gltf/` and must never be committed or bundled for
   release.
+- `./gradlew generateAssets -PassetsDir=assets` Builds the asset bundle from the authoring manifest
+  (`models.json`) and the .glb files beside it
 - `./gradlew generateAssets -PassetsDir=assets-dev -Pdev` writes the gitignored
   `custom-assets-dev.dat` on the test classpath instead. `./gradlew run` loads it on top of the
-  shipped bundle, and the Hub jar never can. This is how a cache export is round-tripped into the
+  shipped bundle for asset development. This is how a cache export is round-tripped into the
   game to compare against the original.
 - `./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]` reports how far a `.glb` has
   moved from the NPC it was exported from, without starting the client: converter warnings, which
@@ -114,10 +165,12 @@ the clips are sampled against. Use `-PassetsDir=<dir>` to use another directory.
   `models.json` says. An animation plays against the sequence its `models.json` entry maps it to, or
   the sequence its name is when there is no mapping. That is how `exportGltf` names them. Sequence
   timings come from the live cache (`-PcacheDir` to use another). An animation with no live sequence
-  is listed but can't be played, and it says why. Space plays and pauses, the arrow keys step a
+  is listed but can't be played, and reports why. Space plays and pauses, the arrow keys step a
   frame, and the converter's warnings are under **Conversion report**.
+</details>
 
-### Editing an export in Blender
+<details>
+<summary>Editing an export in Blender</summary>
 
 Tested with Blender 5.2. Every setting below was measured with `compareGltf`. With any of them
 wrong, the file still converts, but it comes out wrong without saying so.
@@ -159,12 +212,12 @@ wrong, the file still converts, but it comes out wrong without saying so.
    - *Draco Mesh Compression* off.
 6. Save it beside the export, e.g. `assets-dev/giant-mole-edited.glb`, and point the manifest entry's
    `glb` at it. Check it with `./gradlew compareGltf -Pnpc=5779 -Pglb=assets-dev/giant-mole-edited.glb`,
-   then build it into the dev bundle with `./gradlew generateAssets -PassetsDir=assets-dev -Pdev`
-   and start `./gradlew run`.
+   preview the model in action with `./gradlew viewAnimations`, then build it into the dev bundle with
+   `./gradlew generateAssets -PassetsDir=assets-dev -Pdev` and start `./gradlew run`.
+</details>
 
-The edited file is still Jagex geometry. Keep it in `assets-dev` and never in `assets`.
-
-### What the glTF must look like
+<details>
+<summary>What the glTF must look like</summary>
 
 - A single binary `.glb`, one skin at most, no sparse accessors, no interleaved buffer views and no
   required extensions (such as Draco or quantization).
@@ -177,7 +230,24 @@ The edited file is still Jagex geometry. Keep it in `assets-dev` and never in `a
   is shear, which is approximated and reported.
 - Units are 1 metre to 1 tile, +Y up. The pipeline converts to the engine's 128 units per tile with
   +Y down, and reverses triangle winding to match.
-- A clip is keyed by its live sequence id alone, so two models can't both provide a clip for the same
+- A clip is keyed by its live sequence id, so two models can't both provide a clip for the same
   sequence.
+</details>
+
+<details>
+<summary>Debugging</summary>
+
+The development client runs with `--debug`, so the plugin's decisions are written to
+`~/.runelite/logs/client.log` (`%USERPROFILE%\.runelite\logs\client.log` on Windows). Search it for
+these lines:
+
+| Logged | Root Cause/Remediation Steps |
+|---|---|
+| `Draw callbacks held by unsupported renderer <class>; skipping model swap` | Something else holds the renderer slot. `com.retronpcswapper...` is a Retro NPC Swapper older than 2.3.0 (update it or turn it off), and `rs117.hd` outside `rs117.hd.renderer.zone` is 117 HD's Legacy renderer. Turn it off. |
+| No `Attached custom draw callbacks over ...` at all | Neither GPU nor 117 HD is on. |
+| `No custom NPC model bundle present` | Both the shipped and development bundles are missing or empty. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
+| `Custom NPC model bundle loaded: AssetBundle{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. |
+| Bundle loaded, but no `Built custom model '<name>' for NPC id <id>` near the NPC | The NPC on screen isn't one of the entry's `npcIds` (many NPCs have several ids; check with `dumpNpcDefinitions`), or you're in the Wilderness or on a PvP world. |
+</details>
 
 ### If you'd like to report a bug or request a feature, please create an issue [here](https://github.com/AJD-/CustomNPCModels/issues)

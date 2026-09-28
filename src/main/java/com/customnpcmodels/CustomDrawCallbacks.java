@@ -25,6 +25,7 @@
 package com.customnpcmodels;
 
 import java.util.Set;
+import java.util.function.Supplier;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
@@ -64,9 +65,13 @@ import net.runelite.api.hooks.DrawCallbacks;
  * on screen. {@link com.customnpcmodels.compatibility.CustomInteractHighlightOverlay} redraws
  * those outlines around the substituted geometry, so the highlight follows what is rendered while
  * the clickbox still follows the original model, and the two can disagree at the edges.
+ *
+ * <p>It is also a {@link Supplier} of its delegate. That is how Retro NPC Swapper, loaded by another
+ * classloader and unable to name this type, sees through it to the renderer beneath - see
+ * {@link com.customnpcmodels.compatibility.RendererChain}.
  */
 @Slf4j
-public class CustomDrawCallbacks implements DrawCallbacks
+public class CustomDrawCallbacks implements DrawCallbacks, Supplier<DrawCallbacks>
 {
 	/**
 	 * Supplies replacement geometry for an NPC, or {@code null} to leave it alone.
@@ -109,6 +114,15 @@ public class CustomDrawCallbacks implements DrawCallbacks
 		}
 
 		delegate.drawTemp(worldProjection, scene, gameObject, substitute != null ? substitute : m, orient, x, y, z);
+	}
+
+	/**
+	 * The callbacks this decorates, for {@link com.customnpcmodels.compatibility.RendererChain}.
+	 */
+	@Override
+	public DrawCallbacks get()
+	{
+		return delegate;
 	}
 
 	// --- Everything below forwards verbatim -------------------------------------------------

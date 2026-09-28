@@ -165,6 +165,23 @@ public class ModelCache
 	}
 
 	/**
+	 * Every NPC id the bundle has a binding for, whether or not its model has been built yet.
+	 * Client thread only.
+	 */
+	public Set<Integer> boundNpcIds()
+	{
+		Set<Integer> ids = new HashSet<>();
+		for (NpcBinding binding : bundle.getBindings())
+		{
+			for (int npcId : binding.getNpcIds())
+			{
+				ids.add(npcId);
+			}
+		}
+		return ids;
+	}
+
+	/**
 	 * Poses the model for an NPC, or null when it is not being substituted.
 	 *
 	 * <p>The returned model is shared by every NPC of this id and is overwritten by the next pose, so

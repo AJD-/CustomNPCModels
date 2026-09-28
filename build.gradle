@@ -23,9 +23,9 @@ def runeLiteVersion = 'latest.release'
 def pluginMainClass = 'com.customnpcmodels.CustomNpcModelsPluginTest'
 
 dependencies {
-	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
+	compileOnly "net.runelite:client:$runeLiteVersion"
 
-	compileOnly 'org.projectlombok:lombok:1.18.30'
+    compileOnly 'org.projectlombok:lombok:1.18.30'
 	annotationProcessor 'org.projectlombok:lombok:1.18.30'
 	testCompileOnly 'org.projectlombok:lombok:1.18.30'
 	testAnnotationProcessor 'org.projectlombok:lombok:1.18.30'
@@ -33,12 +33,12 @@ dependencies {
 	testImplementation 'junit:junit:4.12'
 	// Test-only. RendererHostTest needs stand-in renderers, which only a mock can supply
 	testImplementation 'org.mockito:mockito-core:4.11.0'
-	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
-	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
-	// Dev tooling only - decodes the live OSRS cache for the glTF exporter and for the sequence
+	testImplementation "net.runelite:client:$runeLiteVersion"
+    testImplementation "net.runelite:jshell:$runeLiteVersion"
+    // Dev tooling only - decodes the live OSRS cache for the glTF exporter and for the sequence
 	// metadata the generator samples clips against. Not in the Hub jar, which is built from the
 	// main sourceSet and does not reference it.
-	testImplementation(group: 'net.runelite', name:'cache', version: runeLiteVersion) {
+	testImplementation("net.runelite:cache:$runeLiteVersion") {
 		// The client already brings logback; without this every run warns about two bindings
 		exclude group: 'org.slf4j', module: 'slf4j-simple'
 	}
@@ -86,8 +86,7 @@ tasks.register('dumpNpcDefinitions', JavaExec) {
 }
 
 // Exports an NPC from the live cache as a .glb plus a manifest stub, to seed Blender work or to
-// round-trip an asset that already animates correctly. The output is Jagex geometry: it goes to a
-// gitignored directory and is never committed or bundled for release. Without -Pseqs it takes every
+// round-trip an asset that already animates correctly. Without -Pseqs it takes every
 // sequence on the NPC's rig (only the definition's own on a widely shared rig such as the humanoid's), eg:
 //   ./gradlew exportGltf -Pnpc=5779
 //   ./gradlew exportGltf -Pnpc=5779 -Pseqs=3309,3313 -Pout=assets-dev
