@@ -22,43 +22,49 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.customnpcmodels.inject;
+package com.customnpcmodels.packs;
 
+import com.customnpcmodels.inject.AssetCodec;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Reads the bundle shipped inside the plugin jar, plus the development bundle when one is present.
- *
- * <p>A missing resource is treated as "no custom models" rather than an error, so a build without a
- * bundle starts cleanly and substitutes nothing.
+ * Reads the two packs that live on the classpath: the one shipped inside the plugin jar, and the
+ * development bundle when one is present. Either is simply absent when its resource is.
  *
  * <p>The development bundle only ever exists on the test classpath - the generator writes it to
  * {@code src/test/resources}, which is gitignored - so {@code ./gradlew run} sees it and the Hub jar,
  * built from the main sourceSet alone, never can. It carries round-trip verification assets exported
- * from the live cache, which must not ship. Its entries win over the shipped bundle's.
+ * from the live cache, which must not ship. It takes priority over every other pack by default.
  */
-public class ClasspathAssetSource implements AssetSource
+public final class ClasspathPackSource
 {
 	private static final String RESOURCE = "/com/customnpcmodels/custom-assets.dat";
 	private static final String DEV_RESOURCE = "/com/customnpcmodels/custom-assets-dev.dat";
 
-	@Override
-	public AssetBundle load() throws IOException
+	/** Blocks on reading the jar, so never on the client thread. */
+	public List<LoadedPack> load()
 	{
-		return read(RESOURCE).overlay(read(DEV_RESOURCE));
+		List<LoadedPack> packs = new ArrayList<>();
+		read(DEV_RESOURCE, PackInfo.named(PackKind.DEV.packId(null), PackKind.DEV, "Development bundle"), packs);
+		read(RESOURCE, PackInfo.named(PackKind.BUILTIN.packId(null), PackKind.BUILTIN, "Custom NPC Models"), packs);
+		return packs;
 	}
 
-	private static AssetBundle read(String resource) throws IOException
+	private static void read(String resource, PackInfo info, List<LoadedPack> packs)
 	{
-		try (InputStream in = ClasspathAssetSource.class.getResourceAsStream(resource))
+		try (InputStream in = ClasspathPackSource.class.getResourceAsStream(resource))
 		{
-			if (in == null)
+			if (in != null)
 			{
-				return AssetBundle.empty();
+				packs.add(LoadedPack.loaded(info, AssetCodec.read(in)));
 			}
-
-			return AssetCodec.read(in);
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			packs.add(LoadedPack.failed(info, ex));
 		}
 	}
 }

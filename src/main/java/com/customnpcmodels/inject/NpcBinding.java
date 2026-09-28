@@ -30,8 +30,8 @@ import lombok.Getter;
  * Which NPCs wear a custom model, and how it is dressed for them.
  *
  * <p>Carried in the bundle rather than written in code, so adding a model is an authoring job - a
- * glTF file and a manifest entry - and never a plugin change. Animation needs no entry here at all:
- * clips are keyed by the live sequence ids the NPC already plays.
+ * glTF file and a manifest entry - and never a plugin change. Animation needs nothing here beyond
+ * the rig: clips are keyed by that rig and the live sequence ids the NPC already plays.
  *
  * <p>The accessors hand back the live arrays. Nothing mutates a binding once it is built.
  */
@@ -45,6 +45,13 @@ public final class NpcBinding
 
 	/** Bundle meshes merged, in order, into the model these NPCs are drawn with. */
 	private final int[] meshIds;
+
+	/**
+	 * The rig this model's clips are expressed against, or {@link #STATIC} for a model with none.
+	 * Clips are looked up by this and the live sequence together, so a model is only ever posed by
+	 * its own clips - never by another model's that happens to answer for the same sequence.
+	 */
+	private final int rigId;
 
 	/**
 	 * Resize in 1/128ths, applied to the posed model - after animation, as the client resizes an
@@ -64,18 +71,16 @@ public final class NpcBinding
 	private final int ambient;
 	private final int contrast;
 
-	public NpcBinding(String name, int[] npcIds, int[] meshIds, int scaleXZ, int scaleY,
-		short[] recolorFind, short[] recolorReplace)
-	{
-		this(name, npcIds, meshIds, scaleXZ, scaleY, recolorFind, recolorReplace, 0, 0);
-	}
+	/** The {@link #rigId} of a model with no rig, which only ever draws in its rest pose. */
+	public static final int STATIC = -1;
 
-	public NpcBinding(String name, int[] npcIds, int[] meshIds, int scaleXZ, int scaleY,
+	public NpcBinding(String name, int[] npcIds, int[] meshIds, int rigId, int scaleXZ, int scaleY,
 		short[] recolorFind, short[] recolorReplace, int ambient, int contrast)
 	{
 		this.name = name;
 		this.npcIds = npcIds;
 		this.meshIds = meshIds;
+		this.rigId = rigId;
 		this.scaleXZ = scaleXZ;
 		this.scaleY = scaleY;
 		this.recolorFind = recolorFind;

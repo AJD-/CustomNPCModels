@@ -165,9 +165,11 @@ tasks.register('viewAnimations', JavaExec) {
 // Builds the asset bundle from the authoring manifest (models.json) and the .glb files beside it.
 // Reads no geometry from any cache - only the live sequences' frame counts and lengths, which the
 // clips are sampled against. -Pdev writes the gitignored dev bundle on the test classpath instead
-// of the shipped one, eg:
+// of the shipped one; -PpackOut writes a pack (bundle.dat and pack.json) to the given directory, or
+// build/packs/<pack id> when none is given, eg:
 //   ./gradlew generateAssets
 //   ./gradlew generateAssets -PassetsDir=assets-dev -Pdev
+//   ./gradlew generateAssets -PassetsDir=my-pack -PpackOut
 tasks.register('generateAssets', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = 'com.customnpcmodels.authoring.AssetGenerator'
@@ -178,6 +180,9 @@ tasks.register('generateAssets', JavaExec) {
 	}
 	if (project.hasProperty('dev')) {
 		systemProperty 'customnpcmodels.dev', 'true'
+	}
+	if (project.hasProperty('packOut')) {
+		systemProperty 'customnpcmodels.packOut', project.property('packOut')
 	}
 	if (project.hasProperty('cacheDir')) {
 		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')

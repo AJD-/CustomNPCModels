@@ -26,6 +26,7 @@ package com.customnpcmodels.inject;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -54,8 +55,28 @@ public final class AssetCodec
 	/** "CNPC" - guards against being handed an unrelated file. */
 	private static final int MAGIC = 0x434E5043;
 
-	/** Bump on any layout change; readers refuse anything they were not written for. */
-	static final int VERSION = 2;
+	/**
+	 * Bump on any layout change; readers refuse anything they were not written for. Also the format a
+	 * downloaded pack must declare, so one built for another plugin version is refused before it is
+	 * fetched.
+	 */
+	public static final int VERSION = 3;
+
+	/** The most vertices and faces a model the renderer uploads can carry. */
+	public static final int MAX_VERTICES = 6500;
+	public static final int MAX_FACES = 8192;
+
+	/** Render types the lighter draws: gouraud, flat, unshaded. Anything else hides the face. */
+	public static final Set<Integer> DRAWN_RENDER_TYPES = Set.of(0, 1, 3);
+
+	/**
+	 * The largest bundle file a pack may carry, checked before it is opened. Packs come from disk and
+	 * from the hub, so their size is not ours to trust.
+	 */
+	public static final long MAX_FILE_BYTES = 16L * 1024 * 1024;
+
+	/** The most a bundle may inflate to. Gzip hides the size, so this is counted as it is read. */
+	static final long MAX_INFLATED_BYTES = 64L * 1024 * 1024;
 
 	/** Sanity ceilings, so a corrupt length cannot make the reader allocate wildly. */
 	private static final int MAX_ENTRIES = 100_000;
@@ -85,7 +106,7 @@ public final class AssetCodec
 			}
 
 			data.writeInt(bundle.getClips().size());
-			for (Clip clip : bundle.getClips().values())
+			for (Clip clip : bundle.getClips())
 			{
 				writeClip(data, clip);
 			}
@@ -100,7 +121,13 @@ public final class AssetCodec
 
 	public static AssetBundle read(InputStream in) throws IOException
 	{
-		try (DataInputStream data = new DataInputStream(new GZIPInputStream(in)))
+		return read(in, MAX_INFLATED_BYTES);
+	}
+
+	/** {@link #read(InputStream)}, refusing to inflate past {@code maxInflatedBytes}. */
+	static AssetBundle read(InputStream in, long maxInflatedBytes) throws IOException
+	{
+		try (DataInputStream data = new DataInputStream(new Limited(new GZIPInputStream(in), maxInflatedBytes)))
 		{
 			int magic = data.readInt();
 			if (magic != MAGIC)
@@ -131,21 +158,29 @@ public final class AssetCodec
 				rigs.put(rig.getId(), rig);
 			}
 
-			Map<Integer, Clip> clips = new LinkedHashMap<>();
+			List<Clip> clips = new ArrayList<>();
+			Set<Long> clipKeys = new HashSet<>();
 			int clipCount = readCount(data, MAX_ENTRIES);
 			for (int i = 0; i < clipCount; i++)
 			{
 				Clip clip = readClip(data);
-				clips.put(clip.getSequenceId(), clip);
+				if (!clipKeys.add(AssetBundle.clipKey(clip.getRigId(), clip.getSequenceId())))
+				{
+					// One would silently shadow the other
+					throw new IOException("Asset clip " + clip.getSequenceId() + " appears twice on rig "
+						+ clip.getRigId() + "; regenerate the bundle");
+				}
+				clips.add(clip);
 			}
 
 			List<NpcBinding> bindings = new ArrayList<>();
 			Set<Integer> boundNpcs = new HashSet<>();
+			Set<Integer> firstMeshes = new HashSet<>();
 			int bindingCount = readCount(data, MAX_ENTRIES);
 			for (int i = 0; i < bindingCount; i++)
 			{
 				NpcBinding binding = readBinding(data);
-				checkBinding(binding, meshes, boundNpcs);
+				checkBinding(binding, meshes, rigs, boundNpcs, firstMeshes);
 				bindings.add(binding);
 			}
 
@@ -266,6 +301,14 @@ public final class AssetCodec
 		int verticesCount = vx.length;
 		int faceCount = i1.length;
 
+		// What the renderer can upload. Checked before the per-face loops, which would otherwise walk
+		// whatever a hostile file claims
+		if (verticesCount > MAX_VERTICES || faceCount > MAX_FACES)
+		{
+			throw new IOException("Asset mesh " + id + " has " + verticesCount + " vertices and " + faceCount
+				+ " faces, past the " + MAX_VERTICES + "/" + MAX_FACES + " ceiling");
+		}
+
 		for (int face = 0; face < faceCount; face++)
 		{
 			checkVertex(id, "face " + face, i1[face], verticesCount);
@@ -286,6 +329,18 @@ public final class AssetCodec
 		checkFaceColumn(id, "transparencies", transparencies, faceCount);
 		checkFaceColumn(id, "render priorities", priorities, faceCount);
 		checkFaceColumn(id, "face textures", textures, faceCount);
+
+		if (renderTypes != null)
+		{
+			for (int face = 0; face < faceCount; face++)
+			{
+				if (!DRAWN_RENDER_TYPES.contains((int) renderTypes[face]))
+				{
+					throw new IOException("Asset mesh " + id + " face " + face + " has render type "
+						+ renderTypes[face] + ", which is never drawn; regenerate the bundle");
+				}
+			}
+		}
 
 		if (vertexGroups == null)
 		{
@@ -531,6 +586,7 @@ public final class AssetCodec
 		data.writeUTF(binding.getName() == null ? "" : binding.getName());
 		writeInts(data, binding.getNpcIds());
 		writeInts(data, binding.getMeshIds());
+		data.writeInt(binding.getRigId());
 		data.writeShort(binding.getScaleXZ());
 		data.writeShort(binding.getScaleY());
 		writeShorts(data, binding.getRecolorFind());
@@ -544,13 +600,15 @@ public final class AssetCodec
 		String name = data.readUTF();
 		int[] npcIds = readInts(data);
 		int[] meshIds = readInts(data);
+		int rigId = data.readInt();
 		int scaleXZ = data.readShort();
 		int scaleY = data.readShort();
 		short[] recolorFind = readShorts(data);
 		short[] recolorReplace = readShorts(data);
 		int ambient = data.readByte();
 		int contrast = data.readByte();
-		return new NpcBinding(name, npcIds, meshIds, scaleXZ, scaleY, recolorFind, recolorReplace, ambient, contrast);
+		return new NpcBinding(name, npcIds, meshIds, rigId, scaleXZ, scaleY, recolorFind, recolorReplace,
+			ambient, contrast);
 	}
 
 	/**
@@ -559,10 +617,13 @@ public final class AssetCodec
 	 * <p>Every one of these would otherwise surface far from the bundle: a mesh id that does not
 	 * resolve makes {@code ModelCache} refuse a partial merge and quietly leave the NPC vanilla, an
 	 * unpaired recolor throws inside the recolor loop, and a non-positive scale collapses the model
-	 * to a point. An NPC bound twice would draw whichever binding happened to be indexed last.
+	 * to a point. An NPC bound twice would draw whichever binding happened to be indexed last. A rig
+	 * that does not resolve leaves the model frozen at rest. Two bindings sharing a first mesh would
+	 * share the key a user switches one model off by, and a merge past the ceilings is more than the
+	 * renderer can upload.
 	 */
-	private static void checkBinding(NpcBinding binding, Map<Integer, Mesh> meshes,
-		Set<Integer> boundNpcs) throws IOException
+	private static void checkBinding(NpcBinding binding, Map<Integer, Mesh> meshes, Map<Integer, Rig> rigs,
+		Set<Integer> boundNpcs, Set<Integer> firstMeshes) throws IOException
 	{
 		String name = binding.getName();
 		if (binding.getNpcIds() == null || binding.getNpcIds().length == 0)
@@ -575,13 +636,16 @@ public final class AssetCodec
 			throw new IOException("Binding '" + name + "' names no meshes; regenerate the bundle");
 		}
 
+		List<Mesh> parts = new ArrayList<>();
 		for (int meshId : binding.getMeshIds())
 		{
-			if (!meshes.containsKey(meshId))
+			Mesh mesh = meshes.get(meshId);
+			if (mesh == null)
 			{
 				throw new IOException("Binding '" + name + "' names mesh " + meshId
 					+ ", which the bundle does not carry; regenerate the bundle");
 			}
+			parts.add(mesh);
 		}
 
 		for (int npcId : binding.getNpcIds())
@@ -604,6 +668,29 @@ public final class AssetCodec
 		{
 			throw new IOException("Binding '" + name + "' has scale " + binding.getScaleXZ() + "/"
 				+ binding.getScaleY() + "; regenerate the bundle");
+		}
+
+		if (binding.getRigId() != NpcBinding.STATIC && !rigs.containsKey(binding.getRigId()))
+		{
+			throw new IOException("Binding '" + name + "' names rig " + binding.getRigId()
+				+ ", which the bundle does not carry; regenerate the bundle");
+		}
+
+		if (!firstMeshes.add(binding.getMeshIds()[0]))
+		{
+			throw new IOException("Binding '" + name + "' starts with mesh " + binding.getMeshIds()[0]
+				+ ", as another binding does; regenerate the bundle");
+		}
+
+		if (parts.size() > 1)
+		{
+			Mesh merged = MeshMerger.merge(binding.getMeshIds()[0], parts);
+			if (merged.getVerticesCount() > MAX_VERTICES || merged.getFaceCount() > MAX_FACES)
+			{
+				throw new IOException("Binding '" + name + "' merges to " + merged.getVerticesCount()
+					+ " vertices and " + merged.getFaceCount() + " faces, past the " + MAX_VERTICES + "/"
+					+ MAX_FACES + " ceiling");
+			}
 		}
 	}
 
@@ -769,6 +856,61 @@ public final class AssetCodec
 		if (length > MAX_ARRAY)
 		{
 			throw new IOException("Implausible array length " + length + " in custom NPC model bundle");
+		}
+	}
+
+	/**
+	 * Refuses to read past {@code limit} bytes. The per-array ceilings bound one allocation, not the
+	 * total, so a small file that inflates enormously is stopped here instead.
+	 */
+	static final class Limited extends FilterInputStream
+	{
+		private final long limit;
+		private long read;
+
+		Limited(InputStream in, long limit)
+		{
+			super(in);
+			this.limit = limit;
+		}
+
+		@Override
+		public int read() throws IOException
+		{
+			int b = super.read();
+			if (b != -1)
+			{
+				count(1);
+			}
+			return b;
+		}
+
+		@Override
+		public int read(byte[] b, int off, int len) throws IOException
+		{
+			int n = super.read(b, off, len);
+			if (n > 0)
+			{
+				count(n);
+			}
+			return n;
+		}
+
+		@Override
+		public long skip(long n) throws IOException
+		{
+			long skipped = super.skip(n);
+			count(skipped);
+			return skipped;
+		}
+
+		private void count(long n) throws IOException
+		{
+			read += n;
+			if (read > limit)
+			{
+				throw new IOException("Custom NPC model bundle inflates past " + limit / (1024 * 1024) + " MiB");
+			}
 		}
 	}
 }

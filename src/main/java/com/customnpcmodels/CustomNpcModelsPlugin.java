@@ -30,15 +30,23 @@ import com.customnpcmodels.compatibility.InteractHighlightCompat;
 import com.customnpcmodels.compatibility.InteractTargetTracker;
 import com.customnpcmodels.compatibility.ModelSwapProtocol;
 import com.customnpcmodels.compatibility.RendererChain;
-import com.customnpcmodels.inject.AssetBundle;
-import com.customnpcmodels.inject.AssetSource;
-import com.customnpcmodels.inject.ClasspathAssetSource;
+import com.customnpcmodels.packs.ClasspathPackSource;
+import com.customnpcmodels.packs.DirectoryPackSource;
+import com.customnpcmodels.packs.LoadedPack;
+import com.customnpcmodels.packs.ModelCatalog;
+import com.customnpcmodels.packs.PackComposer;
+import com.customnpcmodels.packs.PackKind;
+import com.customnpcmodels.packs.PackSelection;
+import com.google.gson.Gson;
 import com.google.inject.Provides;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -72,12 +80,15 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.gpu.GpuPlugin;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.Filepath;
 
 @Slf4j
 @PluginDescriptor(
 	name = "Custom NPC Models",
 	description = "Replaces NPC models and animations with custom-authored ones, drawn from a bundle of original assets.",
-	tags = {"npc", "model", "animation", "custom"}
+	tags = {"npc", "model", "animation", "custom"},
+	// Must match the plugin-hub file name; it also names this plugin's data directory
+	internalName = "custom-npc-models"
 )
 public class CustomNpcModelsPlugin extends Plugin
 {
@@ -88,6 +99,10 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	/** Another Hub plugin, so recognized by class name alone like 117 HD. */
 	private static final String RETRO_PLUGIN_CLASS = "com.retronpcswapper.RetroNpcSwapperPlugin";
+
+	/** Folders in the data directory: packs installed from the hub, and packs the user added. */
+	static final String HUB_PACKS = "hub";
+	static final String LOCAL_PACKS = "local";
 
 	@Inject
 	private Client client;
@@ -128,8 +143,27 @@ public class CustomNpcModelsPlugin extends Plugin
 	@Inject
 	private EventBus eventBus;
 
-	/** Where custom models come from. Swappable so the delivery mechanism can change later. */
-	private final AssetSource assetSource = new ClasspathAssetSource();
+	@Inject
+	private Gson gson;
+
+	/** The packs inside the jar: the shipped one, and the development bundle under ./gradlew run. */
+	private final ClasspathPackSource classpathPacks = new ClasspathPackSource();
+
+	/**
+	 * This plugin's data directory, resolved once off the client thread. Null until then, and for
+	 * good when it cannot be made - the classpath packs still load without it.
+	 */
+	private volatile Filepath dataDirectory;
+
+	/** Every pack as last read, whether or not it loaded. Client thread only. */
+	private List<LoadedPack> loadedPacks = Collections.emptyList();
+
+	/**
+	 * Bumped on every start and stop. Work queued off the client thread carries the value it was
+	 * queued under and is dropped when that is stale, so a read queued before a quick restart cannot
+	 * land in the plugin that replaced it - which {@link #active} alone cannot tell apart.
+	 */
+	private final AtomicInteger generation = new AtomicInteger();
 
 	// Our decorator, while it is in the client's draw callbacks chain
 	private CustomDrawCallbacks wrapper;
@@ -148,11 +182,11 @@ public class CustomNpcModelsPlugin extends Plugin
 	private boolean outlineTakeover;
 
 	/**
-	 * The in-flight bundle read, so shutDown can cancel it.
+	 * The in-flight pack read, so shutDown can cancel it.
 	 *
 	 * <p>Volatile because startUp and shutDown are not guaranteed to be the same thread.
 	 */
-	private volatile Future<?> bundleLoad;
+	private volatile Future<?> packLoad;
 
 	/**
 	 * Whether this plugin is still running, read by anything coming back from another thread.
@@ -168,7 +202,8 @@ public class CustomNpcModelsPlugin extends Plugin
 	{
 		log.info("Custom NPC Models started");
 		active = true;
-		loadAssetBundle();
+		generation.incrementAndGet();
+		loadPacks();
 		clientThread.invoke(() ->
 		{
 			// A session that died while suppressing left Interact Highlight's NPC outlines off.
@@ -184,13 +219,14 @@ public class CustomNpcModelsPlugin extends Plugin
 	{
 		log.info("Custom NPC Models stopped");
 		active = false;
+		generation.incrementAndGet();
 
 		// The executor is RuneLite's own and is not ours to shut down, but the read we put on it is
-		Future<?> load = bundleLoad;
+		Future<?> load = packLoad;
 		if (load != null)
 		{
 			load.cancel(false);
-			bundleLoad = null;
+			packLoad = null;
 		}
 
 		// Straight away rather than on the client thread, so Retro NPC Swapper takes these NPCs back
@@ -202,6 +238,7 @@ public class CustomNpcModelsPlugin extends Plugin
 			// detach() stands the Interact Highlight takeover down as part of dropping the wrapper
 			detach();
 			modelCache.clear();
+			loadedPacks = Collections.emptyList();
 			postedClaims = Collections.emptySet();
 		});
 	}
@@ -413,9 +450,9 @@ public class CustomNpcModelsPlugin extends Plugin
 			return;
 		}
 
-		// Building here, on the client thread, keeps the draw callback to a lookup. The bundle loads
-		// off-thread, so NPCs already on screen at startup usually come through before it lands;
-		// recheckLoadedNpcs picks them up once it does.
+		// Building here, on the client thread, keeps the draw callback to a lookup. The packs load
+		// off-thread, so NPCs already on screen at startup usually come through before they land;
+		// recheckLoadedNpcs picks them up once they do.
 		if (wrapper == null || !config.enabled() || isSafetyDisabled() || !modelCache.ensureBuilt(npc.getId()))
 		{
 			modelCache.clearSubstituted(npc.getId());
@@ -426,63 +463,112 @@ public class CustomNpcModelsPlugin extends Plugin
 	}
 
 	/**
-	 * Reads the asset bundle off the client thread and publishes it back onto it.
+	 * Reads every pack off the client thread and publishes them back onto it.
 	 *
-	 * <p>Decompressing the bundle is quick, but it is still IO, and startUp must not block on it - so
-	 * this is fire-and-forget. Everything downstream treats an absent bundle as "no custom models",
-	 * which is why nothing has to wait for this to finish.
+	 * <p>Decompressing packs is quick, but it is still IO, and startUp must not block on it - so this
+	 * is fire-and-forget. Everything downstream treats "no packs yet" as "no custom models", which is
+	 * why nothing has to wait for this to finish.
 	 */
-	private void loadAssetBundle()
+	private void loadPacks()
 	{
-		bundleLoad = executor.submit(() ->
+		int queuedUnder = generation.get();
+		packLoad = executor.submit(() ->
 		{
-			if (!active)
+			if (!active || queuedUnder != generation.get())
 			{
 				return;
 			}
 
-			AssetBundle bundle;
-			try
+			List<LoadedPack> packs = new ArrayList<>(classpathPacks.load());
+			Filepath data = dataDirectory();
+			if (data != null)
 			{
-				bundle = assetSource.load();
-			}
-			catch (IOException ex)
-			{
-				// A bundle that exists but will not read is worth saying out loud, unlike one that is
-				// simply absent - it means a stale or truncated resource
-				log.warn("Could not read the custom NPC model bundle; custom models are unavailable", ex);
-				return;
+				packs.addAll(readPacks(data.joinSegment(HUB_PACKS), PackKind.HUB));
+				packs.addAll(readPacks(data.joinSegment(LOCAL_PACKS), PackKind.LOCAL));
 			}
 
-			if (bundle.isEmpty())
+			for (LoadedPack pack : packs)
 			{
-				log.debug("No custom NPC model bundle present");
-				return;
+				if (!pack.isLoaded())
+				{
+					// A pack that exists but will not read is worth saying out loud, unlike one that
+					// is simply absent - it means a stale, truncated or foreign file
+					log.warn("Custom NPC model pack '{}' could not be read: {}", pack.getId(), pack.getError());
+				}
 			}
 
 			clientThread.invoke(() ->
 			{
-				// A read that finishes after shutDown must not put the bundle back into a cache that
-				// was just cleared, nor sweep the scene on behalf of a plugin that is no longer running
-				if (!active)
+				// A read that finishes after shutDown must not put packs back into a cache that was
+				// just cleared, nor sweep the scene on behalf of a plugin that is no longer running
+				if (!active || queuedUnder != generation.get())
 				{
-					log.debug("Custom NPC model bundle finished reading after shutdown; dropping it");
+					log.debug("Custom NPC model packs finished reading after shutdown; dropping them");
 					return;
 				}
 
-				modelCache.setBundle(bundle);
-
-				// NPCs are usually already on screen by the time the bundle lands, and setBundle only
-				// drops what was built, it does not rebuild
-				recheckLoadedNpcs();
+				loadedPacks = packs;
+				recompose();
 			});
 		});
 	}
 
 	/**
+	 * This plugin's data directory, with the pack folders inside it, made on first use. Null when it
+	 * cannot be. Disk IO, so on the executor only.
+	 */
+	private Filepath dataDirectory()
+	{
+		if (dataDirectory == null)
+		{
+			try
+			{
+				Filepath data = getPluginDirectory();
+				data.joinSegment(HUB_PACKS).createDirectories();
+				data.joinSegment(LOCAL_PACKS).createDirectories();
+				dataDirectory = data;
+			}
+			catch (IOException | RuntimeException ex)
+			{
+				log.warn("Could not make the custom NPC model data directory; only the packs inside the plugin will load", ex);
+			}
+		}
+		return dataDirectory;
+	}
+
+	private List<LoadedPack> readPacks(Filepath folder, PackKind kind)
+	{
+		try
+		{
+			return new DirectoryPackSource(folder, kind, gson).load();
+		}
+		catch (IOException | RuntimeException ex)
+		{
+			// Caught wide: anything escaping here would end the load without a word, and take the
+			// packs inside the plugin down with it
+			log.warn("Could not list the custom NPC model packs in {}", folder, ex);
+			return Collections.emptyList();
+		}
+	}
+
+	/**
+	 * Decides again which model every NPC is drawn with, from the packs already read. Cheap: nothing
+	 * is read, and only NPCs whose model changed are rebuilt. Client thread only.
+	 */
+	private void recompose()
+	{
+		ModelCatalog catalog = PackComposer.compose(loadedPacks, PackSelection.DEFAULT);
+		modelCache.setCatalog(catalog);
+
+		// NPCs are usually already on screen by the time packs land, and setCatalog only drops what
+		// changed, it does not rebuild
+		recheckLoadedNpcs();
+	}
+
+	/**
 	 * Re-evaluates all currently loaded scene NPCs against the configuration.
 	 *
-	 * <p>Everything that can change which NPCs are drawn custom - the bundle landing, attaching or
+	 * <p>Everything that can change which NPCs are drawn custom - packs landing, attaching or
 	 * detaching, config, the Wilderness and world changes - comes through here, which makes it the
 	 * place to tell Retro NPC Swapper about it too.
 	 */

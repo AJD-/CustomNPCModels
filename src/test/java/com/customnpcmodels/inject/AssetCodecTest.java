@@ -34,6 +34,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -109,9 +110,7 @@ public class AssetCodecTest
 		meshes.put(2944, mesh());
 		Map<Integer, Rig> rigs = new LinkedHashMap<>();
 		rigs.put(338, rig());
-		Map<Integer, Clip> clips = new LinkedHashMap<>();
-		clips.put(262, clip());
-		return new AssetBundle(meshes, rigs, clips);
+		return new AssetBundle(meshes, rigs, Collections.singletonList(clip()));
 	}
 
 	@Test
@@ -174,8 +173,9 @@ public class AssetCodecTest
 		assertEquals(2, restoredRig.getType(1));
 		assertArrayEquals(new int[]{0, 1}, restoredRig.getGroups(1));
 
-		Clip restoredClip = restored.getClip(262);
+		Clip restoredClip = restored.getClip(338, 262);
 		assertNotNull(restoredClip);
+		assertNull("a clip is found by its rig as well as its sequence", restored.getClip(339, 262));
 		assertEquals(338, restoredClip.getRigId());
 		assertEquals(2, restoredClip.getFrameCount());
 		assertEquals(2, restoredClip.getOpCount(0));
@@ -301,14 +301,13 @@ public class AssetCodecTest
 	{
 		Map<Integer, Mesh> meshes = new LinkedHashMap<>();
 		meshes.put(malformed.getId(), malformed);
-		return refusalFor(new AssetBundle(meshes, Collections.emptyMap(), Collections.emptyMap()));
+		return refusalFor(new AssetBundle(meshes, Collections.emptyMap(), Collections.emptyList()));
 	}
 
 	private static String refusalFor(Clip malformed) throws IOException
 	{
-		Map<Integer, Clip> clips = new LinkedHashMap<>();
-		clips.put(malformed.getSequenceId(), malformed);
-		return refusalFor(new AssetBundle(Collections.emptyMap(), Collections.emptyMap(), clips));
+		return refusalFor(new AssetBundle(Collections.emptyMap(), Collections.emptyMap(),
+			Collections.singletonList(malformed)));
 	}
 
 	private static String refusalFor(AssetBundle bundle) throws IOException
@@ -434,11 +433,11 @@ public class AssetCodecTest
 	public void testBundleLookupsMissUnknownIds() throws IOException
 	{
 		AssetBundle restored = roundTrip(new AssetBundle(
-			Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap()));
+			Collections.emptyMap(), Collections.emptyMap(), Collections.emptyList()));
 
 		assertNull(restored.getMesh(1));
 		assertNull(restored.getRig(1));
-		assertNull(restored.getClip(1));
+		assertNull(restored.getClip(1, 1));
 		assertNull(restored.getBinding(1));
 	}
 
@@ -452,8 +451,8 @@ public class AssetCodecTest
 	@Test
 	public void testBindingSurvivesRoundTrip() throws IOException
 	{
-		NpcBinding original = new NpcBinding("Skeleton", new int[]{70, 71}, new int[]{2944},
-			118, 140, new short[]{0x3A05}, new short[]{(short) -25049});
+		NpcBinding original = new NpcBinding("Skeleton", new int[]{70, 71}, new int[]{2944}, NpcBinding.STATIC,
+			118, 140, new short[]{0x3A05}, new short[]{(short) -25049}, 0, 0);
 		AssetBundle restored = roundTrip(withBindings(original));
 
 		assertEquals(1, restored.getBindings().size());
@@ -473,7 +472,7 @@ public class AssetCodecTest
 	public void testBindingWithoutRecolorsKeepsThemNull() throws IOException
 	{
 		NpcBinding binding = roundTrip(withBindings(
-			new NpcBinding("Plain", new int[]{70}, new int[]{2944}, 128, 128, null, null)))
+			new NpcBinding("Plain", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)))
 			.getBinding(70);
 
 		assertNull(binding.getRecolorFind());
@@ -485,7 +484,7 @@ public class AssetCodecTest
 	public void testRejectsABindingToAMissingMesh() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("Ghost", new int[]{70}, new int[]{2944, 9999}, 128, 128, null, null)));
+			new NpcBinding("Ghost", new int[]{70}, new int[]{2944, 9999}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)));
 
 		assertTrue("the message should name the missing mesh: " + message, message.contains("mesh 9999"));
 	}
@@ -494,8 +493,8 @@ public class AssetCodecTest
 	public void testRejectsAnNpcBoundTwice() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("First", new int[]{70}, new int[]{2944}, 128, 128, null, null),
-			new NpcBinding("Second", new int[]{71, 70}, new int[]{2944}, 128, 128, null, null)));
+			new NpcBinding("First", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0),
+			new NpcBinding("Second", new int[]{71, 70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)));
 
 		assertTrue("the message should name the NPC: " + message, message.contains("NPC 70"));
 	}
@@ -504,8 +503,8 @@ public class AssetCodecTest
 	public void testRejectsUnpairedRecolors() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("Odd", new int[]{70}, new int[]{2944}, 128, 128,
-				new short[]{1, 2}, new short[]{3})));
+			new NpcBinding("Odd", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128,
+				new short[]{1, 2}, new short[]{3}, 0, 0)));
 
 		assertTrue(message, message.contains("unpaired recolors"));
 	}
@@ -514,59 +513,230 @@ public class AssetCodecTest
 	public void testRejectsANonPositiveScale() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("Flat", new int[]{70}, new int[]{2944}, 128, 0, null, null)));
+			new NpcBinding("Flat", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 0, null, null, 0, 0)));
 
 		assertTrue(message, message.contains("scale 128/0"));
 	}
 
 	@Test
-	public void testOverlayReplacesBindingsSharingAnNpc()
+	public void testBindingKeepsItsRig() throws IOException
 	{
-		AssetBundle shipped = withBindings(
-			new NpcBinding("Shipped", new int[]{70, 71}, new int[]{2944}, 128, 128, null, null),
-			new NpcBinding("Untouched", new int[]{80}, new int[]{2944}, 128, 128, null, null));
-		AssetBundle dev = withBindings(
-			new NpcBinding("Dev", new int[]{71}, new int[]{2944}, 128, 128, null, null));
+		NpcBinding rigged = roundTrip(withBindings(
+			new NpcBinding("Rigged", new int[]{70}, new int[]{2944}, 338, 128, 128, null, null, 0, 0)))
+			.getBinding(70);
+		assertEquals(338, rigged.getRigId());
 
-		AssetBundle merged = shipped.overlay(dev);
-
-		assertEquals("Dev", merged.getBinding(71).getName());
-		assertNull("the replaced binding goes whole, so no NPC is drawn by two", merged.getBinding(70));
-		assertEquals("Untouched", merged.getBinding(80).getName());
+		NpcBinding still = roundTrip(withBindings(
+			new NpcBinding("Still", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)))
+			.getBinding(70);
+		assertEquals("a model with no rig says so, rather than naming one", NpcBinding.STATIC, still.getRigId());
 	}
 
 	@Test
-	public void testWithoutNpcsKeepsTheRestOfEachBinding()
+	public void testRejectsABindingToAMissingRig() throws IOException
 	{
-		AssetBundle bundle = withBindings(
-			new NpcBinding("Mixed", new int[]{70, 71}, new int[]{2944}, 118, 140,
-				new short[]{0x3A05}, new short[]{(short) -25049}, 10, -3),
-			new NpcBinding("Gone", new int[]{72}, new int[]{2944}, 128, 128, null, null));
+		String message = refusalFor(withBindings(
+			new NpcBinding("Unrigged", new int[]{70}, new int[]{2944}, 999, 128, 128, null, null, 0, 0)));
 
-		AssetBundle filtered = bundle.withoutNpcs(new java.util.HashSet<>(java.util.Arrays.asList(70, 72)));
+		assertTrue(message, message.contains("rig 999"));
+	}
 
-		assertEquals("a binding left with no NPCs is dropped", 1, filtered.getBindings().size());
-		assertNull(filtered.getBinding(70));
-		assertNull(filtered.getBinding(72));
-		NpcBinding kept = filtered.getBinding(71);
-		assertEquals("Mixed", kept.getName());
-		assertArrayEquals(new int[]{71}, kept.getNpcIds());
-		assertArrayEquals(new int[]{2944}, kept.getMeshIds());
-		assertEquals(118, kept.getScaleXZ());
-		assertEquals(140, kept.getScaleY());
-		assertArrayEquals(new short[]{0x3A05}, kept.getRecolorFind());
-		assertArrayEquals(new short[]{(short) -25049}, kept.getRecolorReplace());
-		assertEquals(10, kept.getAmbient());
-		assertEquals(-3, kept.getContrast());
-		assertNotNull("geometry is untouched", filtered.getMesh(2944));
+	/** The first mesh is the key a model is switched off by, so two models cannot share one. */
+	@Test
+	public void testRejectsTwoBindingsStartingWithOneMesh() throws IOException
+	{
+		String message = refusalFor(withBindings(
+			new NpcBinding("First", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0),
+			new NpcBinding("Recolored", new int[]{71}, new int[]{2944}, NpcBinding.STATIC, 128, 128,
+				new short[]{1}, new short[]{2}, 0, 0)));
+
+		assertTrue(message, message.contains("starts with mesh 2944"));
+	}
+
+	/**
+	 * Two models on their own rigs may both answer for one live sequence - the humanoid sequences
+	 * are shared by every humanoid NPC - and each must come back with its own clip.
+	 */
+	@Test
+	public void testClipsOnDifferentRigsShareASequence() throws IOException
+	{
+		AssetBundle base = sample();
+		Map<Integer, Rig> rigs = new LinkedHashMap<>(base.getRigs());
+		rigs.put(339, new Rig(339, new int[]{0, 2, 1}, new int[][]{{0}, {0, 1}, {2}}));
+		Clip other = new Clip(262, 339,
+			new int[][]{{0}},
+			new int[][]{{99}},
+			new int[][]{{0}},
+			new int[][]{{0}});
+
+		AssetBundle restored = roundTrip(new AssetBundle(base.getMeshes(), rigs, Arrays.asList(clip(), other)));
+
+		assertEquals(2, restored.getClips().size());
+		assertEquals(2, restored.getClip(338, 262).getFrameCount());
+		assertEquals(99, restored.getClip(339, 262).getDx(0, 0));
 	}
 
 	@Test
-	public void testWithoutNpcsIsTheSameBundleWhenNothingMatches()
+	public void testRejectsOneClipTwice() throws IOException
 	{
-		AssetBundle bundle = withBindings(
-			new NpcBinding("Plain", new int[]{70}, new int[]{2944}, 128, 128, null, null));
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		// The bundle keys clips as it is built, so the duplicate is written by hand past it
+		try (DataOutputStream data = new DataOutputStream(new GZIPOutputStream(out)))
+		{
+			data.writeInt(0x434E5043);
+			data.writeInt(AssetCodec.VERSION);
+			data.writeInt(0);                       // no meshes
+			data.writeInt(0);                       // no rigs
+			data.writeInt(2);                       // two clips, both sequence 262 on rig 338
+			for (int i = 0; i < 2; i++)
+			{
+				data.writeInt(262);
+				data.writeInt(338);
+				for (int column = 0; column < 4; column++)
+				{
+					data.writeInt(1);               // one frame
+					data.writeInt(1);               // of one op
+					data.writeInt(0);
+				}
+			}
+			data.writeInt(0);                       // no bindings
+		}
 
-		assertTrue(bundle == bundle.withoutNpcs(Collections.singleton(99)));
+		try
+		{
+			AssetCodec.read(new ByteArrayInputStream(out.toByteArray()));
+			fail("expected a refusal for a clip that would shadow another");
+		}
+		catch (IOException expected)
+		{
+			assertTrue(expected.getMessage(), expected.getMessage().contains("appears twice on rig 338"));
+		}
+	}
+
+	/** Nothing has shipped in the old layout, so it is refused rather than read two ways. */
+	@Test
+	public void testRejectsAVersion2Bundle() throws IOException
+	{
+		ByteArrayOutputStream raw = new ByteArrayOutputStream();
+		try (DataOutputStream data = new DataOutputStream(new GZIPOutputStream(raw)))
+		{
+			data.writeInt(0x434E5043);
+			data.writeInt(2);
+		}
+
+		try
+		{
+			AssetCodec.read(new ByteArrayInputStream(raw.toByteArray()));
+			fail("expected a version 2 bundle to be refused");
+		}
+		catch (IOException expected)
+		{
+			assertTrue(expected.getMessage(), expected.getMessage().contains("version 2"));
+		}
+	}
+
+	/** Packs come from disk and the hub, so a mesh past what the renderer can take never loads. */
+	@Test
+	public void testRejectsAMeshPastTheCeiling() throws IOException
+	{
+		int count = AssetCodec.MAX_VERTICES + 1;
+		Mesh huge = new Mesh(2944, 0, new float[count], new float[count], new float[count],
+			new int[0], new int[0], new int[0], new short[0],
+			null, null, null, null, null, null, null, null, null);
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		Map<Integer, Mesh> meshes = new LinkedHashMap<>();
+		meshes.put(2944, huge);
+		AssetCodec.write(new AssetBundle(meshes, Collections.emptyMap(), Collections.emptyList()), out);
+
+		try
+		{
+			AssetCodec.read(new ByteArrayInputStream(out.toByteArray()));
+			fail("expected a refusal for a mesh past the vertex ceiling");
+		}
+		catch (IOException expected)
+		{
+			assertTrue(expected.getMessage(), expected.getMessage().contains("ceiling"));
+		}
+	}
+
+	@Test
+	public void testRejectsAFaceTheLighterWouldHide() throws IOException
+	{
+		Mesh good = mesh();
+		Mesh hidden = new Mesh(good.getId(), good.getPriority(),
+			good.getVerticesX(), good.getVerticesY(), good.getVerticesZ(),
+			good.getFaceIndices1(), good.getFaceIndices2(), good.getFaceIndices3(),
+			good.getFaceColors(), new byte[]{2}, good.getFaceTransparencies(),
+			good.getFaceRenderPriorities(), good.getFaceTextures(),
+			good.getTextureCoords(), good.getTexIndices1(), good.getTexIndices2(), good.getTexIndices3(),
+			good.getVertexGroups());
+
+		String message = refusalFor(hidden);
+		assertTrue(message, message.contains("render type 2"));
+	}
+
+	/** A small file can inflate to anything, so the reader counts what it inflates. */
+	@Test
+	public void testTheInflatedSizeIsCapped() throws IOException
+	{
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		AssetCodec.write(sample(), out);
+
+		try
+		{
+			AssetCodec.read(new ByteArrayInputStream(out.toByteArray()), 64);
+			fail("expected reading past the cap to be refused");
+		}
+		catch (IOException expected)
+		{
+			assertTrue(expected.getMessage(), expected.getMessage().contains("inflates past"));
+		}
+	}
+
+	/** Each part can pass on its own and the model still be too big: the ceiling is on the merge. */
+	@Test
+	public void testRejectsABindingThatMergesPastTheCeiling() throws IOException
+	{
+		// Whole triangles, since the merge only keeps vertices a face uses
+		int faces = AssetCodec.MAX_VERTICES / 6 + 1;
+		int count = faces * 3;
+		Map<Integer, Mesh> meshes = new LinkedHashMap<>();
+		for (int id : new int[]{1, 2})
+		{
+			// Every vertex somewhere different, so the merge has none to weld
+			float[] vx = new float[count];
+			float[] vy = new float[count];
+			for (int v = 0; v < count; v++)
+			{
+				vx[v] = id * count + v;
+				vy[v] = v % 3;
+			}
+			int[] i1 = new int[faces];
+			int[] i2 = new int[faces];
+			int[] i3 = new int[faces];
+			for (int f = 0; f < faces; f++)
+			{
+				i1[f] = f * 3;
+				i2[f] = f * 3 + 1;
+				i3[f] = f * 3 + 2;
+			}
+			meshes.put(id, new Mesh(id, 0, vx, vy, new float[count], i1, i2, i3, new short[faces],
+				null, null, null, null, null, null, null, null, null));
+		}
+		NpcBinding binding = new NpcBinding("Big", new int[]{70}, new int[]{1, 2}, NpcBinding.STATIC,
+			128, 128, null, null, 0, 0);
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		AssetCodec.write(new AssetBundle(meshes, Collections.emptyMap(), Collections.emptyList(),
+			Collections.singletonList(binding)), out);
+
+		try
+		{
+			AssetCodec.read(new ByteArrayInputStream(out.toByteArray()));
+			fail("expected a refusal for a binding merging past the vertex ceiling");
+		}
+		catch (IOException expected)
+		{
+			assertTrue(expected.getMessage(), expected.getMessage().contains("merges to"));
+		}
 	}
 }

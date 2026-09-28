@@ -34,6 +34,8 @@ import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.Skinner;
 import com.customnpcmodels.inject.SwapBlacklist;
+import com.customnpcmodels.packs.ModelCatalog;
+import com.customnpcmodels.packs.ResolvedModel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -53,8 +55,8 @@ import net.runelite.api.NPC;
  * else. Everything expensive - merging, recoloring, scaling and lighting - happens here, driven from
  * NPC spawn and transform events rather than from the render path.
  *
- * <p>Every model comes from the bundle. There is deliberately no fallback to the client's own cache:
- * an authored mesh id means nothing to the live cache, so a bundle miss must leave the NPC vanilla
+ * <p>Every model comes from a pack. There is deliberately no fallback to the client's own cache:
+ * an authored mesh id means nothing to the live cache, so a pack miss must leave the NPC vanilla
  * rather than load whatever unrelated geometry happens to sit at that id.
  */
 @Singleton
@@ -77,8 +79,11 @@ public class ModelCache
 	/** NPC id and animation pairs already reported by {@link #reportAction}, so each is said once. */
 	private final Set<Long> reportedActions = new HashSet<>();
 
-	/** Custom geometry, rigs, clips and bindings. Empty until the bundle finishes loading. */
-	private AssetBundle bundle = AssetBundle.empty();
+	/** Which model every NPC id is drawn with, across every enabled pack. Empty until the packs load. */
+	private ModelCatalog catalog = ModelCatalog.empty();
+
+	/** Blacklisted models already reported, so each is said once rather than on every recompose. */
+	private final Set<String> reportedBlocked = new HashSet<>();
 
 	/** Fully prepared geometry per NPC id. */
 	private final Map<Integer, BuiltModel> builtModels = new HashMap<>();
@@ -115,12 +120,12 @@ public class ModelCache
 	 * Must be called on the client thread.
 	 *
 	 * @return whether geometry is available for this id, either just built or already cached. A false
-	 *     is the caller's signal to leave the NPC alone entirely - including for an NPC the bundle has
-	 *     no binding for, which is the common case.
+	 *     is the caller's signal to leave the NPC alone entirely - including for an NPC no pack has a
+	 *     model for, which is the common case.
 	 */
 	public boolean ensureBuilt(int npcId)
 	{
-		// setBundle already took these out of the bindings; checked again so no path can build one
+		// setCatalog already took these out; checked again so no path can build one
 		if (SwapBlacklist.isBlocked(npcId) || unbuildable.contains(npcId))
 		{
 			return false;
@@ -131,13 +136,13 @@ public class ModelCache
 			return true;
 		}
 
-		NpcBinding binding = bundle.getBinding(npcId);
-		if (binding == null)
+		ResolvedModel resolved = catalog.get(npcId);
+		if (resolved == null)
 		{
 			return false;
 		}
 
-		BuiltModel built = build(binding);
+		BuiltModel built = build(resolved);
 		if (built == null)
 		{
 			// Remember the failure so every subsequent spawn does not repeat the work
@@ -146,56 +151,56 @@ public class ModelCache
 		}
 
 		builtModels.put(npcId, built);
-		log.debug("Built custom model '{}' for NPC id {} ({} verts, {} faces)",
-			binding.getName(), npcId, built.mesh.getVerticesCount(), built.mesh.getFaceCount());
+		log.debug("Built custom model '{}' from pack {} for NPC id {} ({} verts, {} faces)",
+			resolved.getBinding().getName(), resolved.getPackId(), npcId,
+			built.mesh.getVerticesCount(), built.mesh.getFaceCount());
 		return true;
 	}
 
 	/**
-	 * Publishes the asset bundle. Client thread only; the load itself happens off it.
+	 * Publishes which model every NPC id is drawn with. Client thread only; the packs are read off it.
+	 *
+	 * <p>Only NPCs whose model changed are rebuilt. The rest keep what was built, so switching one pack
+	 * or model does not rebuild everything on screen.
 	 */
-	public void setBundle(AssetBundle bundle)
+	public void setCatalog(ModelCatalog catalog)
 	{
-		bundle = bundle == null ? AssetBundle.empty() : bundle;
-
-		// Every binding reaches the plugin through here, so this is where the blacklist holds: an NPC
-		// taken out now is never built, drawn or claimed, whichever bundle named it
-		for (NpcBinding binding : bundle.getBindings())
+		// Every model reaches the plugin through here, so this is where the blacklist holds: an NPC
+		// taken out now is never built, drawn or claimed, whichever pack named it
+		ModelCatalog allowed = (catalog == null ? ModelCatalog.empty() : catalog).withoutBlacklisted();
+		for (ModelCatalog.Blocked blocked : allowed.getBlocked())
 		{
-			for (int npcId : binding.getNpcIds())
+			// Once per model and id, not on every recompose
+			if (reportedBlocked.add(blocked.getModelKey() + "#" + blocked.getNpcId()))
 			{
-				if (SwapBlacklist.isBlocked(npcId))
-				{
-					log.debug("NPC {} ({}) is never swapped; dropping it from binding '{}'",
-						npcId, SwapBlacklist.contentOf(npcId), binding.getName());
-				}
+				log.debug("NPC {} ({}) is never swapped; dropping it from '{}' in pack {}",
+					blocked.getNpcId(), blocked.getContent(), blocked.getModelName(), blocked.getPackId());
 			}
 		}
-		this.bundle = bundle.withoutNpcs(SwapBlacklist.ids());
 
-		// The bundle arrives off-thread and can land after NPCs were already checked against an
-		// empty one. Dropping what was built makes them pick it up on the next check.
-		builtModels.clear();
-		unbuildable.clear();
+		ModelCatalog previous = this.catalog;
+		this.catalog = allowed;
 
-		log.debug("Custom NPC model bundle loaded: {}", this.bundle);
+		// Packs are read off-thread and can land after NPCs were already checked against an older
+		// catalog. Dropping what changed makes those pick up the new model on their next check.
+		builtModels.entrySet().removeIf(entry -> !entry.getValue().resolved.isSameAs(allowed.get(entry.getKey())));
+		unbuildable.removeIf(npcId -> !isSame(previous.get(npcId), allowed.get(npcId)));
+
+		log.debug("Custom NPC models loaded: {}", allowed);
+	}
+
+	private static boolean isSame(ResolvedModel a, ResolvedModel b)
+	{
+		return a == null ? b == null : a.isSameAs(b);
 	}
 
 	/**
-	 * Every NPC id the bundle has a binding for, whether or not its model has been built yet.
+	 * Every NPC id some enabled pack has a model for, whether or not it has been built yet.
 	 * Client thread only.
 	 */
 	public Set<Integer> boundNpcIds()
 	{
-		Set<Integer> ids = new HashSet<>();
-		for (NpcBinding binding : bundle.getBindings())
-		{
-			for (int npcId : binding.getNpcIds())
-			{
-				ids.add(npcId);
-			}
-		}
-		return ids;
+		return new HashSet<>(catalog.npcIds());
 	}
 
 	/**
@@ -219,18 +224,19 @@ public class ModelCache
 	}
 
 	/**
-	 * Prepares the geometry for a binding, or null when the bundle cannot supply all of it.
+	 * Prepares the geometry for a model, or null when its pack cannot supply all of it.
 	 *
 	 * <p>What the client would do once for a cache model it decoded itself - merging, recoloring,
 	 * lighting - happens here instead, at spawn. The resize is per pose, after skinning.
 	 */
-	private BuiltModel build(NpcBinding binding)
+	private BuiltModel build(ResolvedModel resolved)
 	{
+		NpcBinding binding = resolved.getBinding();
 		int[] meshIds = binding.getMeshIds();
 		List<Mesh> parts = new ArrayList<>(meshIds.length);
 		for (int meshId : meshIds)
 		{
-			Mesh part = bundle.getMesh(meshId);
+			Mesh part = resolved.getSource().getMesh(meshId);
 			if (part != null)
 			{
 				parts.add(part);
@@ -242,8 +248,8 @@ public class ModelCache
 			// Never drawn partially: the codec checks every binding's meshes resolve, so reaching
 			// here means the bundle and this code disagree, and a model missing a part is worse
 			// than the vanilla one
-			log.debug("Bundle has {} of {} parts for '{}' ({}); refusing a partial merge",
-				parts.size(), meshIds.length, binding.getName(), Arrays.toString(meshIds));
+			log.debug("Pack {} has {} of {} parts for '{}' ({}); refusing a partial merge",
+				resolved.getPackId(), parts.size(), meshIds.length, binding.getName(), Arrays.toString(meshIds));
 			return null;
 		}
 
@@ -289,7 +295,7 @@ public class ModelCache
 			NPC_LIGHT_X, NPC_LIGHT_Y, NPC_LIGHT_Z,
 			colors1, colors2, colors3);
 
-		BuiltModel built = new BuiltModel(mesh, binding.getScaleXZ() / 128f, binding.getScaleY() / 128f);
+		BuiltModel built = new BuiltModel(resolved, mesh, binding.getScaleXZ() / 128f, binding.getScaleY() / 128f);
 		built.model.bind(mesh, colors1, colors2, colors3);
 		return built;
 	}
@@ -324,8 +330,13 @@ public class ModelCache
 		Mesh mesh = built.mesh;
 		InjectedModel model = built.model;
 
+		// Only this model's own pack, on its own rig: another model answering for the same sequence
+		// was authored against a different skeleton
+		AssetBundle source = built.resolved.getSource();
+		int rigId = built.resolved.getBinding().getRigId();
+
 		int action = npc.getAnimation();
-		Clip clip = bundle.getClip(action);
+		Clip clip = source.getClip(rigId, action);
 		int frame = npc.getAnimationFrame();
 
 		if (action != -1)
@@ -335,11 +346,11 @@ public class ModelCache
 
 		if (clip == null || !clip.hasFrame(frame))
 		{
-			clip = bundle.getClip(npc.getPoseAnimation());
+			clip = source.getClip(rigId, npc.getPoseAnimation());
 			frame = npc.getPoseAnimationFrame();
 		}
 
-		Rig rig = clip == null ? null : bundle.getRig(clip.getRigId());
+		Rig rig = clip == null ? null : source.getRig(rigId);
 
 		// A missing clip is not a failure - it leaves the mesh in its rest pose, which is far better
 		// than not drawing the NPC at all
@@ -380,7 +391,7 @@ public class ModelCache
 
 		if (clip == null)
 		{
-			log.debug("NPC {} plays animation {}, which the bundle has no clip for - it will hold "
+			log.debug("NPC {} plays animation {}, which its pack has no clip for - it will hold "
 				+ "its movement pose", npcId, action);
 		}
 		else if (!clip.hasFrame(frame))
@@ -397,10 +408,11 @@ public class ModelCache
 
 	public void clear()
 	{
-		// The bundle goes with everything else. This is a singleton that outlives the plugin, so
-		// keeping the decoded geometry here would hold it until the next start for nothing - and a
-		// restart reads it again anyway, which is what makes dropping it free.
-		bundle = AssetBundle.empty();
+		// The catalog goes with everything else. This is a singleton that outlives the plugin, so
+		// keeping the decoded geometry it points at would hold it until the next start for nothing -
+		// and a restart reads it again anyway, which is what makes dropping it free.
+		catalog = ModelCatalog.empty();
+		reportedBlocked.clear();
 
 		substituted.clear();
 		reportedActions.clear();
@@ -411,6 +423,9 @@ public class ModelCache
 	/** Geometry for one NPC id: the mesh it was built from, and the model handed out. */
 	private static final class BuiltModel
 	{
+		/** What this was built from, and where its clips and rig are found. */
+		private final ResolvedModel resolved;
+
 		private final Mesh mesh;
 
 		/** The binding's resize as factors, applied to every pose. */
@@ -423,8 +438,9 @@ public class ModelCache
 		 */
 		private final InjectedModel model = new InjectedModel();
 
-		private BuiltModel(Mesh mesh, float scaleXZ, float scaleY)
+		private BuiltModel(ResolvedModel resolved, Mesh mesh, float scaleXZ, float scaleY)
 		{
+			this.resolved = resolved;
 			this.mesh = mesh;
 			this.scaleXZ = scaleXZ;
 			this.scaleY = scaleY;

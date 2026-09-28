@@ -37,6 +37,9 @@ import com.customnpcmodels.inject.Lighter;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.packs.ModelCatalog;
+import com.customnpcmodels.packs.ResolvedModel;
+import com.customnpcmodels.packs.TestPacks;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -60,8 +63,14 @@ public class ModelCacheTest
 	 */
 	private static Mesh mesh()
 	{
+		return mesh(0);
+	}
+
+	/** The same, with the body - group 0, which no clip moves - shifted along X by {@code shift}. */
+	private static Mesh mesh(float shift)
+	{
 		return new Mesh(1, 0,
-			new float[]{0, 128, 0, 0, 200, 328, 200, 200},
+			new float[]{shift, 128 + shift, shift, shift, 200, 328, 200, 200},
 			new float[]{0, 0, -128, 0, 0, 0, -128, 0},
 			new float[]{0, 0, 0, 128, 0, 0, 0, 128},
 			new int[]{0, 0, 0, 1, 4, 4, 4, 5},
@@ -76,32 +85,51 @@ public class ModelCacheTest
 	/** Translate group 1 along X by a tile, then turn it a quarter about its own centroid. */
 	private static AssetBundle bundle(NpcBinding binding)
 	{
+		return bundle(binding, 128);
+	}
+
+	/** The same, translating group 1 by {@code dx}, so bundles can be told apart by their pose. */
+	private static AssetBundle bundle(NpcBinding binding, int dx)
+	{
+		return bundle(binding, dx, mesh());
+	}
+
+	private static AssetBundle bundle(NpcBinding binding, int dx, Mesh mesh)
+	{
 		Map<Integer, Mesh> meshes = new LinkedHashMap<>();
-		meshes.put(1, mesh());
+		meshes.put(1, mesh);
 		Map<Integer, Rig> rigs = new LinkedHashMap<>();
 		rigs.put(7, new Rig(7, new int[]{1, 0, 2}, new int[][]{{1}, {1}, {1}}));
-		Map<Integer, Clip> clips = new LinkedHashMap<>();
-		clips.put(SEQUENCE, new Clip(SEQUENCE, 7,
+		Clip clip = new Clip(SEQUENCE, 7,
 			new int[][]{{0, 1, 2}},
-			new int[][]{{128, 0, 0}},
+			new int[][]{{dx, 0, 0}},
 			new int[][]{{0, 0, 64}},
-			new int[][]{{0, 0, 0}}));
-		return new AssetBundle(meshes, rigs, clips, Collections.singletonList(binding));
+			new int[][]{{0, 0, 0}});
+		return new AssetBundle(meshes, rigs, Collections.singletonList(clip), Collections.singletonList(binding));
+	}
+
+	private static NpcBinding binding(String name, int npcId)
+	{
+		return new NpcBinding(name, new int[]{npcId}, new int[]{1}, 7, 128, 128, null, null, 0, 0);
+	}
+
+	private static NPC npc(int npcId)
+	{
+		NPC npc = mock(NPC.class);
+		when(npc.getId()).thenReturn(npcId);
+		when(npc.getAnimation()).thenReturn(-1);
+		when(npc.getPoseAnimation()).thenReturn(SEQUENCE);
+		when(npc.getPoseAnimationFrame()).thenReturn(0);
+		return npc;
 	}
 
 	private static Model pose(NpcBinding binding)
 	{
 		ModelCache cache = new ModelCache();
-		cache.setBundle(bundle(binding));
+		cache.setCatalog(TestPacks.catalogOf(bundle(binding)));
 		assertTrue(cache.ensureBuilt(NPC_ID));
 		cache.setSubstituted(NPC_ID);
-
-		NPC npc = mock(NPC.class);
-		when(npc.getId()).thenReturn(NPC_ID);
-		when(npc.getAnimation()).thenReturn(-1);
-		when(npc.getPoseAnimation()).thenReturn(SEQUENCE);
-		when(npc.getPoseAnimationFrame()).thenReturn(0);
-		return cache.pose(npc);
+		return cache.pose(npc(NPC_ID));
 	}
 
 	/**
@@ -112,13 +140,17 @@ public class ModelCacheTest
 	@Test
 	public void testTheResizeIsAppliedAfterThePose()
 	{
-		NpcBinding unscaled = new NpcBinding("unscaled", new int[]{NPC_ID}, new int[]{1}, 128, 128, null, null);
-		NpcBinding scaled = new NpcBinding("scaled", new int[]{NPC_ID}, new int[]{1}, 64, 96, null, null);
+		NpcBinding unscaled = new NpcBinding("unscaled", new int[]{NPC_ID}, new int[]{1}, 7, 128, 128, null, null, 0, 0);
+		NpcBinding scaled = new NpcBinding("scaled", new int[]{NPC_ID}, new int[]{1}, 7, 64, 96, null, null, 0, 0);
 
 		Model reference = pose(unscaled);
 		float[] rx = reference.getVerticesX().clone();
 		float[] ry = reference.getVerticesY().clone();
 		float[] rz = reference.getVerticesZ().clone();
+
+		// Otherwise a model that never found its clip - drawn at rest - would pass this test too
+		assertTrue("the clip should have moved the limb off its rest position",
+			Math.abs(rx[4] - mesh().getVerticesX()[4]) > 1f);
 
 		Model model = pose(scaled);
 		for (int v = 0; v < 8; v++)
@@ -130,23 +162,27 @@ public class ModelCacheTest
 	}
 
 	/**
-	 * A blacklisted NPC is refused wherever the bundle came from: never built, so never drawn, and
-	 * never among the ids claimed from Retro NPC Swapper.
+	 * A blacklisted NPC is refused even when a catalog names it - one not made by the composer, which
+	 * would never resolve it: never built, so never drawn, and never among the ids claimed from Retro
+	 * NPC Swapper.
 	 */
 	@Test
 	public void testABlacklistedNpcIsNeverBuiltOrClaimed()
 	{
-		ModelCache cache = new ModelCache();
-		cache.setBundle(bundle(new NpcBinding("zuk", new int[]{NpcID.INFERNO_TZKALZUK_PLACEHOLDER},
-			new int[]{1}, 128, 128, null, null)));
+		int zukId = NpcID.INFERNO_TZKALZUK_PLACEHOLDER;
+		NpcBinding binding = binding("zuk", zukId);
+		ModelCatalog catalog = new ModelCatalog(
+			Collections.singletonMap(zukId, new ResolvedModel("local:zuk", "local:zuk|1", binding, bundle(binding))),
+			Collections.emptyList(), Collections.emptyList());
 
-		assertFalse(cache.ensureBuilt(NpcID.INFERNO_TZKALZUK_PLACEHOLDER));
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(catalog);
+
+		assertFalse(cache.ensureBuilt(zukId));
 		assertTrue(cache.boundNpcIds().isEmpty());
 
-		cache.setSubstituted(NpcID.INFERNO_TZKALZUK_PLACEHOLDER);
-		NPC zuk = mock(NPC.class);
-		when(zuk.getId()).thenReturn(NpcID.INFERNO_TZKALZUK_PLACEHOLDER);
-		assertNull(cache.pose(zuk));
+		cache.setSubstituted(zukId);
+		assertNull(cache.pose(npc(zukId)));
 	}
 
 	/** Only the blacklisted id is taken out; the binding still dresses every other NPC it names. */
@@ -154,12 +190,64 @@ public class ModelCacheTest
 	public void testABindingKeepsItsAllowedNpcs()
 	{
 		ModelCache cache = new ModelCache();
-		cache.setBundle(bundle(new NpcBinding("mixed", new int[]{NpcID.INFERNO_JAD, NPC_ID},
-			new int[]{1}, 128, 128, null, null)));
+		cache.setCatalog(TestPacks.catalogOf(bundle(new NpcBinding("mixed", new int[]{NpcID.INFERNO_JAD, NPC_ID},
+			new int[]{1}, 7, 128, 128, null, null, 0, 0))));
 
 		assertFalse(cache.ensureBuilt(NpcID.INFERNO_JAD));
 		assertTrue(cache.ensureBuilt(NPC_ID));
 		assertEquals(Collections.singleton(NPC_ID), cache.boundNpcIds());
+	}
+
+	/**
+	 * Two packs authored apart reuse the same mesh id, rig id and sequence - the exporter hands every
+	 * author the same ids for the same NPC. Each NPC must still be built and posed from its own pack
+	 * alone, or one pack's mesh would be drawn, or its clip drive the other's geometry.
+	 */
+	@Test
+	public void testPacksReusingIdsEachPoseTheirOwnModel()
+	{
+		int otherId = NpcID.MOLE_BABY_01;
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(
+			bundle(binding("near", NPC_ID), 128),
+			bundle(binding("far", otherId), 512, mesh(1000))));
+
+		assertTrue(cache.ensureBuilt(NPC_ID));
+		assertTrue(cache.ensureBuilt(otherId));
+		cache.setSubstituted(NPC_ID);
+		cache.setSubstituted(otherId);
+
+		Model near = cache.pose(npc(NPC_ID));
+		Model far = cache.pose(npc(otherId));
+		assertEquals("each body is its own pack's mesh", 1000, far.getVerticesX()[0] - near.getVerticesX()[0], 1e-3f);
+		assertEquals("each limb moves by its own pack's clip", 512 - 128,
+			far.getVerticesX()[4] - near.getVerticesX()[4], 1e-3f);
+	}
+
+	/**
+	 * A new catalog only rebuilds what changed. Switching one pack or model must not rebuild every NPC
+	 * on screen, while a pack read again is new geometry and is rebuilt.
+	 */
+	@Test
+	public void testANewCatalogKeepsModelsThatDidNotChange()
+	{
+		AssetBundle kept = bundle(binding("kept", NPC_ID));
+		AssetBundle reread = bundle(binding("reread", NpcID.MOLE_BABY_01));
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(kept, reread));
+		cache.ensureBuilt(NPC_ID);
+		cache.ensureBuilt(NpcID.MOLE_BABY_01);
+		cache.setSubstituted(NPC_ID);
+		cache.setSubstituted(NpcID.MOLE_BABY_01);
+		Model keptModel = cache.pose(npc(NPC_ID));
+		Model rereadModel = cache.pose(npc(NpcID.MOLE_BABY_01));
+
+		cache.setCatalog(TestPacks.catalogOf(kept, bundle(binding("reread", NpcID.MOLE_BABY_01))));
+
+		assertTrue("an unchanged model is kept as built", keptModel == cache.pose(npc(NPC_ID)));
+		assertNull("a changed one waits to be built again", cache.pose(npc(NpcID.MOLE_BABY_01)));
+		assertTrue(cache.ensureBuilt(NpcID.MOLE_BABY_01));
+		assertFalse(rereadModel == cache.pose(npc(NpcID.MOLE_BABY_01)));
 	}
 
 	/**
@@ -170,7 +258,7 @@ public class ModelCacheTest
 	@Test
 	public void testLightingUsesTheNpcFormula()
 	{
-		NpcBinding binding = new NpcBinding("lit", new int[]{NPC_ID}, new int[]{1}, 118, 118, null, null, 10, -3);
+		NpcBinding binding = new NpcBinding("lit", new int[]{NPC_ID}, new int[]{1}, 7, 118, 118, null, null, 10, -3);
 		Model model = pose(binding);
 
 		Mesh mesh = mesh();

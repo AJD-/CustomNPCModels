@@ -31,14 +31,21 @@ restores them on its own, so with both on, those settings can be restored wrong.
   the geometry they drive is different. An action that has no authored clip holds the movement pose.
 - **Clickboxes are untouched.** The client resolves clickboxes from the original model before the
   draw callback runs.
-- Everything is drawn from the bundle. There's no fallback to the game cache, so an NPC whose
-  binding can't be built stays vanilla.
+- Everything is drawn from **packs**. A pack is one compiled `bundle.dat`. The plugin reads the pack
+  inside its own jar, the development bundle under `./gradlew run`, and every pack in its data
+  folder (see "Using a pack without the Hub" below). There's no fallback to the game cache, so an
+  NPC whose model can't be built stays vanilla.
+- When two packs have a model for the same NPC, the first in priority order draws it. By default
+  that's the development bundle, then hub and local packs, then the pack inside the plugin. Each
+  model is built and animated from its own pack alone, so packs authored separately can reuse mesh,
+  rig and sequence ids without clashing. A pack that can't be read is skipped with a warning in the
+  log, and the rest still load.
 - `Interact Highlight` compatibility: the **Compatibility** section's `Fix Interact Highlight
   outlines` option draws that plugin's NPC hover and interact outlines around the custom model
   instead of the original. It does this by turning those two settings off in Interact Highlight
   while active, then restoring them when this plugin stops.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
-- Some NPCs are never swapped, whatever a bundle says: the monsters, healers and hazards of the
+- Some NPCs are never swapped, whatever a pack says: the monsters, healers and hazards of the
   Inferno, the Fight Caves and TzHaar fight pits, TzHaar-Ket-Rak's challenges and the Fortis
   Colosseum, plus their Deadman copies. The NPCs that start each minigame, spectators and pets
   aren't included. Jagex's third-party client rules forbid extra visual indicators of boss
@@ -149,9 +156,15 @@ If the model still doesn't change, see the "Debugging" section below.
 - `./gradlew generateAssets -PassetsDir=assets` Builds the asset bundle from the authoring manifest
   (`models.json`) and the .glb files beside it
 - `./gradlew generateAssets -PassetsDir=assets-dev -Pdev` writes the gitignored
-  `custom-assets-dev.dat` on the test classpath instead. `./gradlew run` loads it on top of the
-  shipped bundle for asset development. This is how a cache export is round-tripped into the
-  game to compare against the original.
+  `custom-assets-dev.dat` on the test classpath instead. `./gradlew run` loads it as the development
+  pack, which takes priority over every other pack. This is how a cache export is round-tripped
+  into the game to compare against the original.
+- `./gradlew generateAssets -PassetsDir=<dir> -PpackOut[=<out>]` builds a pack instead: a
+  `bundle.dat` and a `pack.json`, written to `<out>`, or to `build/packs/<pack id>/` when no
+  directory is given. The manifest needs a `pack` block for this:
+  `"pack": {"id": "my-pack", "name": "My pack", "author": "...", "version": "1.0", "tags": [...]}`.
+  The id may only use lowercase letters, digits and hyphens. `pack.json` also lists the pack's
+  models, taken from the bundle.
 - `./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]` reports how far a `.glb` has
   moved from the NPC it was exported from, without starting the client: converter warnings, which
   vertex groups moved at rest, which faces were recolored, and the worst vertex error over every
@@ -238,8 +251,27 @@ wrong, the file still converts, but it comes out wrong without saying so.
   is shear, which is approximated and reported.
 - Units are 1 metre to 1 tile, +Y up. The pipeline converts to the engine's 128 units per tile with
   +Y down, and reverses triangle winding to match.
-- A clip is keyed by its live sequence id, so two models can't both provide a clip for the same
-  sequence.
+- A clip is keyed by its model's rig and the live sequence id, so two models can both provide a
+  clip for the same sequence, as long as each has its own `rigId`.
+</details>
+
+<details>
+<summary>Using a pack without the Hub</summary>
+
+Local packs are for trying your own models. They supplement the models the plugin ships with, and
+nothing about them leaves your machine.
+
+1. Build the pack: `./gradlew generateAssets -PassetsDir=<dir> -PpackOut` (see "Authoring Tools").
+2. Copy its folder, with `bundle.dat` and `pack.json` inside, into the plugin's data folder:
+   `~/.runelite/plugin-data/custom-npc-models/local/<name>/`
+   (`%USERPROFILE%\.runelite\plugin-data\custom-npc-models\local\<name>\` on Windows). The plugin
+   makes the `local` folder the first time it starts. Folder names may use letters, digits, spaces,
+   `.`, `-` and `_`, but may not start or end with a dot or a space, or be a name Windows reserves
+   such as `con` or `aux`.
+3. Restart the plugin. Packs are read when it starts.
+
+Blacklisted NPCs are ignored in local packs too. A model made from an `exportGltf` export is Jagex
+geometry: it's fine in your own local folder, but never share or upload it.
 </details>
 
 <details>
@@ -253,10 +285,11 @@ these lines:
 |---|---|
 | `Draw callbacks held by unsupported renderer <class>; skipping model swap` | Something else holds the renderer slot. `com.retronpcswapper...` is a Retro NPC Swapper older than 2.3.0 (update it or turn it off), and `rs117.hd` outside `rs117.hd.renderer.zone` is 117 HD's Legacy renderer. Turn it off. |
 | No `Attached custom draw callbacks over ...` at all | Neither GPU nor 117 HD is on. |
-| `No custom NPC model bundle present` | Both the shipped and development bundles are missing or empty. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
-| `Custom NPC model bundle loaded: AssetBundle{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. |
-| `NPC <id> (<content>) is never swapped; dropping it from binding '<name>'` | The NPC is on the swap blacklist (see "How it works"). This is intentional, and there's no way to turn it off. |
-| Bundle loaded, but no `Built custom model '<name>' for NPC id <id>` near the NPC | The NPC on screen isn't one of the entry's `npcIds` (many NPCs have several ids; check with `dumpNpcDefinitions`), or you're in the Wilderness or on a PvP world. |
+| `Custom NPC models loaded: ModelCatalog{npcs=0, ...}` | No pack has a model for any NPC. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
+| `Custom NPC models loaded: ModelCatalog{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. `conflicts` counts models another pack took priority over. |
+| `Custom NPC model pack '<id>' could not be read: <reason>` | That pack is skipped. `version 2, this build reads version 3` means it was built before packs had their own rigs: regenerate it, including the dev bundle. |
+| `NPC <id> (<content>) is never swapped; dropping it from '<name>' in pack <id>` | The NPC is on the swap blacklist (see "How it works"). This is intentional, and there's no way to turn it off. |
+| Models loaded, but no `Built custom model '<name>' from pack <id> for NPC id <id>` near the NPC | The NPC on screen isn't one of the entry's `npcIds` (many NPCs have several ids; check with `dumpNpcDefinitions`), or you're in the Wilderness or on a PvP world. |
 </details>
 
 ### If you'd like to report a bug or request a feature, please create an issue [here](https://github.com/AJD-/CustomNPCModels/issues)

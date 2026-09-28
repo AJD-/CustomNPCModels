@@ -22,22 +22,52 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.customnpcmodels.inject;
-
-import java.io.IOException;
+package com.customnpcmodels.packs;
 
 /**
- * Where injected assets are read from.
- *
- * <p>Implementations do blocking IO and must not be called on the client thread.
+ * Where a pack came from. It decides the pack's id, so packs of different kinds can never share
+ * one - and with it, whether they are switched on.
  */
-public interface AssetSource
+public enum PackKind
 {
+	/** The development bundle, only ever on the classpath under {@code ./gradlew run}. */
+	DEV("Dev"),
+	/** Installed from the Custom Model Hub. */
+	HUB("Hub"),
+	/** Put in the local packs folder by the user. */
+	LOCAL("Local"),
+	/** Shipped inside the plugin jar. */
+	BUILTIN("Built-in");
+
+	/** How the kind is shown beside a pack's name. */
+	private final String label;
+
+	PackKind(String label)
+	{
+		this.label = label;
+	}
+
+	public String getLabel()
+	{
+		return label;
+	}
+
 	/**
-	 * Loads the bundle, or returns an empty one when this source has nothing to offer.
-	 *
-	 * @throws IOException when assets exist but cannot be read, which is a real failure rather than
-	 *                     an absence and should not be quietly treated as one
+	 * The id of a pack of this kind. {@code folder} names a hub or local pack's folder, and is ignored
+	 * for the two classpath packs, of which there is only ever one each.
 	 */
-	AssetBundle load() throws IOException;
+	public String packId(String folder)
+	{
+		switch (this)
+		{
+			case DEV:
+				return "dev";
+			case BUILTIN:
+				return "builtin";
+			case HUB:
+				return "hub:" + folder;
+			default:
+				return "local:" + folder;
+		}
+	}
 }

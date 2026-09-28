@@ -25,6 +25,7 @@
 package com.customnpcmodels.authoring;
 
 import com.customnpcmodels.inject.AssetBundle;
+import com.customnpcmodels.inject.AssetCodec;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.MeshMerger;
@@ -53,15 +54,15 @@ import java.util.function.IntUnaryOperator;
  */
 public final class AssetValidator
 {
-	/** The most vertices and faces a model the renderer uploads can carry. */
-	static final int MAX_VERTICES = 6500;
-	static final int MAX_FACES = 8192;
+	/** The most vertices and faces a model the renderer uploads can carry; the loader refuses more too. */
+	static final int MAX_VERTICES = AssetCodec.MAX_VERTICES;
+	static final int MAX_FACES = AssetCodec.MAX_FACES;
 
 	/** The face-sorting buckets are sized by diameter; past this the renderer's arrays overflow. */
 	static final int MAX_DIAMETER = 6000;
 
 	/** Render types the lighter draws: gouraud, flat, unshaded. Anything else hides the face. */
-	private static final Set<Integer> DRAWN_RENDER_TYPES = Set.of(0, 1, 3);
+	private static final Set<Integer> DRAWN_RENDER_TYPES = AssetCodec.DRAWN_RENDER_TYPES;
 
 	/** Rig transform types the engine knows: pivot, translate, rotate, scale, alpha. */
 	private static final Set<Integer> RIG_TYPES = Set.of(0, 1, 2, 3, 5);
@@ -100,7 +101,7 @@ public final class AssetValidator
 			problems.addAll(validateRig(rig));
 		}
 
-		for (Clip clip : bundle.getClips().values())
+		for (Clip clip : bundle.getClips())
 		{
 			problems.addAll(validateClip(clip, bundle.getRigs(), liveFrameCount.applyAsInt(clip.getSequenceId())));
 		}
@@ -428,6 +429,11 @@ public final class AssetValidator
 					parts.add(mesh);
 				}
 			}
+		}
+
+		if (binding.getRigId() != NpcBinding.STATIC && bundle.getRig(binding.getRigId()) == null)
+		{
+			problems.add(name + " names rig " + binding.getRigId() + ", which the bundle does not carry");
 		}
 
 		short[] find = binding.getRecolorFind();
