@@ -534,4 +534,39 @@ public class AssetCodecTest
 		assertNull("the replaced binding goes whole, so no NPC is drawn by two", merged.getBinding(70));
 		assertEquals("Untouched", merged.getBinding(80).getName());
 	}
+
+	@Test
+	public void testWithoutNpcsKeepsTheRestOfEachBinding()
+	{
+		AssetBundle bundle = withBindings(
+			new NpcBinding("Mixed", new int[]{70, 71}, new int[]{2944}, 118, 140,
+				new short[]{0x3A05}, new short[]{(short) -25049}, 10, -3),
+			new NpcBinding("Gone", new int[]{72}, new int[]{2944}, 128, 128, null, null));
+
+		AssetBundle filtered = bundle.withoutNpcs(new java.util.HashSet<>(java.util.Arrays.asList(70, 72)));
+
+		assertEquals("a binding left with no NPCs is dropped", 1, filtered.getBindings().size());
+		assertNull(filtered.getBinding(70));
+		assertNull(filtered.getBinding(72));
+		NpcBinding kept = filtered.getBinding(71);
+		assertEquals("Mixed", kept.getName());
+		assertArrayEquals(new int[]{71}, kept.getNpcIds());
+		assertArrayEquals(new int[]{2944}, kept.getMeshIds());
+		assertEquals(118, kept.getScaleXZ());
+		assertEquals(140, kept.getScaleY());
+		assertArrayEquals(new short[]{0x3A05}, kept.getRecolorFind());
+		assertArrayEquals(new short[]{(short) -25049}, kept.getRecolorReplace());
+		assertEquals(10, kept.getAmbient());
+		assertEquals(-3, kept.getContrast());
+		assertNotNull("geometry is untouched", filtered.getMesh(2944));
+	}
+
+	@Test
+	public void testWithoutNpcsIsTheSameBundleWhenNothingMatches()
+	{
+		AssetBundle bundle = withBindings(
+			new NpcBinding("Plain", new int[]{70}, new int[]{2944}, 128, 128, null, null));
+
+		assertTrue(bundle == bundle.withoutNpcs(Collections.singleton(99)));
+	}
 }

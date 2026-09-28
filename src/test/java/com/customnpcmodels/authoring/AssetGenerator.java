@@ -31,6 +31,7 @@ import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.inject.SwapBlacklist;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -83,6 +84,9 @@ public class AssetGenerator
 		System.out.println("Manifest " + assetsDir.resolve(Manifest.FILE_NAME).toAbsolutePath()
 			+ ": " + manifest.models.size() + " model(s)");
 
+		// Before the cache is opened, so a manifest that can never build says so without needing one
+		refuseIfAny(checkManifest(manifest, assetsDir));
+
 		boolean needsCache = manifest.models.stream().anyMatch(m -> m.animations != null && !m.animations.isEmpty());
 		Store store = needsCache ? CacheFiles.openLiveCache() : null;
 		if (needsCache && store == null)
@@ -128,6 +132,8 @@ public class AssetGenerator
 	 */
 	static AssetBundle build(Manifest manifest, Path assetsDir, Timings timings) throws IOException
 	{
+		refuseIfAny(checkManifest(manifest, assetsDir));
+
 		Map<Integer, Mesh> meshes = new LinkedHashMap<>();
 		Map<Integer, Rig> rigs = new LinkedHashMap<>();
 		Map<Integer, Clip> clips = new LinkedHashMap<>();
@@ -217,12 +223,67 @@ public class AssetGenerator
 
 		AssetBundle bundle = new AssetBundle(meshes, rigs, clips, bindings);
 		problems.addAll(AssetValidator.validate(bundle, sequenceId -> frameCounts.getOrDefault(sequenceId, -1)));
+		refuseIfAny(problems);
+		return bundle;
+	}
+
+	/**
+	 * What is wrong with the manifest itself, found before any {@code .glb} is read or any sequence
+	 * looked up.
+	 *
+	 * <p>These would otherwise surface as a bare exception from deep inside the build - a missing
+	 * {@code npcIds} as a NullPointerException, a missing file as a NoSuchFileException - or not at
+	 * all: a missing {@code meshId} quietly becomes 0. A blacklisted NPC is refused here too, so a
+	 * bundle binding one is never produced.
+	 */
+	static List<String> checkManifest(Manifest manifest, Path assetsDir)
+	{
+		List<String> problems = new ArrayList<>();
+		for (Manifest.Model model : manifest.models)
+		{
+			String name = model.name == null ? model.glb : model.name;
+
+			if (model.npcIds == null || model.npcIds.length == 0)
+			{
+				problems.add(name + " names no NPCs; add \"npcIds\"");
+			}
+			else
+			{
+				for (int npcId : model.npcIds)
+				{
+					if (SwapBlacklist.isBlocked(npcId))
+					{
+						problems.add(name + ": NPC " + npcId + " is in " + SwapBlacklist.contentOf(npcId)
+							+ " and can never be swapped");
+					}
+				}
+			}
+
+			if (model.meshId < GltfExporter.ID_BASE)
+			{
+				problems.add(name + " has mesh id " + model.meshId + "; synthetic ids start at " + GltfExporter.ID_BASE
+					+ ", so set \"meshId\" to one at or above it");
+			}
+
+			if (model.glb == null)
+			{
+				problems.add(name + " names no .glb; add \"glb\"");
+			}
+			else if (!Files.isRegularFile(assetsDir.resolve(model.glb)))
+			{
+				problems.add(name + ": " + assetsDir.resolve(model.glb).toAbsolutePath() + " does not exist");
+			}
+		}
+		return problems;
+	}
+
+	private static void refuseIfAny(List<String> problems)
+	{
 		if (!problems.isEmpty())
 		{
 			throw new IllegalStateException("Not writing the bundle; " + problems.size() + " problem(s):\n  "
 				+ String.join("\n  ", problems));
 		}
-		return bundle;
 	}
 
 	private static void write(AssetBundle bundle, Path output) throws IOException

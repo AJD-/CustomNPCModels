@@ -25,11 +25,13 @@
 package com.customnpcmodels.inject;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Everything needed to draw and animate custom NPC models: meshes, the rigs they are bound to, the
@@ -115,6 +117,49 @@ public final class AssetBundle
 		mergedBindings.addAll(overlay.bindings);
 
 		return new AssetBundle(mergedMeshes, mergedRigs, mergedClips, mergedBindings);
+	}
+
+	/**
+	 * This bundle with {@code npcIds} taken out of every binding, or this bundle itself when no
+	 * binding names any of them.
+	 *
+	 * <p>A binding left with no NPCs is dropped. Meshes, rigs and clips stay: nothing reaches them
+	 * without a binding.
+	 */
+	public AssetBundle withoutNpcs(Set<Integer> npcIds)
+	{
+		boolean touched = false;
+		for (NpcBinding binding : bindings)
+		{
+			for (int npcId : binding.getNpcIds())
+			{
+				touched |= npcIds.contains(npcId);
+			}
+		}
+		if (!touched)
+		{
+			return this;
+		}
+
+		List<NpcBinding> kept = new ArrayList<>(bindings.size());
+		for (NpcBinding binding : bindings)
+		{
+			int[] allowed = Arrays.stream(binding.getNpcIds())
+				.filter(npcId -> !npcIds.contains(npcId))
+				.toArray();
+			if (allowed.length == binding.getNpcIds().length)
+			{
+				kept.add(binding);
+			}
+			else if (allowed.length > 0)
+			{
+				kept.add(new NpcBinding(binding.getName(), allowed, binding.getMeshIds(),
+					binding.getScaleXZ(), binding.getScaleY(), binding.getRecolorFind(), binding.getRecolorReplace(),
+					binding.getAmbient(), binding.getContrast()));
+			}
+		}
+
+		return new AssetBundle(meshes, rigs, clips, kept);
 	}
 
 	public Mesh getMesh(int meshId)

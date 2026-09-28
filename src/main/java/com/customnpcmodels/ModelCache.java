@@ -33,6 +33,7 @@ import com.customnpcmodels.inject.MeshMerger;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.Skinner;
+import com.customnpcmodels.inject.SwapBlacklist;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -119,7 +120,8 @@ public class ModelCache
 	 */
 	public boolean ensureBuilt(int npcId)
 	{
-		if (unbuildable.contains(npcId))
+		// setBundle already took these out of the bindings; checked again so no path can build one
+		if (SwapBlacklist.isBlocked(npcId) || unbuildable.contains(npcId))
 		{
 			return false;
 		}
@@ -154,7 +156,22 @@ public class ModelCache
 	 */
 	public void setBundle(AssetBundle bundle)
 	{
-		this.bundle = bundle == null ? AssetBundle.empty() : bundle;
+		bundle = bundle == null ? AssetBundle.empty() : bundle;
+
+		// Every binding reaches the plugin through here, so this is where the blacklist holds: an NPC
+		// taken out now is never built, drawn or claimed, whichever bundle named it
+		for (NpcBinding binding : bundle.getBindings())
+		{
+			for (int npcId : binding.getNpcIds())
+			{
+				if (SwapBlacklist.isBlocked(npcId))
+				{
+					log.debug("NPC {} ({}) is never swapped; dropping it from binding '{}'",
+						npcId, SwapBlacklist.contentOf(npcId), binding.getName());
+				}
+			}
+		}
+		this.bundle = bundle.withoutNpcs(SwapBlacklist.ids());
 
 		// The bundle arrives off-thread and can land after NPCs were already checked against an
 		// empty one. Dropping what was built makes them pick it up on the next check.

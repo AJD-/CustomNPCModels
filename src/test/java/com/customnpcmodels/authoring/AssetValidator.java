@@ -30,6 +30,7 @@ import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.MeshMerger;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.inject.SwapBlacklist;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -399,6 +400,11 @@ public final class AssetValidator
 				if (!boundNpcs.add(npcId))
 				{
 					problems.add(name + " binds NPC " + npcId + ", which another binding already claims");
+				}
+				if (SwapBlacklist.isBlocked(npcId))
+				{
+					problems.add(name + " binds NPC " + npcId + ", which is in " + SwapBlacklist.contentOf(npcId)
+						+ " and can never be swapped");
 				}
 			}
 		}

@@ -38,6 +38,14 @@ restores them on its own, so with both on, those settings can be restored wrong.
   instead of the original. It does this by turning those two settings off in Interact Highlight
   while active, then restoring them when this plugin stops.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
+- Some NPCs are never swapped, whatever a bundle says: the monsters, healers and hazards of the
+  Inferno, the Fight Caves and TzHaar fight pits, TzHaar-Ket-Rak's challenges and the Fortis
+  Colosseum, plus their Deadman copies. The NPCs that start each minigame, spectators and pets
+  aren't included. Jagex's third-party client rules forbid extra visual indicators of boss
+  mechanics, and name wave-based minigames explicitly. The list is fixed in code (`SwapBlacklist`)
+  and has no setting. `generateAssets` refuses a manifest that binds one of these NPCs, and the
+  plugin drops them from any binding that names them, so it never claims one from Retro NPC Swapper
+  either. `exportGltf` still exports them, but writes no manifest entry.
 - Retro NPC Swapper compatibility: both plugins wrap the renderer, and each can stack on top of the
   other. They're loaded by separate classloaders, so each wrapper exposes the renderer beneath it
   through a plain Java `Supplier`. Neither needs the other's classes. This plugin tells Retro which
@@ -247,6 +255,7 @@ these lines:
 | No `Attached custom draw callbacks over ...` at all | Neither GPU nor 117 HD is on. |
 | `No custom NPC model bundle present` | Both the shipped and development bundles are missing or empty. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
 | `Custom NPC model bundle loaded: AssetBundle{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. |
+| `NPC <id> (<content>) is never swapped; dropping it from binding '<name>'` | The NPC is on the swap blacklist (see "How it works"). This is intentional, and there's no way to turn it off. |
 | Bundle loaded, but no `Built custom model '<name>' for NPC id <id>` near the NPC | The NPC on screen isn't one of the entry's `npcIds` (many NPCs have several ids; check with `dumpNpcDefinitions`), or you're in the Wilderness or on a PvP world. |
 </details>
 

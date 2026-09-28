@@ -30,6 +30,7 @@ import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.MeshMerger;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.inject.SwapBlacklist;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -181,6 +182,14 @@ public class GltfExporter
 		int id = ID_BASE + npc.id;
 		String name = npc.name == null ? "npc-" + npc.id : npc.name;
 		System.out.println(name + " (id " + npc.id + ")");
+		boolean blocked = SwapBlacklist.isBlocked(npc.id);
+		if (blocked)
+		{
+			// Exporting is still useful for study, but an entry binding it would make generateAssets
+			// refuse the whole manifest, so none is written
+			System.out.println("  warning: NPC " + npc.id + " is in " + SwapBlacklist.contentOf(npc.id)
+				+ " and can never be swapped; writing the .glb without a manifest entry");
+		}
 
 		List<Mesh> partMeshes = partMeshes(store, npc);
 		Mesh mesh = merge(npc, partMeshes);
@@ -242,15 +251,21 @@ public class GltfExporter
 		}
 		entry.animations = animations;
 
-		// Replace this NPC's entry in an existing manifest rather than piling up duplicates
-		Manifest manifest = Manifest.read(out);
-		manifest.models.removeIf(model -> model.meshId == id);
-		manifest.models.add(entry);
-		manifest.write(out);
+		if (!blocked)
+		{
+			// Replace this NPC's entry in an existing manifest rather than piling up duplicates
+			Manifest manifest = Manifest.read(out);
+			manifest.models.removeIf(model -> model.meshId == id);
+			manifest.models.add(entry);
+			manifest.write(out);
+		}
 
 		System.out.println("  wrote " + out.resolve(file).toAbsolutePath() + " (" + glb.length / 1024 + " KB, "
 			+ mesh.getVerticesCount() + " verts, " + mesh.getFaceCount() + " faces, " + clips.size() + " clips)");
-		System.out.println("  manifest " + out.resolve(Manifest.FILE_NAME).toAbsolutePath());
+		if (!blocked)
+		{
+			System.out.println("  manifest " + out.resolve(Manifest.FILE_NAME).toAbsolutePath());
+		}
 	}
 
 	/** The NPC's model parts merged into one mesh, as the plugin merges them at spawn, under its synthetic id. */
