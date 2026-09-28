@@ -59,7 +59,7 @@ import java.util.Set;
  * <ul>
  *   <li>Every attribute is unwelded to three vertices per face, copied element by element in its
  *       own encoding, with any vertex no face uses kept after the corners. Blender merges identical
- *       corners, so without this a face could share a vertex with its neighbour and painting it would
+ *       corners, so without this a face could share a vertex with its neighbor and painting it would
  *       bleed across.</li>
  *   <li>A repainted face's corners get the new {@code COLOR_0} in that accessor's encoding, alpha
  *       untouched, and the matching {@code _RS_HSL}, so the converter takes the color exactly.</li>

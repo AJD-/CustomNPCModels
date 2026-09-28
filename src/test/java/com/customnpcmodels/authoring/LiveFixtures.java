@@ -50,8 +50,8 @@ import net.runelite.cache.fs.Store;
  * cache: the Giant Mole, the first authoring subject, the skeleton, whose mesh and clips are
  * already proven correct in game by Retro NPC Swapper, and Commander Zilyana, whose clips collapse a
  * group to nothing.
- *
- * <p>Nothing here is written anywhere. A test that asks for a fixture with no live cache on the
+ * <p>
+ * Nothing here is written anywhere. A test that asks for a fixture with no live cache on the
  * machine is skipped rather than failed.
  */
 final class LiveFixtures

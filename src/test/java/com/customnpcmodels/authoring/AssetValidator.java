@@ -30,6 +30,7 @@ import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.MeshMerger;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.inject.SwapBlacklist;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -39,16 +40,16 @@ import java.util.function.IntUnaryOperator;
 
 /**
  * Refuses assets the engine would draw wrongly, or throw on, rather than reject.
- *
- * <p>Everything here fails far from its cause at runtime - an index past the end is an
+ * <p>
+ * Everything here fails far from its cause at runtime - an index past the end is an
  * {@code ArrayIndexOutOfBoundsException} inside the skinner on the render path, which the draw
  * callback swallows and draws the vanilla model instead, and several of the rest are not errors at
  * all but silently wrong pictures. So the generator runs every conversion output through here and
  * refuses to write a bundle that fails, naming every problem at once.
- *
- * <p>Stricter than {@link com.customnpcmodels.inject.AssetCodec}'s load-time checks on purpose: the
+ * <p>
+ * Stricter than {@link com.customnpcmodels.inject.AssetCodec}'s load-time checks on purpose: the
  * codec guards the shipped plugin against a corrupt file, this guards the author against an asset
- * that is well formed but wrong.
+ * that is well-formed but wrong.
  */
 public final class AssetValidator
 {
@@ -399,6 +400,11 @@ public final class AssetValidator
 				if (!boundNpcs.add(npcId))
 				{
 					problems.add(name + " binds NPC " + npcId + ", which another binding already claims");
+				}
+				if (SwapBlacklist.isBlocked(npcId))
+				{
+					problems.add(name + " binds NPC " + npcId + ", which is in " + SwapBlacklist.contentOf(npcId)
+						+ " and can never be swapped");
 				}
 			}
 		}

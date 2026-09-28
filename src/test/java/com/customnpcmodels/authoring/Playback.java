@@ -26,11 +26,11 @@ package com.customnpcmodels.authoring;
 
 /**
  * Which frame of a live sequence the client shows after a number of client cycles.
- *
- * <p>The plugin only ever receives a frame index, so a clip plays in steps: frame {@code i} is held
+ * <p>
+ * The plugin only ever receives a frame index, so a clip plays in steps: frame {@code i} is held
  * for {@code frameLengths[i]} cycles - at least one - with nothing in between. A loop restarts at
  * frame 0. What the client does after the last frame of an action (its {@code frameStep} and
- * {@code maxLoops}) decides whether it repeats, not what the frames look like, so it is not modelled.
+ * {@code maxLoops}) decides whether it repeats, not what the frames look like, so it is not modeled.
  */
 final class Playback
 {

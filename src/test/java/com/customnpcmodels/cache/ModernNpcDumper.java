@@ -29,6 +29,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.NpcManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.NpcDefinition;
@@ -37,16 +39,17 @@ import net.runelite.cache.fs.Store;
 
 /**
  * Dev-only tool that prints NPC definitions from the live OSRS cache.
- *
- * <p>What an author needs before binding a custom model: the NPC ids to bind, the model parts and
+ * <p>
+ * What an author needs before binding a custom model: the NPC ids to bind, the model parts and
  * scale the vanilla NPC is drawn with, and the sequences it plays - an authored clip has to be keyed
  * to one of those, and sampled at its frame count. For each model part it also says whether any
  * face is textured, which the glTF path cannot carry.
- *
- * <p>Run with {@code ./gradlew dumpNpcDefinitions -Pnpc=5779} (ids, or a name substring), and
+ * <p>
+ * Run with {@code ./gradlew dumpNpcDefinitions -Pnpc=5779} (ids, or a name substring), and
  * optionally {@code -PcacheDir=...}. Test sourceSet only, never shipped, so console output and
  * reading files outside {@code .runelite} are fine here.
  */
+@Slf4j
 public class ModernNpcDumper
 {
 	private static final String MAX_MATCHES_PROPERTY = "customnpcmodels.maxMatches";
@@ -68,13 +71,13 @@ public class ModernNpcDumper
 			NpcManager npcManager = new NpcManager(store);
 			npcManager.load();
 
-			System.out.println("NPC definitions: " + npcManager.getNpcs().size());
+            log.info("NPC definitions: {}", npcManager.getNpcs().size());
 			System.out.println();
 
 			if (args.length == 0)
 			{
-				System.out.println("Usage: ./gradlew dumpNpcDefinitions -Pnpc=5779,5780");
-				System.out.println("       ./gradlew dumpNpcDefinitions -Pnpc=\"giant mole\"");
+				log.info("Usage: ./gradlew dumpNpcDefinitions -Pnpc=5779,5780");
+				log.info("       ./gradlew dumpNpcDefinitions -Pnpc=\"giant mole\"");
 				return;
 			}
 
@@ -100,7 +103,7 @@ public class ModernNpcDumper
 		}
 		catch (NumberFormatException ex)
 		{
-			System.err.println("Ignoring non-numeric -Pmax=" + configured);
+			log.error("Ignoring non-numeric -Pmax={}", configured);
 			return DEFAULT_MAX_NAME_MATCHES;
 		}
 	}
@@ -122,7 +125,7 @@ public class ModernNpcDumper
 			NpcDefinition def = npcManager.get(Integer.parseInt(query));
 			if (def == null)
 			{
-				System.out.println("No NPC with id " + query);
+                log.info("No NPC with id {}", query);
 				return;
 			}
 			matches.add(def);
@@ -140,7 +143,7 @@ public class ModernNpcDumper
 
 			if (matches.isEmpty())
 			{
-				System.out.println("No NPC name contains '" + query + "'");
+                log.info("No NPC name contains '{}'", query);
 				return;
 			}
 		}
@@ -153,41 +156,39 @@ public class ModernNpcDumper
 
 		if (matches.size() > shown)
 		{
-			System.out.println("... and " + (matches.size() - shown) + " more matches for '" + query + "'");
-			System.out.println();
+            log.info("... and {} more matches for '{}'", matches.size() - shown, query);
 		}
 	}
 
 	private static void print(Store store, NpcDefinition def) throws IOException
 	{
-		System.out.println(def.name + " (id " + def.id + ")");
-		System.out.println("  models        " + Arrays.toString(def.models));
-		System.out.println("  widthScale    " + def.widthScale);
-		System.out.println("  heightScale   " + def.heightScale);
-		System.out.println("  ambient       " + def.ambient);
-		System.out.println("  contrast      " + def.contrast);
-		System.out.println("  size          " + def.size);
-		System.out.println("  combatLevel   " + def.combatLevel);
-		System.out.println("  standingAnim  " + sequence(store, def.standingAnimation));
-		System.out.println("  walkingAnim   " + sequence(store, def.walkingAnimation));
+        log.info("{} (id {})", def.name, def.id);
+        log.info("  models        {}", Arrays.toString(def.models));
+        log.info("  widthScale    {}", def.widthScale);
+        log.info("  heightScale   {}", def.heightScale);
+        log.info("  ambient       {}", def.ambient);
+        log.info("  contrast      {}", def.contrast);
+        log.info("  size          {}", def.size);
+        log.info("  combatLevel   {}", def.combatLevel);
+        log.info("  standingAnim  {}", sequence(store, def.standingAnimation));
+        log.info("  walkingAnim   {}", sequence(store, def.walkingAnimation));
 		if (def.recolorToFind != null)
 		{
-			System.out.println("  recolor       " + Arrays.toString(def.recolorToFind)
-				+ " -> " + Arrays.toString(def.recolorToReplace));
+            log.info("  recolor       {} -> {}",
+					Arrays.toString(def.recolorToFind), Arrays.toString(def.recolorToReplace));
 		}
 		if (def.configs != null)
 		{
-			System.out.println("  transforms    " + Arrays.toString(def.configs));
+            log.info("  transforms    {}", Arrays.toString(def.configs));
 		}
 
 		if (def.models != null)
 		{
 			for (int modelId : def.models)
 			{
-				System.out.println("  model " + modelId + "   " + describeModel(store, modelId));
+                log.info("  model {}   {}\n", modelId, describeModel(store, modelId));
 			}
 		}
-		System.out.println();
 	}
 
 	private static String sequence(Store store, int sequenceId) throws IOException

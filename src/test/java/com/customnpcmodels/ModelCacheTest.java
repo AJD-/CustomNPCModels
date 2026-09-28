@@ -26,6 +26,8 @@ package com.customnpcmodels;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -40,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import net.runelite.api.Model;
 import net.runelite.api.NPC;
+import net.runelite.api.gameval.NpcID;
 import org.junit.Test;
 
 /**
@@ -124,6 +127,39 @@ public class ModelCacheTest
 			assertEquals("y of vertex " + v, ry[v] * 96 / 128f, model.getVerticesY()[v], 1e-3f);
 			assertEquals("z of vertex " + v, rz[v] * 64 / 128f, model.getVerticesZ()[v], 1e-3f);
 		}
+	}
+
+	/**
+	 * A blacklisted NPC is refused wherever the bundle came from: never built, so never drawn, and
+	 * never among the ids claimed from Retro NPC Swapper.
+	 */
+	@Test
+	public void testABlacklistedNpcIsNeverBuiltOrClaimed()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setBundle(bundle(new NpcBinding("zuk", new int[]{NpcID.INFERNO_TZKALZUK_PLACEHOLDER},
+			new int[]{1}, 128, 128, null, null)));
+
+		assertFalse(cache.ensureBuilt(NpcID.INFERNO_TZKALZUK_PLACEHOLDER));
+		assertTrue(cache.boundNpcIds().isEmpty());
+
+		cache.setSubstituted(NpcID.INFERNO_TZKALZUK_PLACEHOLDER);
+		NPC zuk = mock(NPC.class);
+		when(zuk.getId()).thenReturn(NpcID.INFERNO_TZKALZUK_PLACEHOLDER);
+		assertNull(cache.pose(zuk));
+	}
+
+	/** Only the blacklisted id is taken out; the binding still dresses every other NPC it names. */
+	@Test
+	public void testABindingKeepsItsAllowedNpcs()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setBundle(bundle(new NpcBinding("mixed", new int[]{NpcID.INFERNO_JAD, NPC_ID},
+			new int[]{1}, 128, 128, null, null)));
+
+		assertFalse(cache.ensureBuilt(NpcID.INFERNO_JAD));
+		assertTrue(cache.ensureBuilt(NPC_ID));
+		assertEquals(Collections.singleton(NPC_ID), cache.boundNpcIds());
 	}
 
 	/**

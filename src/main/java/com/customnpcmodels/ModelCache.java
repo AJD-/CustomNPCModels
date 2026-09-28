@@ -33,6 +33,7 @@ import com.customnpcmodels.inject.MeshMerger;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.Skinner;
+import com.customnpcmodels.inject.SwapBlacklist;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -47,12 +48,12 @@ import net.runelite.api.NPC;
 
 /**
  * Holds the custom replacement geometry, built once per NPC id and reused every frame.
- *
- * <p>The draw callback runs per entity per frame, so it must do a map lookup and a skin and nothing
+ * <p>
+ * The draw callback runs per entity per frame, so it must do a map lookup and a skin and nothing
  * else. Everything expensive - merging, recoloring, scaling and lighting - happens here, driven from
  * NPC spawn and transform events rather than from the render path.
- *
- * <p>Every model comes from the bundle. There is deliberately no fallback to the client's own cache:
+ * <p>
+ * Every model comes from the bundle. There is deliberately no fallback to the client's own cache:
  * an authored mesh id means nothing to the live cache, so a bundle miss must leave the NPC vanilla
  * rather than load whatever unrelated geometry happens to sit at that id.
  */
@@ -119,7 +120,8 @@ public class ModelCache
 	 */
 	public boolean ensureBuilt(int npcId)
 	{
-		if (unbuildable.contains(npcId))
+		// setBundle already took these out of the bindings; checked again so no path can build one
+		if (SwapBlacklist.isBlocked(npcId) || unbuildable.contains(npcId))
 		{
 			return false;
 		}
@@ -154,7 +156,22 @@ public class ModelCache
 	 */
 	public void setBundle(AssetBundle bundle)
 	{
-		this.bundle = bundle == null ? AssetBundle.empty() : bundle;
+		bundle = bundle == null ? AssetBundle.empty() : bundle;
+
+		// Every binding reaches the plugin through here, so this is where the blacklist holds: an NPC
+		// taken out now is never built, drawn or claimed, whichever bundle named it
+		for (NpcBinding binding : bundle.getBindings())
+		{
+			for (int npcId : binding.getNpcIds())
+			{
+				if (SwapBlacklist.isBlocked(npcId))
+				{
+					log.debug("NPC {} ({}) is never swapped; dropping it from binding '{}'",
+						npcId, SwapBlacklist.contentOf(npcId), binding.getName());
+				}
+			}
+		}
+		this.bundle = bundle.withoutNpcs(SwapBlacklist.ids());
 
 		// The bundle arrives off-thread and can land after NPCs were already checked against an
 		// empty one. Dropping what was built makes them pick it up on the next check.
@@ -279,8 +296,8 @@ public class ModelCache
 
 	/**
 	 * Returns the mesh with the recolored palette.
-	 *
-	 * <p>Faces, texture mapping, rigging and vertices are shared with the bundle mesh - only the
+	 * <p>
+	 * Faces, texture mapping, rigging and vertices are shared with the bundle mesh - only the
 	 * colors differ per NPC, and neither the bundle nor any other NPC sees this copy.
 	 */
 	private static Mesh recolored(Mesh mesh, short[] colors)
@@ -296,8 +313,8 @@ public class ModelCache
 
 	/**
 	 * Poses built geometry for the frame the client is currently showing.
-	 *
-	 * <p>An action animation wins over the movement pose when the bundle carries it. The client
+	 * <p>
+	 * An action animation wins over the movement pose when the bundle carries it. The client
 	 * layers the two using the sequence's interleave mask; until the skinner implements that, the
 	 * action replacing the pose outright is the closer of the two approximations, because an action
 	 * is what the whole body is doing.
@@ -351,8 +368,8 @@ public class ModelCache
 
 	/**
 	 * Says once, per NPC id and animation, what the pose did with an action animation.
-	 *
-	 * <p>Bounded by construction: one line per id and animation, not per frame.
+	 * <p>
+	 * Bounded by construction: one line per id and animation, not per frame.
 	 */
 	private void reportAction(int npcId, int action, int frame, Clip clip)
 	{

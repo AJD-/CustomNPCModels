@@ -29,11 +29,11 @@ import java.io.InputStream;
 
 /**
  * Reads the bundle shipped inside the plugin jar, plus the development bundle when one is present.
- *
- * <p>A missing resource is treated as "no custom models" rather than an error, so a build without a
+ * <p>
+ * A missing resource is treated as "no custom models" rather than an error, so a build without a
  * bundle starts cleanly and substitutes nothing.
- *
- * <p>The development bundle only ever exists on the test classpath - the generator writes it to
+ * <p>
+ * The development bundle only ever exists on the test classpath - the generator writes it to
  * {@code src/test/resources}, which is gitignored - so {@code ./gradlew run} sees it and the Hub jar,
  * built from the main sourceSet alone, never can. It carries round-trip verification assets exported
  * from the live cache, which must not ship. Its entries win over the shipped bundle's.

@@ -51,8 +51,8 @@ import org.junit.Test;
 
 /**
  * Stage B: rigs and clips through glTF and back.
- *
- * <p>The strongest check here is the baked pose: the original and the round-tripped asset are both
+ * <p>
+ * The strongest check here is the baked pose: the original and the round-tripped asset are both
  * posed by the real {@code Skinner} at every frame and their vertices compared, so a mistake in the
  * rig reconstruction cannot cancel out against a mistake in the conversion the way it could when
  * comparing intermediate representations.

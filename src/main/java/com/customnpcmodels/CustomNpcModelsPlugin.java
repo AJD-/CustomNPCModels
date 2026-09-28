@@ -401,8 +401,8 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	/**
 	 * Decides whether an NPC is drawn with its custom model, and builds that model if so.
-	 *
-	 * <p>No animation is touched either way. A custom model's clips are keyed by the live sequences
+	 * <p>
+	 * No animation is touched either way. A custom model's clips are keyed by the live sequences
 	 * the NPC already plays, so the client goes on driving its animations exactly as before and the
 	 * substitution only changes what geometry those frames are applied to.
 	 */
@@ -513,8 +513,8 @@ public class CustomNpcModelsPlugin extends Plugin
 	/**
 	 * Takes over the client's draw callbacks slot by wrapping whichever supported renderer holds it:
 	 * the GPU plugin, or 117 HD's zone renderer - directly, or beneath Retro NPC Swapper's decorator.
-	 *
-	 * <p>Declines for anything else - no renderer at all, an unknown one, 117 HD's legacy renderer
+	 * <p>
+	 * Declines for anything else - no renderer at all, an unknown one, 117 HD's legacy renderer
 	 * (which implements no {@code drawTemp}), or a decorator it cannot see through, including a Retro
 	 * NPC Swapper too old to stack. Which of the two stacks on top does not matter: Retro leaves the
 	 * NPCs this plugin claims alone, so each NPC is only ever swapped by one of them. Must be called
@@ -523,7 +523,7 @@ public class CustomNpcModelsPlugin extends Plugin
 	private void attach()
 	{
 		DrawCallbacks current = client.getDrawCallbacks();
-		if (wrapper != null && RendererChain.contains(current, wrapper))
+		if (RendererChain.contains(current, wrapper))
 		{
 			return;
 		}
@@ -594,8 +594,8 @@ public class CustomNpcModelsPlugin extends Plugin
 	/**
 	 * Whether {@code current} is a renderer {@link CustomDrawCallbacks} can substitute models through,
 	 * either itself or beneath Retro NPC Swapper's decorator.
-	 *
-	 * <p>117 HD is a Plugin Hub plugin loaded in its own classloader, so it is recognized by class
+	 * <p>
+	 * 117 HD is a Plugin Hub plugin loaded in its own classloader, so it is recognized by class
 	 * name alone - there is no compile or runtime dependency on it. The zone renderer package is
 	 * allowlisted rather than the legacy one denylisted, so a renderer 117 HD adds or renames later
 	 * is declined instead of wrapped blind.
@@ -634,8 +634,8 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	/**
 	 * Takes over Interact Highlight's NPC outlines, or hands them back.
-	 *
-	 * <p>Only worth doing while geometry is actually being substituted - with no wrapper attached the
+	 * <p>
+	 * Only worth doing while geometry is actually being substituted - with no wrapper attached the
 	 * vanilla model is what gets drawn, and that plugin's own outline already fits it. Must be called
 	 * on the client thread.
 	 */
@@ -668,8 +668,8 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	/**
 	 * Tells Retro NPC Swapper which NPC ids this plugin is drawing, so it leaves them alone.
-	 *
-	 * <p>Every bound NPC is claimed while custom models can be drawn at all, and none while they
+	 * <p>
+	 * Every bound NPC is claimed while custom models can be drawn at all, and none while they
 	 * cannot - off, detached, or stood down by a safety setting - so Retro can have them back. Posted
 	 * only when the set changes, unless {@code always}. Must be called on the client thread.
 	 */
@@ -691,8 +691,8 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	/**
 	 * Supplies custom geometry for an NPC being drawn, or null to let the vanilla model through.
-	 *
-	 * <p>Runs per NPC per frame, so it does a lookup and a skin only - eligibility is decided in
+	 * <p>
+	 * Runs per NPC per frame, so it does a lookup and a skin only - eligibility is decided in
 	 * {@link #processNpc} and the geometry is built by {@link ModelCache} ahead of time.
 	 */
 	private Model substitute(NPC npc, Model vanilla)

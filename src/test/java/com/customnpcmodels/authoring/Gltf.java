@@ -31,8 +31,8 @@ import java.util.Map;
 
 /**
  * The slice of the glTF 2.0 document model the pipeline reads and writes, shaped for Gson.
- *
- * <p>Field names are the glTF property names. Optional properties are boxed so an absent one stays
+ * <p>
+ * Field names are the glTF property names. Optional properties are boxed so an absent one stays
  * absent on the way out - Gson skips nulls - and is distinguishable on the way in.
  */
 final class Gltf

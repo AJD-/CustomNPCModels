@@ -97,7 +97,7 @@ public class GlbPaintDocumentTest
 	}
 
 	/**
-	 * Blender merges identical corners, so neighbouring faces of one color can share vertices.
+	 * Blender merges identical corners, so neighboring faces of one color can share vertices.
 	 * Painting one must not bleed into the other, and Blender's normalized-short colors must be
 	 * written back in their own encoding.
 	 */

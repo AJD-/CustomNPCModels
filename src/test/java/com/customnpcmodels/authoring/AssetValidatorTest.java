@@ -36,6 +36,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.runelite.api.gameval.NpcID;
 import org.junit.Test;
 
 public class AssetValidatorTest
@@ -272,6 +273,17 @@ public class AssetValidatorTest
 		assertTrue(problems.get(1), problems.get(1).contains("NPC 5"));
 		assertTrue(problems.get(2), problems.get(2).contains("unpaired recolors"));
 		assertTrue(problems.get(3), problems.get(3).contains("scale 0/128"));
+	}
+
+	@Test
+	public void testRejectsABlacklistedNpc()
+	{
+		String problem = only(AssetValidator.validate(bundleWith(
+			new NpcBinding("zuk", new int[]{NpcID.INFERNO_TZKALZUK_PLACEHOLDER}, new int[]{1}, 128, 128, null, null)),
+			id -> -1));
+
+		assertTrue(problem, problem.contains("NPC " + NpcID.INFERNO_TZKALZUK_PLACEHOLDER));
+		assertTrue(problem, problem.contains("the Inferno"));
 	}
 
 	@Test(expected = IllegalStateException.class)

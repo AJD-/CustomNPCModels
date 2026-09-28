@@ -39,8 +39,8 @@ import org.junit.Test;
 
 /**
  * Stage A: static geometry through glTF and back.
- *
- * <p>The round trip alone cannot catch a writer and reader that are wrong in compensating ways, so
+ * <p>
+ * The round trip alone cannot catch a writer and reader that are wrong in compensating ways, so
  * the winding and color are also checked against things computed without the converter: face
  * normals straight from the file's own bytes, and a color pair worked out by hand.
  */

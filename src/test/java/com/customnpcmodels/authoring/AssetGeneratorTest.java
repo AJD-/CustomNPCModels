@@ -75,6 +75,77 @@ public class AssetGeneratorTest
 		assertFalse(cache.ensureBuilt(NpcID.MOLE_GIANT));
 	}
 
+	/** An entry that passes every manifest check, so each case below is one change away from it. */
+	private Manifest.Model entry() throws Exception
+	{
+		folder.newFile("model.glb");
+		Manifest.Model model = new Manifest.Model();
+		model.name = "Model";
+		model.glb = "model.glb";
+		model.meshId = GltfExporter.ID_BASE + NpcID.MOLE_GIANT;
+		model.rigId = model.meshId;
+		model.npcIds = new int[]{NpcID.MOLE_GIANT};
+		return model;
+	}
+
+	/** Refused by the manifest checks, before any .glb is read or cache opened - hence no timings. */
+	private void assertManifestRefused(Manifest.Model model, String expected) throws Exception
+	{
+		Manifest manifest = new Manifest();
+		manifest.models.add(model);
+        assertEquals("the entry should differ from a valid one only by the change under test",
+				1, AssetGenerator.checkManifest(manifest, folder.getRoot().toPath()).size());
+		try
+		{
+			AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null);
+			fail("expected a refusal naming " + expected);
+		}
+		catch (IllegalStateException ex)
+		{
+			assertTrue(ex.getMessage(), ex.getMessage().contains(expected));
+		}
+	}
+
+	@Test
+	public void testAValidEntryPassesTheManifestChecks() throws Exception
+	{
+		Manifest manifest = new Manifest();
+		manifest.models.add(entry());
+		assertTrue(AssetGenerator.checkManifest(manifest, folder.getRoot().toPath()).isEmpty());
+	}
+
+	@Test
+	public void testABlacklistedNpcIsRefused() throws Exception
+	{
+		Manifest.Model model = entry();
+		model.npcIds = new int[]{NpcID.INFERNO_TZKALZUK_PLACEHOLDER};
+		assertManifestRefused(model, "NPC " + NpcID.INFERNO_TZKALZUK_PLACEHOLDER + " is in the Inferno");
+	}
+
+	@Test
+	public void testMissingNpcIdsAreRefused() throws Exception
+	{
+		Manifest.Model model = entry();
+		model.npcIds = null;
+		assertManifestRefused(model, "names no NPCs");
+	}
+
+	@Test
+	public void testAMissingMeshIdIsRefused() throws Exception
+	{
+		Manifest.Model model = entry();
+		model.meshId = 0;
+		assertManifestRefused(model, "has mesh id 0");
+	}
+
+	@Test
+	public void testAMissingGlbIsRefused() throws Exception
+	{
+		Manifest.Model model = entry();
+		model.glb = "absent.glb";
+		assertManifestRefused(model, "absent.glb does not exist");
+	}
+
 	private static AssetBundle codecRoundTrip(AssetBundle bundle) throws Exception
 	{
 		ByteArrayOutputStream out = new ByteArrayOutputStream();

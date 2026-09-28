@@ -52,14 +52,14 @@ import net.runelite.cache.fs.Store;
 /**
  * Reads what the authoring tools need out of the live OSRS cache: models, sequences, framemaps and
  * frames.
- *
- * <p>Two very different consumers. The glTF exporter reads geometry and animation to seed Blender
+ * <p>
+ * Two very different consumers. The glTF exporter reads geometry and animation to seed Blender
  * work and to build round-trip fixtures - Jagex data, which never reaches a shipped bundle. The
  * asset generator reads only sequence <em>metadata</em>, the frame counts and lengths an authored
  * clip is sampled against, because the client goes on playing the live sequence and hands over its
  * frame index.
- *
- * <p>Test sourceSet only. Decoding is delegated to {@code net.runelite:cache}.
+ * <p>
+ * Test sourceSet only. Decoding is delegated to {@code net.runelite:cache}.
  */
 public final class CacheFiles
 {
@@ -212,8 +212,8 @@ public final class CacheFiles
 	/**
 	 * Every frame-based sequence in the cache, grouped by the framemap (rig) its first frame names,
 	 * in ascending sequence id. Sequences with no frames - the newer skeletal ones - are left out.
-	 *
-	 * <p>The sequence table is decoded once and each frame archive read once, so a whole-cache scan
+	 * <p>
+	 * The sequence table is decoded once and each frame archive read once, so a whole-cache scan
 	 * takes seconds rather than the minutes {@link #loadSequence} per id would.
 	 */
 	public static Map<Integer, List<Integer>> sequencesByFramemap(Store store) throws IOException

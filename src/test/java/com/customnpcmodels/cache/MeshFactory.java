@@ -28,14 +28,17 @@ import com.customnpcmodels.inject.Mesh;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.definitions.ModelDefinition;
 
 /**
  * Converts a decoded cache model into the bundle mesh form.
- *
- * <p>Used by the glTF exporter and by the tests that need real geometry to check the pipeline
+ * <p>
+ * Used by the glTF exporter and by the tests that need real geometry to check the pipeline
  * against - never by the asset generator, which only reads authored glTF.
  */
+@Slf4j
 public final class MeshFactory
 {
 	/**
@@ -50,8 +53,8 @@ public final class MeshFactory
 
 	/**
 	 * Converts one decoded model into a mesh stored under {@code meshId}.
-	 *
-	 * <p>Parts are converted individually and merged by {@link com.customnpcmodels.inject.MeshMerger},
+	 * <p>
+	 * Parts are converted individually and merged by {@link com.customnpcmodels.inject.MeshMerger},
 	 * exactly as the plugin does at spawn.
 	 */
 	public static Mesh toMesh(int meshId, ModelDefinition part)
@@ -140,10 +143,10 @@ public final class MeshFactory
 	}
 
 	/**
-	 * Binds each vertex a mesh left on {@link #NO_BONE} to the group most of its face-neighbours
+	 * Binds each vertex a mesh left on {@link #NO_BONE} to the group most of its face-neighbors
 	 * use, wherever it shares a face with a vertex that animates.
-	 *
-	 * <p>A vertex on 255 never moves, so a face joining it to animated vertices tears as soon as they
+	 * <p>
+	 * A vertex on 255 never moves, so a face joining it to animated vertices tears as soon as they
 	 * swing. A part made only of 255 vertices, such as a ground shadow, shares no face with an
 	 * animated vertex and is returned untouched. Stray vertices chained to each other resolve over
 	 * repeated passes; each pass decides every vertex before applying any, and a tie goes to the
@@ -258,8 +261,8 @@ public final class MeshFactory
 			rebound[group] = members.stream().mapToInt(Integer::intValue).toArray();
 		}
 
-		System.out.println("  mesh " + meshId + ": bound " + reboundVertices.size()
-			+ " vertices off the no-bone group 255, " + rebound[NO_BONE].length + " stay static");
+        log.info("  mesh {}: bound {} vertices off the no-bone group 255, {} stay static",
+				meshId, reboundVertices.size(), rebound[NO_BONE].length);
 		return rebound;
 	}
 }

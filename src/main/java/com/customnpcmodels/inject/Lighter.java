@@ -28,8 +28,8 @@ import net.runelite.api.ModelData;
 
 /**
  * Turns unlit HSL face colors into the per-corner lit colors the renderer draws.
- *
- * <p>Needed because {@link ModelData#light()} only works on a model the client itself decoded, and
+ * <p>
+ * Needed because {@link ModelData#light()} only works on a model the client itself decoded, and
  * injected geometry by definition is not one. Lighting is baked once, at rest pose, exactly as the
  * client does it - animation moves vertices afterward and the colors are not recomputed.
  *
@@ -101,7 +101,7 @@ public final class Lighter
 			int renderType = faceRenderTypes == null ? RENDER_TYPE_GOURAUD : faceRenderTypes[face];
 			boolean textured = faceTextures != null && faceTextures[face] != -1;
 
-			// A textured face takes its shading from a fixed mid grey rather than its own color
+			// A textured face takes its shading from a fixed mid-gray rather than its own color
 			int color = textured ? 127 : faceColors[face] & 0xFFFF;
 
 			if (renderType == RENDER_TYPE_GOURAUD)
@@ -141,8 +141,8 @@ public final class Lighter
 	/**
 	 * Applies a light level to a packed HSL color, keeping hue and saturation and replacing
 	 * luminance.
-	 *
-	 * <p>The clamp to 2..126 is not cosmetic: 0 and 127 are reserved, and letting luminance reach
+	 * <p>
+	 * The clamp to 2..126 is not cosmetic: 0 and 127 are reserved, and letting luminance reach
 	 * them produces the wrong color rather than a slightly wrong brightness.
 	 */
 	private static int shade(int hsl, int light)

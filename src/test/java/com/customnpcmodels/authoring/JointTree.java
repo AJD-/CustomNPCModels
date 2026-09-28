@@ -37,13 +37,13 @@ import java.util.TreeSet;
 /**
  * A joint hierarchy recovered from an engine rig, so an exported asset opens in Blender as an
  * armature an author can pose rather than a flat list of bones.
- *
- * <p>The engine has no parent/child relation: a transform that should carry a limb names every group
+ * <p>
+ * The engine has no parent/child relation: a transform that should carry a limb names every group
  * in it. In the canonical shape - a pivot naming one group, then a rotate naming that group's whole
  * subtree - those rotate sets form a laminar family (any two are disjoint or nested), and set
  * containment gives the tree back: a group's parent is whoever owns the next larger set around it.
- *
- * <p>The hierarchy is a convenience, not a correctness input. The writer animates each joint with
+ * <p>
+ * The hierarchy is a convenience, not a correctness input. The writer animates each joint with
  * its group's exact per-frame transform and only uses the tree to express that relative to the
  * parent, so a rig that does not have the canonical shape falls back to a flat hierarchy - still
  * exact, just less pleasant to edit - and says so.

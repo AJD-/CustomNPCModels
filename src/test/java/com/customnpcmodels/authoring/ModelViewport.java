@@ -46,15 +46,15 @@ import javax.swing.JComponent;
 /**
  * Draws a mesh lit the way the plugin lights it, with a Blender-style camera, and says which face is
  * under any pixel.
- *
- * <p>A small software rasterizer rather than a 3D library: NPC meshes are a few thousand faces at
+ * <p>
+ * A small software rasterizer rather than a 3D library: NPC meshes are a few thousand faces at
  * most, and drawing them ourselves gives a face-id buffer, so picking is exact and free.
- *
- * <p>Lighting is always computed on the rest mesh - the plugin bakes it once and never again - while
+ * <p>
+ * Lighting is always computed on the rest mesh - the plugin bakes it once and never again - while
  * what is drawn is whatever {@link #x}, {@link #y} and {@link #z} hold: the rest pose unless a
  * subclass poses them.
- *
- * <p>Face transparency is honoured as the renderer does it. Models carry fully transparent faces the
+ * <p>
+ * Face transparency is honored as the renderer does it. Models carry fully transparent faces the
  * game never shows - the Giant Mole has one on each limb and its head - which drawn opaque look like
  * stray triangles at the joints.
  */
