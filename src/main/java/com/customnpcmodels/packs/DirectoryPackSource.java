@@ -66,7 +66,7 @@ public final class DirectoryPackSource
 
 	/**
 	 * Folders a hub install leaves behind when it is interrupted: the download being staged, and the
-	 * pack it was replacing. Neither is a pack; the hub client clears them up.
+	 * pack it was replacing. Neither is a pack; {@link HubInstaller#clearLeftovers} deletes them.
 	 */
 	private static final Pattern HUB_STAGING = Pattern.compile("dl-.*|.*\\.old");
 
@@ -103,7 +103,7 @@ public final class DirectoryPackSource
 		for (Filepath folder : folders)
 		{
 			String name = folder.getFileName();
-			if (name.startsWith(".") || (kind == PackKind.HUB && HUB_STAGING.matcher(name).matches()))
+			if (name.startsWith(".") || (kind == PackKind.HUB && isHubStaging(name)))
 			{
 				continue;
 			}
@@ -172,6 +172,12 @@ public final class DirectoryPackSource
 			// Anything a malformed file can throw names this pack, rather than stopping the others
 			return LoadedPack.failed(info, ex);
 		}
+	}
+
+	/** Whether a folder under {@code hub/} is an interrupted install's leftover, not a pack. */
+	static boolean isHubStaging(String name)
+	{
+		return HUB_STAGING.matcher(name).matches();
 	}
 
 	/** Whether a folder may hold a pack: see {@link #FOLDER_NAME} and {@link #RESERVED_NAME}. */

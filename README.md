@@ -33,6 +33,19 @@ What you switch off is remembered per RuneLite profile. A pack or model you have
 switched on. Models for NPCs that can never be swapped (see "How it works") are listed, greyed out,
 with the reason.
 
+### The Custom Model Hub
+
+The hub is a collection of reviewed, original model packs hosted on GitHub. It's **off by default**:
+switch on `Enable Custom Model Hub` in the plugin's settings (under **Custom Model Hub**) to use it.
+Doing so contacts GitHub, which means sending it your IP address, and the setting says so before it
+takes effect. While it's off, the plugin makes no network requests at all.
+
+With it on, the side panel lists the hub's packs below your own. From there you can **Install**
+one, **Update** it when the hub has a newer version, or **Remove** it. Every download is checked
+against the size and SHA-256 the hub lists, and read as a pack, before anything is written. Installed
+hub packs live in `~/.runelite/plugin-data/custom-npc-models/hub/`, which the plugin manages, so
+don't edit it by hand. A hub pack can be removed from its own card even with the hub switched off.
+
 <details>
 <summary>How it works</summary>
 
@@ -183,6 +196,12 @@ If the model still doesn't change, see the "Debugging" section below.
   model, also bound to TzKal-Zuk. `generateAssets` refuses to build such a pack, so this is how to
   check in game that the plugin refuses one too. Import it with **Import pack...**: the panel lists
   the model as partly never swapped, and the log shows `NPC 7706 (the Inferno) is never swapped`.
+- `./gradlew serveHubFixture [-Prevision=2]` serves a test Custom Model Hub on `localhost:8765`,
+  built from the dev bundle. It has a pack that installs, one built for a newer bundle format, and
+  one whose download fails its checksum. Start the client against it with
+  `./gradlew run -PhubUrl=http://localhost:8765/`: the plugin only accepts another hub address in
+  developer mode, which `./gradlew run` always is. Restart the fixture with `-Prevision=2` to offer
+  an update. Stop it with Ctrl+C.
 - `./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]` reports how far a `.glb` has
   moved from the NPC it was exported from, without starting the client: converter warnings, which
   vertex groups moved at rest, which faces were recolored, and the worst vertex error over every
@@ -311,6 +330,9 @@ these lines:
 | `Custom NPC models loaded: ModelCatalog{npcs=0, ...}` | No pack has a model for any NPC. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
 | `Custom NPC models loaded: ModelCatalog{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. `conflicts` counts models another pack took priority over. |
 | `Custom NPC model pack '<id>' could not be read: <reason>` | That pack is skipped. `version 2, this build reads version 3` means it was built before packs had their own rigs: regenerate it, including the dev bundle. |
+| `Custom Model Hub list failed: <reason>` | The panel shows the same message with a **Retry** button. Check that GitHub is reachable. The hub is only asked for anything while `Enable Custom Model Hub` is on. |
+| `Could not install hub pack <id>` | The download was fine, but writing it to `plugin-data/custom-npc-models/hub/` failed. The pack already installed, if any, is left as it was. |
+| `Using the test Custom Model Hub at <url>` | The client was started with `-PhubUrl`, so it talks to that test hub instead of the real one. |
 | `NPC <id> (<content>) is never swapped; dropping it from '<name>' in pack <id>` | The NPC is on the swap blacklist (see "How it works"). This is intentional, and there's no way to turn it off. |
 | Models loaded, but no `Built custom model '<name>' from pack <id> for NPC id <id>` near the NPC | The NPC on screen isn't one of the entry's `npcIds` (many NPCs have several ids; check with `dumpNpcDefinitions`), or you're in the Wilderness or on a PvP world. |
 </details>

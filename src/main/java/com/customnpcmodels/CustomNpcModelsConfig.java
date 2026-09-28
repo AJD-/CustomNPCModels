@@ -46,6 +46,8 @@ public interface CustomNpcModelsConfig extends Config
 	String DISABLED_MODELS = "disabledModels";
 	String PACK_ORDER = "packOrder";
 
+	String HUB_ENABLED = "hubEnabled";
+
 	/**
 	 * Read-only notice for users, not a setting.
 	 */
@@ -126,6 +128,29 @@ public interface CustomNpcModelsConfig extends Config
 		position = 1
 	)
 	default boolean overrideInteractHighlight()
+	{
+		return false;
+	}
+
+	@ConfigSection(
+		name = "Custom Model Hub",
+		description = "Browsing and downloading model packs from the Custom Model Hub",
+		position = 4,
+		closedByDefault = true
+	)
+	String hubSection = "hubSection";
+
+	@ConfigItem(
+		keyName = HUB_ENABLED,
+		name = "Enable Custom Model Hub",
+		description = "<html><body style='width:170px'>Lets the side panel list, download and update model "
+			+ "packs from the Custom Model Hub, which is hosted on GitHub. While this is off, the plugin "
+			+ "makes no network requests at all.</body></html>",
+		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers",
+		section = hubSection,
+		position = 1
+	)
+	default boolean hubEnabled()
 	{
 		return false;
 	}

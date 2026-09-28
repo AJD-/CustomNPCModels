@@ -32,6 +32,9 @@ import com.customnpcmodels.compatibility.ModelSwapProtocol;
 import com.customnpcmodels.compatibility.RendererChain;
 import com.customnpcmodels.packs.ClasspathPackSource;
 import com.customnpcmodels.packs.DirectoryPackSource;
+import com.customnpcmodels.packs.HubClient;
+import com.customnpcmodels.packs.HubEntry;
+import com.customnpcmodels.packs.HubInstaller;
 import com.customnpcmodels.packs.LoadedPack;
 import com.customnpcmodels.packs.ModelCatalog;
 import com.customnpcmodels.packs.PackComposer;
@@ -43,16 +46,21 @@ import com.customnpcmodels.packs.PackView;
 import com.customnpcmodels.ui.PacksPanel;
 import com.google.gson.Gson;
 import com.google.inject.Provides;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import javax.inject.Inject;
+import javax.inject.Named;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -90,6 +98,7 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Filepath;
 import net.runelite.client.util.ImageUtil;
+import okhttp3.OkHttpClient;
 
 @Slf4j
 @PluginDescriptor(
@@ -112,6 +121,9 @@ public class CustomNpcModelsPlugin extends Plugin
 	/** Folders in the data directory: packs installed from the hub, and packs the user added. */
 	static final String HUB_PACKS = "hub";
 	static final String LOCAL_PACKS = "local";
+
+	/** Points the hub at a test server, in developer mode only; see {@link #hubUrl}. */
+	private static final String HUB_URL_PROPERTY = "customnpcmodels.hubUrl";
 
 	/** The config keys the side panel writes, which change which model each NPC is drawn with. */
 	private static final Set<String> SELECTION_KEYS = Set.of(CustomNpcModelsConfig.DISABLED_PACKS,
@@ -164,6 +176,29 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	@Inject
 	private PackSettings packSettings;
+
+	@Inject
+	private OkHttpClient okHttpClient;
+
+	@Inject
+	@Named("developerMode")
+	private boolean developerMode;
+
+	/** Made in startUp; only ever asked anything while the hub is switched on in config. */
+	private HubClient hubClient;
+
+	/**
+	 * Hub pack icons as fetched, by commit, so an install carries the icon without fetching it again.
+	 * Written on OkHttp threads, read on the EDT, so concurrent.
+	 */
+	private final Map<String, byte[]> hubIcons = new ConcurrentHashMap<>();
+
+	/**
+	 * Bumped whenever the hub is switched on or off, and on stop. A hub answer carries the value it
+	 * was asked under, so one landing after the hub was switched off is dropped - without disturbing
+	 * pack reads, which {@link #generation} guards.
+	 */
+	private final AtomicInteger hubGeneration = new AtomicInteger();
 
 	/** The side panel, and the toolbar button that opens it. Made in startUp, on the EDT. */
 	private volatile PacksPanel panel;
@@ -243,6 +278,10 @@ public class CustomNpcModelsPlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navButton);
 
+		hubClient = new HubClient(okHttpClient, gson, hubUrl());
+		// Only records the switch; nothing is fetched until the panel is opened
+		panel.setHubEnabled(config.hubEnabled());
+
 		loadPacks();
 		clientThread.invoke(() ->
 		{
@@ -276,6 +315,8 @@ public class CustomNpcModelsPlugin extends Plugin
 		}
 		// The panel goes with its button; nothing holds it, so its snapshot of packs goes too
 		panel = null;
+		hubGeneration.incrementAndGet();
+		hubIcons.clear();
 
 		// Straight away rather than on the client thread, so Retro NPC Swapper takes these NPCs back
 		// even if the queued work below never runs. Nothing is computed, so any thread will do.
@@ -325,6 +366,22 @@ public class CustomNpcModelsPlugin extends Plugin
 		if (!CustomNpcModelsConfig.GROUP.equals(event.getGroup()) || InteractHighlightCompat.isStashKey(event.getKey()))
 		{
 			// Stash keys are our own bookkeeping, not a setting the user changed
+			return;
+		}
+
+		if (CustomNpcModelsConfig.HUB_ENABLED.equals(event.getKey()))
+		{
+			// Whatever the hub was asked before this, its answer no longer applies
+			hubGeneration.incrementAndGet();
+			boolean enabled = config.hubEnabled();
+			SwingUtilities.invokeLater(() ->
+			{
+				PacksPanel shown = panel;
+				if (shown != null)
+				{
+					shown.setHubEnabled(enabled);
+				}
+			});
 			return;
 		}
 
@@ -527,6 +584,15 @@ public class CustomNpcModelsPlugin extends Plugin
 	 */
 	private void loadPacks()
 	{
+		loadPacks(null);
+	}
+
+	/**
+	 * {@link #loadPacks()}, then {@code whenShown} on the client thread once the panel has been handed
+	 * the packs as read - so it runs after the panel shows them.
+	 */
+	private void loadPacks(Runnable whenShown)
+	{
 		int queuedUnder = generation.get();
 		packLoad = executor.submit(() ->
 		{
@@ -539,6 +605,14 @@ public class CustomNpcModelsPlugin extends Plugin
 			Filepath data = dataDirectory();
 			if (data != null)
 			{
+				try
+				{
+					HubInstaller.clearLeftovers(data.joinSegment(HUB_PACKS));
+				}
+				catch (IOException | RuntimeException ex)
+				{
+					log.debug("Could not clear an interrupted hub install", ex);
+				}
 				packs.addAll(readPacks(data.joinSegment(HUB_PACKS), PackKind.HUB));
 				packs.addAll(readPacks(data.joinSegment(LOCAL_PACKS), PackKind.LOCAL));
 			}
@@ -565,6 +639,10 @@ public class CustomNpcModelsPlugin extends Plugin
 
 				loadedPacks = packs;
 				recompose();
+				if (whenShown != null)
+				{
+					whenShown.run();
+				}
 			});
 		});
 	}
@@ -738,6 +816,200 @@ public class CustomNpcModelsPlugin extends Plugin
 				}
 			});
 		}
+
+		@Override
+		public void loadHub()
+		{
+			// Checked again here rather than trusting the panel: while this is off, nothing is fetched
+			if (!config.hubEnabled())
+			{
+				return;
+			}
+
+			int queuedUnder = generation.get();
+			int hubQueuedUnder = hubGeneration.get();
+			hubClient.fetchManifest(entries ->
+			{
+				if (!isCurrentHub(queuedUnder, hubQueuedUnder))
+				{
+					return;
+				}
+				onPanel(shown -> shown.setHubEntries(entries));
+				for (HubEntry entry : entries)
+				{
+					if (!hubIcons.containsKey(entry.getCommit()))
+					{
+						hubClient.fetchIcon(entry, icon ->
+						{
+							// Nor are icons fetched for a list that arrived as the hub was switched off
+							if (!isCurrentHub(queuedUnder, hubQueuedUnder))
+							{
+								return;
+							}
+							hubIcons.put(entry.getCommit(), icon);
+							BufferedImage image = HubClient.readIcon(icon);
+							if (image != null)
+							{
+								onPanel(shown -> shown.setHubIcon(entry.getCommit(), image));
+							}
+						});
+					}
+				}
+			}, error ->
+			{
+				if (!isCurrentHub(queuedUnder, hubQueuedUnder))
+				{
+					return;
+				}
+				log.debug("Custom Model Hub list failed: {}", error);
+				onPanel(shown -> shown.setHubError(error));
+			});
+		}
+
+		@Override
+		public void installHubPack(HubEntry entry)
+		{
+			if (!config.hubEnabled() || !entry.isCompatible())
+			{
+				return;
+			}
+
+			PacksPanel shown = panel;
+			if (shown != null)
+			{
+				shown.setBusy(entry.getId(), true);
+			}
+			int queuedUnder = generation.get();
+			hubClient.download(entry, bundle ->
+				// Downloaded and verified on the OkHttp thread; written to disk on the executor, where
+				// every other change to the pack folders happens
+				executor.submit(() ->
+				{
+					if (!active || queuedUnder != generation.get())
+					{
+						return;
+					}
+					boolean installed = false;
+					try
+					{
+						Filepath data = dataDirectory();
+						if (data == null)
+						{
+							showStatus("The plugin's data folder isn't available, so packs can't be installed. "
+								+ "See the log.", true);
+							return;
+						}
+						HubInstaller.install(data.joinSegment(HUB_PACKS), entry, bundle, hubIcons.get(entry.getCommit()), gson);
+						log.debug("Installed hub pack {} at {}", entry.getId(), entry.getCommit());
+						showStatus("Installed '" + entry.getName() + "'.", false);
+						// Busy until the panel shows it installed, or its button would offer the install again
+						loadPacks(() -> onPanel(done -> done.setBusy(entry.getId(), false)));
+						installed = true;
+					}
+					catch (IOException | RuntimeException ex)
+					{
+						log.warn("Could not install hub pack {}", entry.getId(), ex);
+						showStatus("'" + entry.getName() + "' couldn't be installed: " + ex.getMessage(), true);
+					}
+					finally
+					{
+						if (!installed)
+						{
+							onPanel(done -> done.setBusy(entry.getId(), false));
+						}
+					}
+				}), error ->
+			{
+				if (!active || queuedUnder != generation.get())
+				{
+					return;
+				}
+				showStatus(error, true);
+				onPanel(done -> done.setBusy(entry.getId(), false));
+			});
+		}
+
+		@Override
+		public void removeHubPack(String folder)
+		{
+			PacksPanel shown = panel;
+			if (shown != null)
+			{
+				shown.setBusy(folder, true);
+			}
+			int queuedUnder = generation.get();
+			executor.submit(() ->
+			{
+				if (!active || queuedUnder != generation.get())
+				{
+					return;
+				}
+				boolean removed = false;
+				try
+				{
+					Filepath data = dataDirectory();
+					if (data != null)
+					{
+						HubInstaller.remove(data.joinSegment(HUB_PACKS), folder);
+						showStatus("Removed the pack.", false);
+						loadPacks(() -> onPanel(done -> done.setBusy(folder, false)));
+						removed = true;
+					}
+				}
+				catch (IOException | RuntimeException ex)
+				{
+					log.warn("Could not remove hub pack {}", folder, ex);
+					showStatus("The pack couldn't be removed: " + ex.getMessage(), true);
+				}
+				finally
+				{
+					if (!removed)
+					{
+						onPanel(done -> done.setBusy(folder, false));
+					}
+				}
+			});
+		}
+	}
+
+	/**
+	 * Whether a hub answer still belongs to this session and this spell of the hub being switched on.
+	 * One that arrives after the hub is switched off is dropped - and asks for nothing more, icons
+	 * included.
+	 */
+	private boolean isCurrentHub(int queuedUnder, int hubQueuedUnder)
+	{
+		return active && queuedUnder == generation.get() && hubQueuedUnder == hubGeneration.get()
+			&& config.hubEnabled();
+	}
+
+	/**
+	 * Where the hub is. Always the real hub, except in RuneLite's developer mode, where
+	 * {@code ./gradlew run -PhubUrl=...} can point it at a local test hub; a Plugin Hub install never
+	 * runs in developer mode.
+	 */
+	private String hubUrl()
+	{
+		String override = developerMode ? System.getProperty(HUB_URL_PROPERTY) : null;
+		if (override != null && !override.trim().isEmpty())
+		{
+			log.info("Using the test Custom Model Hub at {}", override);
+			return override.endsWith("/") ? override : override + "/";
+		}
+		return HubClient.BASE_URL;
+	}
+
+	/** Runs {@code update} on the panel, on the EDT, if the panel is still there by then. */
+	private void onPanel(Consumer<PacksPanel> update)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			PacksPanel shown = panel;
+			if (shown != null)
+			{
+				update.accept(shown);
+			}
+		});
 	}
 
 	/**

@@ -24,6 +24,8 @@
  */
 package com.customnpcmodels.ui;
 
+import com.customnpcmodels.packs.HubEntry;
+import com.customnpcmodels.packs.PackKind;
 import com.customnpcmodels.packs.PackView;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -32,17 +34,22 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
@@ -55,6 +62,8 @@ import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.components.IconTextField;
 import net.runelite.client.ui.components.PluginErrorPanel;
+import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.SwingUtil;
 
 /**
@@ -89,7 +98,22 @@ public class PacksPanel extends PluginPanel
 
 		/** Reads every pack from disk again. */
 		void refresh();
+
+		/**
+		 * Fetches the hub's list of packs, answering with {@link #setHubEntries} or {@link #setHubError}.
+		 * Only asked while the hub is switched on.
+		 */
+		void loadHub();
+
+		/** Downloads and installs a hub pack, or updates it when it is installed. */
+		void installHubPack(HubEntry entry);
+
+		/** Removes an installed hub pack, by its folder under {@code hub/}. */
+		void removeHubPack(String folder);
 	}
+
+	/** Icons are shown this size, whatever size the pack ships. */
+	private static final int ICON_SIZE = 32;
 
 	private final Actions actions;
 	private final IconTextField search = new IconTextField();
@@ -100,6 +124,20 @@ public class PacksPanel extends PluginPanel
 	private final Set<String> expanded = new HashSet<>();
 
 	private List<PackView> packs = Collections.emptyList();
+
+	/** Whether the hub is switched on in config. While it is off, the panel asks nothing of it. */
+	private boolean hubEnabled;
+
+	/** The hub's packs as last fetched; null until they are. */
+	private List<HubEntry> hubEntries;
+	private boolean hubLoading;
+	private String hubError;
+
+	/** Hub pack icons, by the commit they were fetched at. */
+	private final Map<String, ImageIcon> hubIcons = new HashMap<>();
+
+	/** Hub packs with an install or removal under way, by id, so their button can't be pressed twice. */
+	private final Set<String> busy = new HashSet<>();
 
 	public PacksPanel(Actions actions)
 	{
@@ -156,8 +194,15 @@ public class PacksPanel extends PluginPanel
 		importButton.setToolTipText("Copy a pack folder - one holding a bundle.dat - into your local packs");
 		importButton.addActionListener(e -> actions.importPack());
 		JButton refreshButton = new JButton("Refresh");
-		refreshButton.setToolTipText("Read every pack from disk again");
-		refreshButton.addActionListener(e -> actions.refresh());
+		refreshButton.setToolTipText("Read every pack from disk again, and the hub's list when it is on");
+		refreshButton.addActionListener(e ->
+		{
+			actions.refresh();
+			if (hubEnabled)
+			{
+				requestHub();
+			}
+		});
 		buttons.add(importButton);
 		buttons.add(refreshButton);
 		header.add(buttons);
@@ -198,6 +243,92 @@ public class PacksPanel extends PluginPanel
 	}
 
 	/**
+	 * Whether the hub is switched on. Switching it on fetches its packs straight away if the panel is
+	 * open, and otherwise the next time it is. EDT only.
+	 */
+	public void setHubEnabled(boolean enabled)
+	{
+		hubEnabled = enabled;
+		if (!enabled)
+		{
+			hubEntries = null;
+			hubError = null;
+			hubLoading = false;
+		}
+		else if (isShowing() && hubEntries == null && !hubLoading)
+		{
+			requestHub();
+			return;
+		}
+		rebuild();
+	}
+
+	/** The hub's packs, as just fetched. EDT only. */
+	public void setHubEntries(List<HubEntry> entries)
+	{
+		if (!hubEnabled)
+		{
+			// An answer to a fetch made before the hub was switched off
+			return;
+		}
+		hubEntries = entries;
+		hubLoading = false;
+		hubError = null;
+		rebuild();
+	}
+
+	/** Why the hub's packs could not be fetched. EDT only. */
+	public void setHubError(String error)
+	{
+		if (!hubEnabled)
+		{
+			return;
+		}
+		hubLoading = false;
+		hubError = error;
+		rebuild();
+	}
+
+	/** A hub pack's icon, fetched after its entry. EDT only. */
+	public void setHubIcon(String commit, BufferedImage icon)
+	{
+		hubIcons.put(commit, new ImageIcon(ImageUtil.resizeImage(icon, ICON_SIZE, ICON_SIZE, true)));
+		rebuild();
+	}
+
+	/** Marks a hub pack's install or removal as under way, or done. EDT only. */
+	public void setBusy(String hubId, boolean isBusy)
+	{
+		if (isBusy ? busy.add(hubId) : busy.remove(hubId))
+		{
+			rebuild();
+		}
+	}
+
+	@Override
+	public void onActivate()
+	{
+		// The hub's packs are fetched when the panel is first opened, not when the plugin starts
+		if (hubEnabled && hubEntries == null && !hubLoading)
+		{
+			requestHub();
+		}
+	}
+
+	private void requestHub()
+	{
+		if (hubLoading)
+		{
+			// One fetch at a time: its answer covers whoever asked second
+			return;
+		}
+		hubLoading = true;
+		hubError = null;
+		rebuild();
+		actions.loadHub();
+	}
+
+	/**
 	 * Says how the last import went, or anything else the user should know - in red when something
 	 * went wrong, so it is not missed. Null clears it. EDT only.
 	 */
@@ -231,8 +362,151 @@ public class PacksPanel extends PluginPanel
 			}
 		}
 
+		addHubSection(terms);
+
 		list.revalidate();
 		list.repaint();
+	}
+
+	private void addHubSection(List<String> terms)
+	{
+		JLabel heading = new JLabel("Custom Model Hub");
+		heading.setFont(FontManager.getRunescapeBoldFont());
+		heading.setForeground(Color.WHITE);
+		heading.setBorder(new EmptyBorder(8, 0, 0, 0));
+		list.add(heading);
+
+		if (!hubEnabled)
+		{
+			list.add(detail("Switch on Enable Custom Model Hub in this plugin's settings to browse and download "
+				+ "packs. Until then, nothing is fetched.", ColorScheme.LIGHT_GRAY_COLOR));
+			return;
+		}
+		if (hubLoading)
+		{
+			list.add(detail("Loading the hub's packs...", ColorScheme.LIGHT_GRAY_COLOR));
+			return;
+		}
+		if (hubError != null)
+		{
+			list.add(detail(hubError, ColorScheme.PROGRESS_ERROR_COLOR));
+			JButton retry = new JButton("Retry");
+			retry.addActionListener(e -> requestHub());
+			list.add(retry);
+			return;
+		}
+		if (hubEntries == null)
+		{
+			return;
+		}
+
+		List<HubEntry> shown = hubEntries.stream()
+			.filter(entry -> terms.isEmpty() || matches(entry, terms))
+			.collect(Collectors.toList());
+		if (shown.isEmpty())
+		{
+			list.add(detail(hubEntries.isEmpty() ? "The hub has no packs yet." : "No hub packs match.",
+				ColorScheme.LIGHT_GRAY_COLOR));
+		}
+		for (HubEntry entry : shown)
+		{
+			list.add(hubItem(entry));
+		}
+	}
+
+	private JPanel hubItem(HubEntry entry)
+	{
+		JPanel item = new JPanel(new DynamicGridLayout(0, 1, 0, 3));
+		item.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		item.setBorder(new EmptyBorder(6, 6, 6, 6));
+
+		JPanel top = new JPanel(new BorderLayout(6, 0));
+		top.setOpaque(false);
+		ImageIcon icon = hubIcons.get(entry.getCommit());
+		if (icon != null)
+		{
+			top.add(new JLabel(icon), BorderLayout.WEST);
+		}
+		JLabel name = new JLabel(wrap(entry.getName(), TEXT_WIDTH - (icon != null ? ICON_SIZE + 30 : 30)));
+		name.setFont(FontManager.getRunescapeBoldFont());
+		name.setForeground(Color.WHITE);
+		top.add(name, BorderLayout.CENTER);
+
+		String repo = entry.getSafeRepo();
+		if (repo != null)
+		{
+			JButton page = new JButton("?");
+			page.setToolTipText("Open this pack's page on GitHub");
+			page.setMargin(new java.awt.Insets(0, 4, 0, 4));
+			page.addActionListener(e -> LinkBrowser.browse(repo));
+			top.add(page, BorderLayout.EAST);
+		}
+		item.add(top);
+
+		StringBuilder about = new StringBuilder("Hub");
+		if (entry.getAuthor() != null && !entry.getAuthor().trim().isEmpty())
+		{
+			about.append(" · by ").append(entry.getAuthor().trim());
+		}
+		if (entry.getVersion() != null && !entry.getVersion().trim().isEmpty())
+		{
+			about.append(" · v").append(entry.getVersion().trim());
+		}
+		item.add(detail(about.toString(), ColorScheme.LIGHT_GRAY_COLOR));
+		if (entry.getDescription() != null && !entry.getDescription().trim().isEmpty())
+		{
+			item.add(detail(entry.getDescription(), ColorScheme.LIGHT_GRAY_COLOR));
+		}
+		if (!entry.getModels().isEmpty())
+		{
+			item.add(detail(entry.getModels().size() + " model" + (entry.getModels().size() == 1 ? "" : "s") + ": "
+				+ entry.getModels().stream().map(HubEntry.Model::getName).collect(Collectors.joining(", ")),
+				ColorScheme.LIGHT_GRAY_COLOR));
+		}
+
+		PackView installed = packs.stream()
+			.filter(pack -> pack.getId().equals(entry.getPackId()))
+			.findFirst().orElse(null);
+		boolean update = installed != null && !entry.getCommit().equals(installed.getCommit());
+
+		if (!entry.isCompatible())
+		{
+			item.add(detail("Built for a different version of this plugin, so it can't be installed. "
+				+ "Updating the plugin may fix this.", ColorScheme.PROGRESS_ERROR_COLOR));
+		}
+
+		JPanel buttons = new JPanel(new java.awt.GridLayout(1, 2, 6, 0));
+		buttons.setOpaque(false);
+		boolean working = busy.contains(entry.getId());
+		if (installed == null || update)
+		{
+			JButton install = new JButton(working ? "Working..." : update ? "Update" : "Install");
+			install.setEnabled(!working && entry.isCompatible());
+			install.addActionListener(e -> actions.installHubPack(entry));
+			buttons.add(install);
+		}
+		if (installed != null)
+		{
+			buttons.add(removeButton(entry.getId(), entry.getName(), working));
+		}
+		item.add(buttons);
+		return item;
+	}
+
+	private JButton removeButton(String folder, String name, boolean working)
+	{
+		JButton remove = new JButton(working ? "Working..." : "Remove");
+		remove.setEnabled(!working);
+		remove.addActionListener(e ->
+		{
+			int answer = JOptionPane.showConfirmDialog(this, "Remove '" + name + "'? You can install it again from "
+				+ "the hub.", "Remove pack", JOptionPane.OK_CANCEL_OPTION);
+			if (answer == JOptionPane.OK_OPTION)
+			{
+				actions.removeHubPack(folder);
+			}
+		});
+		return remove;
 	}
 
 	private JPanel packItem(PackView pack)
@@ -256,7 +530,14 @@ public class PacksPanel extends PluginPanel
 		enabled.addActionListener(e -> actions.setPackEnabled(pack.getId(), enabled.isSelected()));
 		top.add(enabled, BorderLayout.WEST);
 
-		JLabel name = new JLabel(wrap(pack.getName(), TEXT_WIDTH - 60));
+		// A hub pack shows the icon its hub entry was listed with, when the hub has been fetched
+		ImageIcon icon = pack.getCommit() == null ? null : hubIcons.get(pack.getCommit());
+		JLabel name = new JLabel(wrap(pack.getName(), TEXT_WIDTH - 60 - (icon != null ? ICON_SIZE + 4 : 0)));
+		if (icon != null)
+		{
+			name.setIcon(icon);
+			name.setIconTextGap(4);
+		}
 		name.setFont(FontManager.getRunescapeBoldFont());
 		name.setForeground(pack.isEnabled() && readable ? Color.WHITE : ColorScheme.MEDIUM_GRAY_COLOR);
 		top.add(name, BorderLayout.CENTER);
@@ -278,6 +559,7 @@ public class PacksPanel extends PluginPanel
 		if (!readable)
 		{
 			item.add(detail("Could not be read: " + pack.getError(), ColorScheme.PROGRESS_ERROR_COLOR));
+			addHubRemove(item, pack);
 			return item;
 		}
 
@@ -308,7 +590,18 @@ public class PacksPanel extends PluginPanel
 				item.add(modelRow(model));
 			}
 		}
+		addHubRemove(item, pack);
 		return item;
+	}
+
+	/** A hub pack can be removed from its own card, even while the hub is switched off. */
+	private void addHubRemove(JPanel item, PackView pack)
+	{
+		if (pack.getKind() == PackKind.HUB)
+		{
+			String folder = pack.getId().substring(PackKind.HUB.packId("").length());
+			item.add(removeButton(folder, pack.getName(), busy.contains(folder)));
+		}
 	}
 
 	private JPanel modelRow(PackView.ModelView model)
@@ -408,6 +701,23 @@ public class PacksPanel extends PluginPanel
 		{
 			haystack.append(' ').append(model.getName()).append(' ').append(model.getNpcIds());
 		}
+		String text = haystack.toString().toLowerCase(Locale.ROOT);
+		return terms.stream().allMatch(text::contains);
+	}
+
+	/** Every term found in the hub pack's name, author, description or tags, or its models' names. */
+	private static boolean matches(HubEntry entry, List<String> terms)
+	{
+		StringBuilder haystack = new StringBuilder("hub ").append(entry.getName());
+		for (String part : new String[]{entry.getAuthor(), entry.getDescription()})
+		{
+			if (part != null)
+			{
+				haystack.append(' ').append(part);
+			}
+		}
+		entry.getTags().forEach(tag -> haystack.append(' ').append(tag));
+		entry.getModels().forEach(model -> haystack.append(' ').append(model.getName()));
 		String text = haystack.toString().toLowerCase(Locale.ROOT);
 		return terms.stream().allMatch(text::contains);
 	}

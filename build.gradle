@@ -63,6 +63,12 @@ tasks.register('run', JavaExec) {
 			"--add-exports=java.desktop/sun.font=ALL-UNNAMED",
 			"-ea"
 	args "--developer-mode", "--debug", "--disable-telemetry"
+
+	// Points the Custom Model Hub at a test server, eg the one serveHubFixture runs. The plugin only
+	// honours this in developer mode, which this task always is.
+	if (project.hasProperty('hubUrl')) {
+		systemProperty 'customnpcmodels.hubUrl', project.property('hubUrl')
+	}
 }
 
 // Prints NPC definitions from the live OSRS cache - model ids, recolors, scale and the sequences
@@ -195,6 +201,19 @@ tasks.register('writeBlacklistFixture', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = 'com.customnpcmodels.packs.BlacklistFixture'
 	workingDir = rootDir
+}
+
+// Serves a test Custom Model Hub on localhost:8765, built from the dev bundle, for trying the hub
+// client in game before the real hub exists; pair with ./gradlew run -PhubUrl=http://localhost:8765/.
+// -Prevision=2 gives its pack a new commit, so an installed copy shows an update.
+tasks.register('serveHubFixture', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.packs.HubFixture'
+	workingDir = rootDir
+
+	if (project.hasProperty('revision')) {
+		systemProperty 'customnpcmodels.revision', project.property('revision')
+	}
 }
 
 tasks.register('shadowJar', Jar) {

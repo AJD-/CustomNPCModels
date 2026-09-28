@@ -51,6 +51,9 @@ public class PackView
 	String version;
 	String description;
 
+	/** The hub commit a hub pack was installed from, so the panel can tell it has an update. */
+	String commit;
+
 	/** Why the pack could not be read, or null when it was. */
 	String error;
 
@@ -113,7 +116,7 @@ public class PackView
 			}
 
 			views.add(new PackView(info.getId(), info.getName(), info.getKind(), info.getAuthor(), info.getVersion(),
-				info.getDescription(), pack.getError(), selection.isPackEnabled(info.getId()),
+				info.getDescription(), info.getCommit(), pack.getError(), selection.isPackEnabled(info.getId()),
 				Collections.unmodifiableList(models)));
 		}
 		return Collections.unmodifiableList(views);
