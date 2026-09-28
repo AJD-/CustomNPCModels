@@ -24,10 +24,14 @@
  */
 package com.customnpcmodels;
 
+import com.customnpcmodels.compatibility.RendererChain;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
+import java.util.function.Supplier;
 import net.runelite.api.hooks.DrawCallbacks;
 import net.runelite.client.plugins.Plugin;
 import org.junit.Test;
@@ -47,6 +51,11 @@ public class RendererHostTest
 	private static Plugin gpuPlugin()
 	{
 		return mock(Plugin.class, withSettings().extraInterfaces(DrawCallbacks.class));
+	}
+
+	private static DrawCallbacks decorate(DrawCallbacks delegate)
+	{
+		return new CustomDrawCallbacks(delegate, (npc, vanilla) -> null);
 	}
 
 	@Test
@@ -94,5 +103,29 @@ public class RendererHostTest
 		// The plugin itself never holds the slot, and a lookalike package must not slip through
 		assertFalse(CustomNpcModelsPlugin.isHdZoneRenderer("rs117.hd.HdPlugin"));
 		assertFalse(CustomNpcModelsPlugin.isHdZoneRenderer("rs117.hd.renderer.zoned.Renderer"));
+	}
+
+	@Test
+	public void testTheGpuPluginBeneathAKnownDecoratorIsWrapped()
+	{
+		assertTrue(CustomNpcModelsPlugin.isSupportedHost(decorate((DrawCallbacks) gpu), gpu));
+		assertTrue(CustomNpcModelsPlugin.isSupportedHost(decorate(decorate((DrawCallbacks) gpu)), gpu));
+	}
+
+	@Test
+	public void testAnUnknownRendererBeneathAKnownDecoratorIsDeclined()
+	{
+		assertFalse(CustomNpcModelsPlugin.isSupportedHost(decorate(mock(DrawCallbacks.class)), gpu));
+	}
+
+	@Test
+	public void testAnUnknownDecoratorIsNotSeenThrough()
+	{
+		// Supplies the GPU plugin, but nothing says it forwards everything else to it
+		DrawCallbacks unknown = mock(DrawCallbacks.class, withSettings().extraInterfaces(Supplier.class));
+		when(((Supplier<?>) unknown).get()).thenReturn(gpu);
+
+		assertFalse(CustomNpcModelsPlugin.isSupportedHost(unknown, gpu));
+		assertSame(unknown, RendererChain.base(unknown));
 	}
 }
