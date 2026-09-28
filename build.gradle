@@ -189,6 +189,14 @@ tasks.register('generateAssets', JavaExec) {
 	}
 }
 
+// Writes build/fixtures/blacklisted-pack: the dev bundle's models, also bound to TzKal-Zuk, for
+// checking in game that the plugin refuses a blacklisted NPC - which generateAssets never builds
+tasks.register('writeBlacklistFixture', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.packs.BlacklistFixture'
+	workingDir = rootDir
+}
+
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath
 	manifest {

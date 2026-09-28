@@ -35,8 +35,12 @@ import com.customnpcmodels.packs.DirectoryPackSource;
 import com.customnpcmodels.packs.LoadedPack;
 import com.customnpcmodels.packs.ModelCatalog;
 import com.customnpcmodels.packs.PackComposer;
+import com.customnpcmodels.packs.PackImporter;
 import com.customnpcmodels.packs.PackKind;
 import com.customnpcmodels.packs.PackSelection;
+import com.customnpcmodels.packs.PackSettings;
+import com.customnpcmodels.packs.PackView;
+import com.customnpcmodels.ui.PacksPanel;
 import com.google.gson.Gson;
 import com.google.inject.Provides;
 import java.io.IOException;
@@ -46,8 +50,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
+import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -79,8 +85,11 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.gpu.GpuPlugin;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Filepath;
+import net.runelite.client.util.ImageUtil;
 
 @Slf4j
 @PluginDescriptor(
@@ -103,6 +112,10 @@ public class CustomNpcModelsPlugin extends Plugin
 	/** Folders in the data directory: packs installed from the hub, and packs the user added. */
 	static final String HUB_PACKS = "hub";
 	static final String LOCAL_PACKS = "local";
+
+	/** The config keys the side panel writes, which change which model each NPC is drawn with. */
+	private static final Set<String> SELECTION_KEYS = Set.of(CustomNpcModelsConfig.DISABLED_PACKS,
+		CustomNpcModelsConfig.DISABLED_MODELS, CustomNpcModelsConfig.PACK_ORDER);
 
 	@Inject
 	private Client client;
@@ -145,6 +158,22 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	@Inject
 	private Gson gson;
+
+	@Inject
+	private ClientToolbar clientToolbar;
+
+	@Inject
+	private PackSettings packSettings;
+
+	/** The side panel, and the toolbar button that opens it. Made in startUp, on the EDT. */
+	private volatile PacksPanel panel;
+	private NavigationButton navButton;
+
+	/**
+	 * Whether a recompose is already queued. A profile switch changes every selection key at once,
+	 * each posting its own ConfigChanged, and one recompose covers them all.
+	 */
+	private final AtomicBoolean recomposeQueued = new AtomicBoolean();
 
 	/** The packs inside the jar: the shipped one, and the development bundle under ./gradlew run. */
 	private final ClasspathPackSource classpathPacks = new ClasspathPackSource();
@@ -203,6 +232,17 @@ public class CustomNpcModelsPlugin extends Plugin
 		log.info("Custom NPC Models started");
 		active = true;
 		generation.incrementAndGet();
+
+		// startUp runs on the EDT, which is where Swing has to be built
+		panel = new PacksPanel(new PanelActions());
+		navButton = NavigationButton.builder()
+			.tooltip("Custom NPC Models")
+			.icon(ImageUtil.loadImageResource(getClass(), "panel_icon.png"))
+			.priority(8)
+			.panel(panel)
+			.build();
+		clientToolbar.addNavigation(navButton);
+
 		loadPacks();
 		clientThread.invoke(() ->
 		{
@@ -228,6 +268,14 @@ public class CustomNpcModelsPlugin extends Plugin
 			load.cancel(false);
 			packLoad = null;
 		}
+
+		if (navButton != null)
+		{
+			clientToolbar.removeNavigation(navButton);
+			navButton = null;
+		}
+		// The panel goes with its button; nothing holds it, so its snapshot of packs goes too
+		panel = null;
 
 		// Straight away rather than on the client thread, so Retro NPC Swapper takes these NPCs back
 		// even if the queued work below never runs. Nothing is computed, so any thread will do.
@@ -277,6 +325,14 @@ public class CustomNpcModelsPlugin extends Plugin
 		if (!CustomNpcModelsConfig.GROUP.equals(event.getGroup()) || InteractHighlightCompat.isStashKey(event.getKey()))
 		{
 			// Stash keys are our own bookkeeping, not a setting the user changed
+			return;
+		}
+
+		if (SELECTION_KEYS.contains(event.getKey()))
+		{
+			// Which packs and models are on: decide again which model each NPC is drawn with. That
+			// sweeps the scene itself, so the generic recheck below is not needed on top.
+			requestRecompose();
 			return;
 		}
 
@@ -557,12 +613,131 @@ public class CustomNpcModelsPlugin extends Plugin
 	 */
 	private void recompose()
 	{
-		ModelCatalog catalog = PackComposer.compose(loadedPacks, PackSelection.DEFAULT);
+		PackSelection selection = packSettings.read();
+		ModelCatalog catalog = PackComposer.compose(loadedPacks, selection);
 		modelCache.setCatalog(catalog);
 
 		// NPCs are usually already on screen by the time packs land, and setCatalog only drops what
 		// changed, it does not rebuild
 		recheckLoadedNpcs();
+
+		List<PackView> views = PackView.of(loadedPacks, catalog, selection);
+		SwingUtilities.invokeLater(() ->
+		{
+			PacksPanel shown = panel;
+			if (shown != null)
+			{
+				shown.setPacks(views);
+			}
+		});
+	}
+
+	/** Queues one recompose on the client thread, however many changes ask for it before it runs. */
+	private void requestRecompose()
+	{
+		if (recomposeQueued.compareAndSet(false, true))
+		{
+			clientThread.invoke(() ->
+			{
+				recomposeQueued.set(false);
+				if (active)
+				{
+					recompose();
+				}
+			});
+		}
+	}
+
+	/** Shows a message in the panel, in red when it is an error, from any thread. */
+	private void showStatus(String message, boolean error)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			PacksPanel shown = panel;
+			if (shown != null)
+			{
+				shown.showStatus(message, error);
+			}
+		});
+	}
+
+	/**
+	 * What the side panel asks for. Called on the EDT: selection changes are config writes, which come
+	 * back through {@link #onConfigChanged}; anything touching disk goes to the executor.
+	 */
+	private class PanelActions implements PacksPanel.Actions
+	{
+		@Override
+		public void setPackEnabled(String packId, boolean enabled)
+		{
+			packSettings.setPackEnabled(packId, enabled);
+		}
+
+		@Override
+		public void setModelEnabled(String modelKey, boolean enabled)
+		{
+			packSettings.setModelEnabled(modelKey, enabled);
+		}
+
+		@Override
+		public void setOrder(List<String> packIds)
+		{
+			packSettings.setOrder(packIds);
+		}
+
+		@Override
+		public void refresh()
+		{
+			showStatus(null, false);
+			loadPacks();
+		}
+
+		@Override
+		public void importPack()
+		{
+			PacksPanel shown = panel;
+			if (shown == null)
+			{
+				return;
+			}
+
+			// The chooser has to be shown on the EDT, and blocks until it closes
+			List<Filepath> chosen = new Filepath.Chooser()
+				.setIsOpen()
+				.setAcceptsDirectories()
+				.setDialogTitle("Choose a pack folder (one holding bundle.dat)")
+				.showDialog(shown);
+			if (chosen == null || chosen.isEmpty())
+			{
+				return;
+			}
+
+			Filepath source = chosen.get(0);
+			int queuedUnder = generation.get();
+			executor.submit(() ->
+			{
+				if (!active || queuedUnder != generation.get())
+				{
+					return;
+				}
+
+				// Resolved here rather than read from the field: an import straight after startup can
+				// come before the first load has made the folder
+				Filepath data = dataDirectory();
+				if (data == null)
+				{
+					showStatus("The plugin's data folder isn't available, so packs can't be imported. See the log.", true);
+					return;
+				}
+				PackImporter.Result result = PackImporter.importFolder(source, data.joinSegment(LOCAL_PACKS), gson);
+				log.debug("Pack import from {}: {}", source, result.getMessage());
+				showStatus(result.getMessage(), !result.isImported());
+				if (result.isImported())
+				{
+					loadPacks();
+				}
+			});
+		}
 	}
 
 	/**

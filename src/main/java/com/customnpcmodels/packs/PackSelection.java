@@ -25,8 +25,10 @@
 package com.customnpcmodels.packs;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.Value;
@@ -50,6 +52,41 @@ public class PackSelection
 	/** Pack ids, highest priority first. Packs not named here follow, in their default order. */
 	List<String> order;
 
+	/**
+	 * A selection as stored: three comma-separated lists, any of them null or blank. No pack id or
+	 * model key can hold a comma - folder names are refused one - so nothing needs escaping.
+	 */
+	public static PackSelection parse(String disabledPacks, String disabledModels, String order)
+	{
+		return new PackSelection(new LinkedHashSet<>(split(disabledPacks)), new LinkedHashSet<>(split(disabledModels)),
+			split(order));
+	}
+
+	/** The entries of a stored list, blanks and repeats dropped. */
+	public static List<String> split(String csv)
+	{
+		List<String> entries = new ArrayList<>();
+		if (csv == null)
+		{
+			return entries;
+		}
+		for (String entry : csv.split(","))
+		{
+			String trimmed = entry.trim();
+			if (!trimmed.isEmpty() && !entries.contains(trimmed))
+			{
+				entries.add(trimmed);
+			}
+		}
+		return entries;
+	}
+
+	/** A list as stored, for {@link #split}. */
+	public static String join(Collection<String> entries)
+	{
+		return String.join(",", entries);
+	}
+
 	public boolean isPackEnabled(String packId)
 	{
 		return !disabledPacks.contains(packId);
@@ -61,22 +98,43 @@ public class PackSelection
 	}
 
 	/**
-	 * {@code packs}, highest priority first: those {@link #order} names, in that order, then the rest
-	 * by kind - dev, then hub and local, then built-in - keeping their given order within a kind.
+	 * {@code packs}, highest priority first: those {@link #order} names, in that order, with any pack
+	 * it does not name - one added since the user last reordered - slotted in by kind, just after the
+	 * last named pack of its own kind or an earlier one. Kinds go dev, then hub and local, then
+	 * built-in, so a new local pack still outranks the one inside the plugin unless the user has put
+	 * that above their other packs.
 	 */
 	public List<LoadedPack> ordered(List<LoadedPack> packs)
 	{
-		List<LoadedPack> sorted = new ArrayList<>(packs);
-		sorted.sort(Comparator
-			.comparingInt((LoadedPack pack) -> rank(pack.getId()))
-			.thenComparingInt(pack -> kindRank(pack.getInfo().getKind())));
-		return sorted;
-	}
+		// The default order: by kind, keeping the given order within a kind
+		List<LoadedPack> byKind = new ArrayList<>(packs);
+		byKind.sort(Comparator.comparingInt(pack -> kindRank(pack.getInfo().getKind())));
 
-	private int rank(String packId)
-	{
-		int index = order.indexOf(packId);
-		return index == -1 ? Integer.MAX_VALUE : index;
+		List<LoadedPack> sorted = new ArrayList<>();
+		for (String id : order)
+		{
+			byKind.stream().filter(pack -> pack.getId().equals(id)).findFirst().ifPresent(sorted::add);
+		}
+
+		for (LoadedPack pack : byKind)
+		{
+			if (sorted.contains(pack))
+			{
+				continue;
+			}
+
+			int rank = kindRank(pack.getInfo().getKind());
+			int at = 0;
+			for (int i = 0; i < sorted.size(); i++)
+			{
+				if (kindRank(sorted.get(i).getInfo().getKind()) <= rank)
+				{
+					at = i + 1;
+				}
+			}
+			sorted.add(at, pack);
+		}
+		return sorted;
 	}
 
 	private static int kindRank(PackKind kind)

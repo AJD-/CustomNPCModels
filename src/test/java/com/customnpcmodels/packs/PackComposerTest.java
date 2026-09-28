@@ -103,6 +103,37 @@ public class PackComposerTest
 			.get(MOLE).getPackId());
 	}
 
+	/**
+	 * Reordering writes every pack's id, built-in included. A pack added after that is not named, and
+	 * must still land by kind - a new local pack above the built-in one - not below everything.
+	 */
+	@Test
+	public void testAPackAddedAfterReorderingKeepsItsKindsPlace()
+	{
+		LoadedPack builtin = pack(PackKind.BUILTIN, null, bundle(1, MOLE));
+		LoadedPack first = pack(PackKind.LOCAL, "first", bundle(1, MOLE));
+		LoadedPack added = pack(PackKind.LOCAL, "added", bundle(1, MOLE));
+		PackSelection reordered = selection(Collections.emptyList(), Collections.emptyList(),
+			Arrays.asList("local:first", "builtin"));
+
+		List<LoadedPack> ordered = reordered.ordered(Arrays.asList(builtin, first, added));
+
+		assertEquals(Arrays.asList("local:first", "local:added", "builtin"),
+			Arrays.asList(ordered.get(0).getId(), ordered.get(1).getId(), ordered.get(2).getId()));
+
+		// And a user who put built-in first keeps it there, with the new pack after their other one
+		PackSelection builtinFirst = selection(Collections.emptyList(), Collections.emptyList(),
+			Arrays.asList("builtin", "local:first"));
+		List<LoadedPack> kept = builtinFirst.ordered(Arrays.asList(builtin, first, added));
+		assertEquals(Arrays.asList("builtin", "local:first", "local:added"),
+			Arrays.asList(kept.get(0).getId(), kept.get(1).getId(), kept.get(2).getId()));
+
+		// With none of its kind or earlier named, it goes to the top
+		PackSelection onlyBuiltin = selection(Collections.emptyList(), Collections.emptyList(),
+			Collections.singletonList("builtin"));
+		assertEquals("local:added", onlyBuiltin.ordered(Arrays.asList(builtin, added)).get(0).getId());
+	}
+
 	@Test
 	public void testSwitchedOffPacksAndModelsAreSkipped()
 	{

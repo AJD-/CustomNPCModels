@@ -20,6 +20,19 @@ of the two starts first draws and the other stands down. Turn on the `Fix Intera
 outlines` option in only one of the two plugins. Each turns Interact Highlight's NPC outlines off and
 restores them on its own, so with both on, those settings can be restored wrong.
 
+## The side panel
+
+The plugin's button in the sidebar opens a list of every model pack it found. From there you can:
+
+- Switch a whole pack on or off, or open it and switch single models on or off.
+- Move packs up or down. Where two packs have a model for the same NPC, the higher one is drawn, and
+  the lower one says which pack overrides it.
+- Import a pack folder with **Import pack...**, and read every pack from disk again with **Refresh**.
+
+What you switch off is remembered per RuneLite profile. A pack or model you haven't seen before starts
+switched on. Models for NPCs that can never be swapped (see "How it works") are listed, greyed out,
+with the reason.
+
 <details>
 <summary>How it works</summary>
 
@@ -39,7 +52,8 @@ restores them on its own, so with both on, those settings can be restored wrong.
   that's the development bundle, then hub and local packs, then the pack inside the plugin. Each
   model is built and animated from its own pack alone, so packs authored separately can reuse mesh,
   rig and sequence ids without clashing. A pack that can't be read is skipped with a warning in the
-  log, and the rest still load.
+  log, and the rest still load. The side panel changes the priority order, and which packs and
+  models are drawn. That takes effect straight away, rebuilding only the NPCs it changes.
 - `Interact Highlight` compatibility: the **Compatibility** section's `Fix Interact Highlight
   outlines` option draws that plugin's NPC hover and interact outlines around the custom model
   instead of the original. It does this by turning those two settings off in Interact Highlight
@@ -165,6 +179,10 @@ If the model still doesn't change, see the "Debugging" section below.
   `"pack": {"id": "my-pack", "name": "My pack", "author": "...", "version": "1.0", "tags": [...]}`.
   The id may only use lowercase letters, digits and hyphens. `pack.json` also lists the pack's
   models, taken from the bundle.
+- `./gradlew writeBlacklistFixture` writes `build/fixtures/blacklisted-pack`: the dev bundle's first
+  model, also bound to TzKal-Zuk. `generateAssets` refuses to build such a pack, so this is how to
+  check in game that the plugin refuses one too. Import it with **Import pack...**: the panel lists
+  the model as partly never swapped, and the log shows `NPC 7706 (the Inferno) is never swapped`.
 - `./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]` reports how far a `.glb` has
   moved from the NPC it was exported from, without starting the client: converter warnings, which
   vertex groups moved at rest, which faces were recolored, and the worst vertex error over every
@@ -262,13 +280,18 @@ Local packs are for trying your own models. They supplement the models the plugi
 nothing about them leaves your machine.
 
 1. Build the pack: `./gradlew generateAssets -PassetsDir=<dir> -PpackOut` (see "Authoring Tools").
-2. Copy its folder, with `bundle.dat` and `pack.json` inside, into the plugin's data folder:
-   `~/.runelite/plugin-data/custom-npc-models/local/<name>/`
-   (`%USERPROFILE%\.runelite\plugin-data\custom-npc-models\local\<name>\` on Windows). The plugin
-   makes the `local` folder the first time it starts. Folder names may use letters, digits, spaces,
-   `.`, `-` and `_`, but may not start or end with a dot or a space, or be a name Windows reserves
-   such as `con` or `aux`.
-3. Restart the plugin. Packs are read when it starts.
+2. In the side panel, choose **Import pack...** and pick the pack's folder, the one holding
+   `bundle.dat`. The pack is checked before anything is copied. It's copied into the plugin's data
+   folder, `~/.runelite/plugin-data/custom-npc-models/local/<name>/`
+   (`%USERPROFILE%\.runelite\plugin-data\custom-npc-models\local\<name>\` on Windows), and loaded
+   straight away. `<name>` is the pack's id, or else its folder's name, lowercased, with anything but
+   letters, digits, `-` and `_` turned into `-`. An import never overwrites a pack already there: to
+   replace one, delete its folder first, then import again.
+
+You can also copy a pack folder into `local` yourself, then choose **Refresh**. Folder names may use
+letters, digits, spaces, `.`, `-` and `_`, but may not start or end with a dot or a space, or be a
+name Windows reserves such as `con` or `aux`. To remove a local pack, delete its folder and choose
+**Refresh**.
 
 Blacklisted NPCs are ignored in local packs too. A model made from an `exportGltf` export is Jagex
 geometry: it's fine in your own local folder, but never share or upload it.
