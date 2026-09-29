@@ -65,7 +65,27 @@ final class Manifest
 {
 	static final String FILE_NAME = "models.json";
 
+	/**
+	 * What the models are published as, when they are built into a pack with {@code -PpackOut}.
+	 * Optional otherwise. A real field rather than left to Gson to ignore, so the exporter keeps it
+	 * when it rewrites this file.
+	 */
+	Pack pack;
+
 	List<Model> models = new ArrayList<>();
+
+	/** Written to the pack's {@code pack.json}. The plugin reads everything here but the id. */
+	static final class Pack
+	{
+		/** Lowercase letters, digits and hyphens: the pack's folder, and its hub branch. */
+		String id;
+		String name;
+		String author;
+		String description;
+		String version;
+		String license;
+		List<String> tags;
+	}
 
 	static final class Model
 	{

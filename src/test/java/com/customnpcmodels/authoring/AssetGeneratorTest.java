@@ -35,12 +35,21 @@ import static org.mockito.Mockito.when;
 import com.customnpcmodels.ModelCache;
 import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.AssetCodec;
+import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcBinding;
+import com.customnpcmodels.packs.TestPacks;
+import com.google.gson.JsonObject;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import net.runelite.api.Model;
 import net.runelite.api.NPC;
@@ -71,7 +80,7 @@ public class AssetGeneratorTest
 
 		// With nothing bound, the plugin substitutes nothing
 		ModelCache cache = new ModelCache();
-		cache.setBundle(read);
+		cache.setCatalog(TestPacks.catalogOf(read));
 		assertFalse(cache.ensureBuilt(NpcID.MOLE_GIANT));
 	}
 
@@ -184,11 +193,11 @@ public class AssetGeneratorTest
 		assertEquals(118, binding.getScaleXZ());
 		assertEquals(118, binding.getScaleY());
 		assertEquals(LiveFixtures.mole().getVerticesCount(), bundle.getMesh(binding.getMeshIds()[0]).getVerticesCount());
-		assertEquals(LiveFixtures.liveFrameCount(LiveFixtures.MOLE_READY), bundle.getClip(LiveFixtures.MOLE_READY).getFrameCount());
-		assertEquals(LiveFixtures.liveFrameCount(LiveFixtures.MOLE_WALK), bundle.getClip(LiveFixtures.MOLE_WALK).getFrameCount());
+		assertEquals(LiveFixtures.liveFrameCount(LiveFixtures.MOLE_READY), bundle.getClip(binding.getRigId(), LiveFixtures.MOLE_READY).getFrameCount());
+		assertEquals(LiveFixtures.liveFrameCount(LiveFixtures.MOLE_WALK), bundle.getClip(binding.getRigId(), LiveFixtures.MOLE_WALK).getFrameCount());
 
 		ModelCache cache = new ModelCache();
-		cache.setBundle(bundle);
+		cache.setCatalog(TestPacks.catalogOf(bundle));
 		assertTrue(cache.ensureBuilt(NpcID.MOLE_GIANT));
 		cache.setSubstituted(NpcID.MOLE_GIANT);
 
@@ -209,8 +218,12 @@ public class AssetGeneratorTest
 		assertNull(cache.pose(other));
 	}
 
+	/**
+	 * Clips are keyed by rig as well as sequence, so two models may both answer for one live sequence
+	 * - as every humanoid must - and each is posed by its own.
+	 */
 	@Test
-	public void testTwoModelsCannotAnswerForOneSequence() throws Exception
+	public void testTwoModelsCanAnswerForOneSequence() throws Exception
 	{
 		Path dir = exportMole();
 		Manifest manifest = Manifest.read(dir);
@@ -221,7 +234,95 @@ public class AssetGeneratorTest
 		copy.npcIds = new int[]{NpcID.MOLE_BABY_01};
 		manifest.models.add(copy);
 
-		assertRefused(manifest, dir, "both map an animation to sequence");
+		AssetBundle bundle = codecRoundTrip(AssetGenerator.build(manifest, dir,
+			id -> AssetGenerator.timing(LiveFixtures.store(), id)));
+
+		int first = bundle.getBinding(NpcID.MOLE_GIANT).getRigId();
+		int second = bundle.getBinding(NpcID.MOLE_BABY_01).getRigId();
+		assertEquals(copy.rigId, second);
+		assertFalse(first == second);
+		assertNotNull(bundle.getClip(first, LiveFixtures.MOLE_WALK));
+		assertNotNull(bundle.getClip(second, LiveFixtures.MOLE_WALK));
+		assertFalse(bundle.getClip(first, LiveFixtures.MOLE_WALK) == bundle.getClip(second, LiveFixtures.MOLE_WALK));
+	}
+
+	/**
+	 * Clips are keyed by rig and sequence, so a second animation mapped to the same sequence would
+	 * silently replace the first. It is refused instead.
+	 */
+	@Test
+	public void testOneModelCannotMapTwoAnimationsToOneSequence() throws Exception
+	{
+		Path dir = exportMole();
+		Manifest manifest = Manifest.read(dir);
+		Map<String, Integer> animations = new LinkedHashMap<>();
+		animations.put(String.valueOf(LiveFixtures.MOLE_READY), LiveFixtures.MOLE_WALK);
+		animations.put(String.valueOf(LiveFixtures.MOLE_WALK), LiveFixtures.MOLE_WALK);
+		manifest.models.get(0).animations = animations;
+
+		assertRefused(manifest, dir, "maps two animations to sequence " + LiveFixtures.MOLE_WALK);
+	}
+
+	/** A glb with no skin converts to no rig, and its binding says so rather than naming one. */
+	@Test
+	public void testAnUnskinnedModelNamesNoRig() throws Exception
+	{
+		Mesh still = new TestMesh().groups(null).build();
+		Files.write(folder.getRoot().toPath().resolve("still.glb"), GlbWriter.write(still, new ArrayList<>()));
+		Manifest.Model model = new Manifest.Model();
+		model.name = "Still";
+		model.glb = "still.glb";
+		model.meshId = GltfExporter.ID_BASE + NpcID.MOLE_GIANT;
+		model.rigId = model.meshId;
+		model.npcIds = new int[]{NpcID.MOLE_GIANT};
+		Manifest manifest = new Manifest();
+		manifest.models.add(model);
+
+		AssetBundle bundle = codecRoundTrip(AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null));
+
+		assertEquals(NpcBinding.STATIC, bundle.getBinding(NpcID.MOLE_GIANT).getRigId());
+		assertTrue(bundle.getRigs().isEmpty());
+	}
+
+	@Test
+	public void testAPackNeedsAnIdAndName()
+	{
+		Manifest manifest = new Manifest();
+		assertTrue(AssetGenerator.checkPack(manifest, false).get(0).contains("no \"pack\" block"));
+
+		manifest.pack = new Manifest.Pack();
+		manifest.pack.id = "Not A Valid Id";
+		List<String> problems = AssetGenerator.checkPack(manifest, true);
+		assertEquals(problems.toString(), 3, problems.size());
+
+		manifest.pack.id = "my-pack";
+		manifest.pack.name = "My pack";
+		assertTrue(AssetGenerator.checkPack(manifest, false).isEmpty());
+	}
+
+	/** The model list comes from the bundle, so pack.json can never disagree with what is in it. */
+	@Test
+	public void testPackInfoListsTheBundlesModels() throws Exception
+	{
+		Manifest.Pack pack = new Manifest.Pack();
+		pack.id = "my-pack";
+		pack.name = "My pack";
+		pack.author = "Someone";
+		NpcBinding binding = new NpcBinding("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779},
+			NpcBinding.STATIC, 128, 128, null, null, 0, 0);
+		AssetBundle bundle = new AssetBundle(Collections.emptyMap(), Collections.emptyMap(),
+			Collections.emptyList(), Collections.singletonList(binding));
+
+		Path file = folder.getRoot().toPath().resolve("pack.json");
+		AssetGenerator.writePackInfo(pack, bundle, file);
+
+		JsonObject json = Glb.GSON.fromJson(new String(Files.readAllBytes(file), StandardCharsets.UTF_8), JsonObject.class);
+		assertEquals("My pack", json.get("name").getAsString());
+		assertEquals("Someone", json.get("author").getAsString());
+		JsonObject model = json.getAsJsonArray("models").get(0).getAsJsonObject();
+		assertEquals(1_005_779, model.get("key").getAsInt());
+		assertEquals("Mole", model.get("name").getAsString());
+		assertEquals(NpcID.MOLE_GIANT, model.getAsJsonArray("npcIds").get(0).getAsInt());
 	}
 
 	@Test

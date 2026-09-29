@@ -258,15 +258,15 @@ public class AssetValidatorTest
 	{
 		Map<Integer, Mesh> meshes = new LinkedHashMap<>();
 		meshes.put(1, valid());
-		return new AssetBundle(meshes, Collections.emptyMap(), Collections.emptyMap(), Arrays.asList(bindings));
+		return new AssetBundle(meshes, Collections.emptyMap(), Collections.emptyList(), Arrays.asList(bindings));
 	}
 
 	@Test
 	public void testRejectsBindingProblems()
 	{
 		List<String> problems = AssetValidator.validate(bundleWith(
-			new NpcBinding("a", new int[]{5}, new int[]{1, 2}, 128, 128, null, null),
-			new NpcBinding("b", new int[]{5}, new int[]{1}, 0, 128, new short[]{1}, null)), id -> -1);
+			new NpcBinding("a", new int[]{5}, new int[]{1, 2}, NpcBinding.STATIC, 128, 128, null, null, 0, 0),
+			new NpcBinding("b", new int[]{5}, new int[]{1}, NpcBinding.STATIC, 0, 128, new short[]{1}, null, 0, 0)), id -> -1);
 
 		assertEquals(problems.toString(), 4, problems.size());
 		assertTrue(problems.get(0), problems.get(0).contains("mesh 2"));
@@ -276,10 +276,19 @@ public class AssetValidatorTest
 	}
 
 	@Test
+	public void testRejectsABindingToAnUnknownRig()
+	{
+		String problem = only(AssetValidator.validate(bundleWith(
+			new NpcBinding("a", new int[]{5}, new int[]{1}, 999, 128, 128, null, null, 0, 0)), id -> -1));
+
+		assertTrue(problem, problem.contains("names rig 999"));
+	}
+
+	@Test
 	public void testRejectsABlacklistedNpc()
 	{
 		String problem = only(AssetValidator.validate(bundleWith(
-			new NpcBinding("zuk", new int[]{NpcID.INFERNO_TZKALZUK_PLACEHOLDER}, new int[]{1}, 128, 128, null, null)),
+			new NpcBinding("zuk", new int[]{NpcID.INFERNO_TZKALZUK_PLACEHOLDER}, new int[]{1}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)),
 			id -> -1));
 
 		assertTrue(problem, problem.contains("NPC " + NpcID.INFERNO_TZKALZUK_PLACEHOLDER));
@@ -290,7 +299,7 @@ public class AssetValidatorTest
 	public void testRequireValidThrows()
 	{
 		AssetValidator.requireValid(bundleWith(
-			new NpcBinding("a", new int[]{5}, new int[]{2}, 128, 128, null, null)), id -> -1);
+			new NpcBinding("a", new int[]{5}, new int[]{2}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)), id -> -1);
 	}
 
 	/** The baseline: real cache geometry that animates correctly in game must pass. */

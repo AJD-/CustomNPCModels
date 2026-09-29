@@ -26,50 +26,53 @@ package com.customnpcmodels.inject;
 
 import lombok.Getter;
 
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Everything needed to draw and animate custom NPC models: meshes, the rigs they are bound to, the
  * clips that drive them, and the bindings that say which NPCs wear them.
  * <p>
  * Meshes and rigs are keyed by the synthetic ids the authoring manifest assigns. Clips are keyed
- * by the <em>live</em> sequence id they stand in for, because the client keeps playing that sequence
- * and hands over its frame index - which is why a clip id is not a free choice.
+ * by their rig and the <em>live</em> sequence id they stand in for, because the client keeps playing
+ * that sequence and hands over its frame index - which is why a clip's sequence is not a free choice.
+ * The rig is what keeps two models that answer for the same sequence apart.
  */
 public final class AssetBundle
 {
 	@Getter
-    private final Map<Integer, Mesh> meshes;
+	private final Map<Integer, Mesh> meshes;
 	@Getter
-    private final Map<Integer, Rig> rigs;
+	private final Map<Integer, Rig> rigs;
+	private final Map<Long, Clip> clips;
 	@Getter
-    private final Map<Integer, Clip> clips;
-	@Getter
-    private final List<NpcBinding> bindings;
+	private final List<NpcBinding> bindings;
 
 	/** Bindings indexed by NPC id, so the spawn path is a lookup. */
 	private final Map<Integer, NpcBinding> bindingsByNpc;
 
-	public AssetBundle(Map<Integer, Mesh> meshes, Map<Integer, Rig> rigs,
-		Map<Integer, Clip> clips)
+	public AssetBundle(Map<Integer, Mesh> meshes, Map<Integer, Rig> rigs, Collection<Clip> clips)
 	{
 		this(meshes, rigs, clips, Collections.emptyList());
 	}
 
 	public AssetBundle(Map<Integer, Mesh> meshes, Map<Integer, Rig> rigs,
-		Map<Integer, Clip> clips, List<NpcBinding> bindings)
+		Collection<Clip> clips, List<NpcBinding> bindings)
 	{
 		this.meshes = Collections.unmodifiableMap(new LinkedHashMap<>(meshes));
 		this.rigs = Collections.unmodifiableMap(new LinkedHashMap<>(rigs));
-		this.clips = Collections.unmodifiableMap(new LinkedHashMap<>(clips));
 		this.bindings = List.copyOf(bindings);
+
+		Map<Long, Clip> byKey = new LinkedHashMap<>();
+		for (Clip clip : clips)
+		{
+			byKey.put(clipKey(clip.getRigId(), clip.getSequenceId()), clip);
+		}
+		this.clips = Collections.unmodifiableMap(byKey);
 
 		Map<Integer, NpcBinding> byNpc = new HashMap<>();
 		for (NpcBinding binding : bindings)
@@ -84,88 +87,13 @@ public final class AssetBundle
 
 	public static AssetBundle empty()
 	{
-		return new AssetBundle(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
+		return new AssetBundle(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyList());
 	}
 
-	/**
-	 * This bundle with {@code overlay}'s entries laid over it, the overlay winning any id both carry.
-	 *
-	 * <p>A binding in the overlay replaces every binding here that shares an NPC id with it, so an NPC
-	 * never ends up claimed twice.
-	 */
-	public AssetBundle overlay(AssetBundle overlay)
+	/** The one key a rig and a live sequence share, so a clip is found by both at once. */
+	public static long clipKey(int rigId, int sequenceId)
 	{
-		if (overlay.isEmpty())
-		{
-			return this;
-		}
-
-		Map<Integer, Mesh> mergedMeshes = new LinkedHashMap<>(meshes);
-		mergedMeshes.putAll(overlay.meshes);
-		Map<Integer, Rig> mergedRigs = new LinkedHashMap<>(rigs);
-		mergedRigs.putAll(overlay.rigs);
-		Map<Integer, Clip> mergedClips = new LinkedHashMap<>(clips);
-		mergedClips.putAll(overlay.clips);
-
-		List<NpcBinding> mergedBindings = new ArrayList<>();
-		for (NpcBinding binding : bindings)
-		{
-			boolean replaced = false;
-			for (int npcId : binding.getNpcIds())
-			{
-				replaced |= overlay.bindingsByNpc.containsKey(npcId);
-			}
-			if (!replaced)
-			{
-				mergedBindings.add(binding);
-			}
-		}
-		mergedBindings.addAll(overlay.bindings);
-
-		return new AssetBundle(mergedMeshes, mergedRigs, mergedClips, mergedBindings);
-	}
-
-	/**
-	 * This bundle with {@code npcIds} taken out of every binding, or this bundle itself when no
-	 * binding names any of them.
-	 * <p>
-	 * A binding left with no NPCs is dropped. Meshes, rigs and clips stay: nothing reaches them
-	 * without a binding.
-	 */
-	public AssetBundle withoutNpcs(Set<Integer> npcIds)
-	{
-		boolean touched = false;
-		for (NpcBinding binding : bindings)
-		{
-			for (int npcId : binding.getNpcIds())
-			{
-				touched |= npcIds.contains(npcId);
-			}
-		}
-		if (!touched)
-		{
-			return this;
-		}
-
-		List<NpcBinding> kept = new ArrayList<>(bindings.size());
-		for (NpcBinding binding : bindings)
-		{
-			int[] allowed = Arrays.stream(binding.getNpcIds())
-				.filter(npcId -> !npcIds.contains(npcId))
-				.toArray();
-			if (allowed.length == binding.getNpcIds().length)
-			{
-				kept.add(binding);
-			}
-			else if (allowed.length > 0)
-			{
-				kept.add(new NpcBinding(binding.getName(), allowed, binding.getMeshIds(),
-					binding.getScaleXZ(), binding.getScaleY(), binding.getRecolorFind(), binding.getRecolorReplace(),
-					binding.getAmbient(), binding.getContrast()));
-			}
-		}
-
-		return new AssetBundle(meshes, rigs, clips, kept);
+		return ((long) rigId << 32) | (sequenceId & 0xFFFFFFFFL);
 	}
 
 	public Mesh getMesh(int meshId)
@@ -178,9 +106,10 @@ public final class AssetBundle
 		return rigs.get(rigId);
 	}
 
-	public Clip getClip(int sequenceId)
+	/** The clip on {@code rigId} standing in for live sequence {@code sequenceId}, or null. */
+	public Clip getClip(int rigId, int sequenceId)
 	{
-		return clips.get(sequenceId);
+		return clips.get(clipKey(rigId, sequenceId));
 	}
 
 	/** The binding an NPC id wears, or null when it has no custom model. */
@@ -189,7 +118,12 @@ public final class AssetBundle
 		return bindingsByNpc.get(npcId);
 	}
 
-    public boolean isEmpty()
+	public Collection<Clip> getClips()
+	{
+		return clips.values();
+	}
+
+	public boolean isEmpty()
 	{
 		return meshes.isEmpty() && rigs.isEmpty() && clips.isEmpty() && bindings.isEmpty();
 	}

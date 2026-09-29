@@ -20,6 +20,32 @@ of the two starts first draws and the other stands down. Turn on the `Fix Intera
 outlines` option in only one of the two plugins. Each turns Interact Highlight's NPC outlines off and
 restores them on its own, so with both on, those settings can be restored wrong.
 
+## The side panel
+
+The plugin's button in the sidebar opens a list of every model pack it found. From there you can:
+
+- Switch a whole pack on or off, or open it and switch single models on or off.
+- Move packs up or down. Where two packs have a model for the same NPC, the higher one is drawn, and
+  the lower one says which pack overrides it.
+- Import a pack folder with **Import pack...**, and read every pack from disk again with **Refresh**.
+
+What you switch off is remembered per RuneLite profile. A pack or model you haven't seen before starts
+switched on. Models for NPCs that can never be swapped (see "How it works") are listed, greyed out,
+with the reason.
+
+### The Custom Model Hub
+
+The hub is a collection of reviewed, original model packs hosted on GitHub. It's **off by default**:
+switch on `Enable Custom Model Hub` in the plugin's settings (under **Custom Model Hub**) to use it.
+Doing so contacts GitHub, which means sending it your IP address, and the setting says so before it
+takes effect. While it's off, the plugin makes no network requests at all.
+
+With it on, the side panel lists the hub's packs below your own. From there you can **Install**
+one, **Update** it when the hub has a newer version, or **Remove** it. Every download is checked
+against the size and SHA-256 the hub lists, and read as a pack, before anything is written. Installed
+hub packs live in `~/.runelite/plugin-data/custom-npc-models/hub/`, which the plugin manages, so
+don't edit it by hand. A hub pack can be removed from its own card even with the hub switched off.
+
 <details>
 <summary>How it works</summary>
 
@@ -31,14 +57,22 @@ restores them on its own, so with both on, those settings can be restored wrong.
   the geometry they drive is different. An action that has no authored clip holds the movement pose.
 - **Clickboxes are untouched.** The client resolves clickboxes from the original model before the
   draw callback runs.
-- Everything is drawn from the bundle. There's no fallback to the game cache, so an NPC whose
-  binding can't be built stays vanilla.
+- Everything is drawn from **packs**. A pack is one compiled `bundle.dat`. The plugin reads the pack
+  inside its own jar, the development bundle under `./gradlew run`, and every pack in its data
+  folder (see "Using a pack without the Hub" below). There's no fallback to the game cache, so an
+  NPC whose model can't be built stays vanilla.
+- When two packs have a model for the same NPC, the first in priority order draws it. By default
+  that's the development bundle, then hub and local packs, then the pack inside the plugin. Each
+  model is built and animated from its own pack alone, so packs authored separately can reuse mesh,
+  rig and sequence ids without clashing. A pack that can't be read is skipped with a warning in the
+  log, and the rest still load. The side panel changes the priority order, and which packs and
+  models are drawn. That takes effect straight away, rebuilding only the NPCs it changes.
 - `Interact Highlight` compatibility: the **Compatibility** section's `Fix Interact Highlight
   outlines` option draws that plugin's NPC hover and interact outlines around the custom model
   instead of the original. It does this by turning those two settings off in Interact Highlight
   while active, then restoring them when this plugin stops.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
-- Some NPCs are never swapped, whatever a bundle says: Jagex's third-party client rules forbid 
+- Some NPCs are never swapped, whatever a pack says: Jagex's third-party client rules forbid 
   extra visual indicators of boss mechanics, and name wave-based minigames explicitly. 
   The list is fixed in code (`SwapBlacklist`) and has no setting. `generateAssets` refuses a manifest
   that binds one of these NPCs, and the plugin drops them from any binding that names them, so it 
@@ -147,9 +181,25 @@ If the model still doesn't change, see the "Debugging" section below.
 - `./gradlew generateAssets -PassetsDir=assets` Builds the asset bundle from the authoring manifest
   (`models.json`) and the .glb files beside it
 - `./gradlew generateAssets -PassetsDir=assets-dev -Pdev` writes the gitignored
-  `custom-assets-dev.dat` on the test classpath instead. `./gradlew run` loads it on top of the
-  shipped bundle for asset development. This is how a cache export is round-tripped into the
-  game to compare against the original.
+  `custom-assets-dev.dat` on the test classpath instead. `./gradlew run` loads it as the development
+  pack, which takes priority over every other pack. This is how a cache export is round-tripped
+  into the game to compare against the original.
+- `./gradlew generateAssets -PassetsDir=<dir> -PpackOut[=<out>]` builds a pack instead: a
+  `bundle.dat` and a `pack.json`, written to `<out>`, or to `build/packs/<pack id>/` when no
+  directory is given. The manifest needs a `pack` block for this:
+  `"pack": {"id": "my-pack", "name": "My pack", "author": "...", "version": "1.0", "tags": [...]}`.
+  The id may only use lowercase letters, digits and hyphens. `pack.json` also lists the pack's
+  models, taken from the bundle.
+- `./gradlew writeBlacklistFixture` writes `build/fixtures/blacklisted-pack`: the dev bundle's first
+  model, also bound to TzKal-Zuk. `generateAssets` refuses to build such a pack, so this is how to
+  check in game that the plugin refuses one too. Import it with **Import pack...**: the panel lists
+  the model as partly never swapped, and the log shows `NPC 7706 (the Inferno) is never swapped`.
+- `./gradlew serveHubFixture [-Prevision=2]` serves a test Custom Model Hub on `localhost:8765`,
+  built from the dev bundle. It has a pack that installs, one built for a newer bundle format, and
+  one whose download fails its checksum. Start the client against it with
+  `./gradlew run -PhubUrl=http://localhost:8765/`: the plugin only accepts another hub address in
+  developer mode, which `./gradlew run` always is. Restart the fixture with `-Prevision=2` to offer
+  an update. Stop it with Ctrl+C.
 - `./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]` reports how far a `.glb` has
   moved from the NPC it was exported from, without starting the client: converter warnings, which
   vertex groups moved at rest, which faces were recolored, and the worst vertex error over every
@@ -236,8 +286,32 @@ wrong, the file still converts, but it comes out wrong without saying so.
   is shear, which is approximated and reported.
 - Units are 1 metre to 1 tile, +Y up. The pipeline converts to the engine's 128 units per tile with
   +Y down, and reverses triangle winding to match.
-- A clip is keyed by its live sequence id, so two models can't both provide a clip for the same
-  sequence.
+- A clip is keyed by its model's rig and the live sequence id, so two models can both provide a
+  clip for the same sequence, as long as each has its own `rigId`.
+</details>
+
+<details>
+<summary>Using a pack without the Hub</summary>
+
+Local packs are for trying your own models. They supplement the models the plugin ships with, and
+nothing about them leaves your machine.
+
+1. Build the pack: `./gradlew generateAssets -PassetsDir=<dir> -PpackOut` (see "Authoring Tools").
+2. In the side panel, choose **Import pack...** and pick the pack's folder, the one holding
+   `bundle.dat`. The pack is checked before anything is copied. It's copied into the plugin's data
+   folder, `~/.runelite/plugin-data/custom-npc-models/local/<name>/`
+   (`%USERPROFILE%\.runelite\plugin-data\custom-npc-models\local\<name>\` on Windows), and loaded
+   straight away. `<name>` is the pack's id, or else its folder's name, lowercased, with anything but
+   letters, digits, `-` and `_` turned into `-`. An import never overwrites a pack already there: to
+   replace one, delete its folder first, then import again.
+
+You can also copy a pack folder into `local` yourself, then choose **Refresh**. Folder names may use
+letters, digits, spaces, `.`, `-` and `_`, but may not start or end with a dot or a space, or be a
+name Windows reserves such as `con` or `aux`. To remove a local pack, delete its folder and choose
+**Refresh**.
+
+Blacklisted NPCs are ignored in local packs too. A model made from an `exportGltf` export is Jagex
+geometry: it's fine in your own local folder, but never share or upload it.
 </details>
 
 <details>
@@ -251,10 +325,14 @@ these lines:
 |---|---|
 | `Draw callbacks held by unsupported renderer <class>; skipping model swap` | Something else holds the renderer slot. `com.retronpcswapper...` is a Retro NPC Swapper older than 2.3.0 (update it or turn it off), and `rs117.hd` outside `rs117.hd.renderer.zone` is 117 HD's Legacy renderer. Turn it off. |
 | No `Attached custom draw callbacks over ...` at all | Neither GPU nor 117 HD is on. |
-| `No custom NPC model bundle present` | Both the shipped and development bundles are missing or empty. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
-| `Custom NPC model bundle loaded: AssetBundle{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. |
-| `NPC <id> (<content>) is never swapped; dropping it from binding '<name>'` | The NPC is on the swap blacklist (see "How it works"). This is intentional, and there's no way to turn it off. |
-| Bundle loaded, but no `Built custom model '<name>' for NPC id <id>` near the NPC | The NPC on screen isn't one of the entry's `npcIds` (many NPCs have several ids; check with `dumpNpcDefinitions`), or you're in the Wilderness or on a PvP world. |
+| `Custom NPC models loaded: ModelCatalog{npcs=0, ...}` | No pack has a model for any NPC. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
+| `Custom NPC models loaded: ModelCatalog{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. `conflicts` counts models another pack took priority over. |
+| `Custom NPC model pack '<id>' could not be read: <reason>` | That pack is skipped. `version 2, this build reads version 3` means it was built before packs had their own rigs: regenerate it, including the dev bundle. |
+| `Custom Model Hub list failed: <reason>` | The panel shows the same message with a **Retry** button. Check that GitHub is reachable. The hub is only asked for anything while `Enable Custom Model Hub` is on. |
+| `Could not install hub pack <id>` | The download was fine, but writing it to `plugin-data/custom-npc-models/hub/` failed. The pack already installed, if any, is left as it was. |
+| `Using the test Custom Model Hub at <url>` | The client was started with `-PhubUrl`, so it talks to that test hub instead of the real one. |
+| `NPC <id> (<content>) is never swapped; dropping it from '<name>' in pack <id>` | The NPC is on the swap blacklist (see "How it works"). This is intentional, and there's no way to turn it off. |
+| Models loaded, but no `Built custom model '<name>' from pack <id> for NPC id <id>` near the NPC | The NPC on screen isn't one of the entry's `npcIds` (many NPCs have several ids; check with `dumpNpcDefinitions`), or you're in the Wilderness or on a PvP world. |
 </details>
 
 ### If you'd like to report a bug or request a feature, please create an issue [here](https://github.com/AJD-/CustomNPCModels/issues)

@@ -63,6 +63,12 @@ tasks.register('run', JavaExec) {
 			"--add-exports=java.desktop/sun.font=ALL-UNNAMED",
 			"-ea"
 	args "--developer-mode", "--debug", "--disable-telemetry"
+
+	// Points the Custom Model Hub at a test server, eg the one serveHubFixture runs. The plugin only
+	// honours this in developer mode, which this task always is.
+	if (project.hasProperty('hubUrl')) {
+		systemProperty 'customnpcmodels.hubUrl', project.property('hubUrl')
+	}
 }
 
 // Prints NPC definitions from the live OSRS cache - model ids, recolors, scale and the sequences
@@ -165,9 +171,11 @@ tasks.register('viewAnimations', JavaExec) {
 // Builds the asset bundle from the authoring manifest (models.json) and the .glb files beside it.
 // Reads no geometry from any cache - only the live sequences' frame counts and lengths, which the
 // clips are sampled against. -Pdev writes the gitignored dev bundle on the test classpath instead
-// of the shipped one, eg:
+// of the shipped one; -PpackOut writes a pack (bundle.dat and pack.json) to the given directory, or
+// build/packs/<pack id> when none is given, eg:
 //   ./gradlew generateAssets
 //   ./gradlew generateAssets -PassetsDir=assets-dev -Pdev
+//   ./gradlew generateAssets -PassetsDir=my-pack -PpackOut
 tasks.register('generateAssets', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = 'com.customnpcmodels.authoring.AssetGenerator'
@@ -179,8 +187,32 @@ tasks.register('generateAssets', JavaExec) {
 	if (project.hasProperty('dev')) {
 		systemProperty 'customnpcmodels.dev', 'true'
 	}
+	if (project.hasProperty('packOut')) {
+		systemProperty 'customnpcmodels.packOut', project.property('packOut')
+	}
 	if (project.hasProperty('cacheDir')) {
 		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
+	}
+}
+
+// Writes build/fixtures/blacklisted-pack: the dev bundle's models, also bound to TzKal-Zuk, for
+// checking in game that the plugin refuses a blacklisted NPC - which generateAssets never builds
+tasks.register('writeBlacklistFixture', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.packs.BlacklistFixture'
+	workingDir = rootDir
+}
+
+// Serves a test Custom Model Hub on localhost:8765, built from the dev bundle, for trying the hub
+// client in game before the real hub exists; pair with ./gradlew run -PhubUrl=http://localhost:8765/.
+// -Prevision=2 gives its pack a new commit, so an installed copy shows an update.
+tasks.register('serveHubFixture', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.packs.HubFixture'
+	workingDir = rootDir
+
+	if (project.hasProperty('revision')) {
+		systemProperty 'customnpcmodels.revision', project.property('revision')
 	}
 }
 

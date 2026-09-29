@@ -32,17 +32,24 @@ import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.SwapBlacklist;
+import com.customnpcmodels.packs.DirectoryPackSource;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.definitions.SequenceDefinition;
@@ -58,15 +65,23 @@ import net.runelite.cache.fs.Store;
  * Every conversion's report is printed, and the result goes through {@link AssetValidator}
  * before anything is written, so a bundle that would draw wrongly is never produced. With
  * {@code -Pdev} the bundle is written to the gitignored development resource on the test classpath
- * rather than the shipped one
+ * rather than the shipped one. With {@code -PpackOut} it is written as a pack instead - a
+ * {@code bundle.dat} and a {@code pack.json} - for the plugin's local packs folder or the hub.
  * <p>
- * Run with {@code ./gradlew generateAssets [-PassetsDir=dir] [-Pdev]}.
+ * Run with {@code ./gradlew generateAssets [-PassetsDir=dir] [-Pdev | -PpackOut[=dir]]}.
  */
 @Slf4j
 public class AssetGenerator
 {
 	private static final String ASSETS_DIR_PROPERTY = "customnpcmodels.assetsDir";
 	private static final String DEV_PROPERTY = "customnpcmodels.dev";
+	private static final String PACK_OUT_PROPERTY = "customnpcmodels.packOut";
+
+	/** Where {@code -PpackOut} with no directory writes, under a folder named for the pack. */
+	private static final Path PACKS = Paths.get("build/packs");
+
+	/** What a pack id may be: it names the pack's folder, and its branch on the hub. */
+	private static final Pattern PACK_ID = Pattern.compile("[a-z0-9-]{1,64}");
 
 	private static final Path SHIPPED = Paths.get("src/main/resources/com/customnpcmodels/custom-assets.dat");
 	private static final Path DEV = Paths.get("src/test/resources/com/customnpcmodels/custom-assets-dev.dat");
@@ -81,13 +96,19 @@ public class AssetGenerator
 	{
 		Path assetsDir = Paths.get(System.getProperty(ASSETS_DIR_PROPERTY, "assets"));
 		boolean dev = Boolean.parseBoolean(System.getProperty(DEV_PROPERTY, "false"));
+		String packOut = System.getProperty(PACK_OUT_PROPERTY);
 
 		Manifest manifest = Manifest.read(assetsDir);
         log.info("Manifest {}: {} model(s)",
 				assetsDir.resolve(Manifest.FILE_NAME).toAbsolutePath(), manifest.models.size());
 
 		// Before the cache is opened, so a manifest that can never build says so without needing one
-		refuseIfAny(checkManifest(manifest, assetsDir));
+		List<String> problems = checkManifest(manifest, assetsDir);
+		if (packOut != null)
+		{
+			problems.addAll(checkPack(manifest, dev));
+		}
+		refuseIfAny(problems);
 
 		boolean needsCache = manifest.models.stream().anyMatch(m -> m.animations != null && !m.animations.isEmpty());
 		Store store = needsCache ? CacheFiles.openLiveCache() : null;
@@ -100,7 +121,13 @@ public class AssetGenerator
                 return;
             }
             AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId));
-            write(bundle, dev ? DEV : SHIPPED);
+            if (packOut != null) {
+                Path dir = packOut.isEmpty() ? PACKS.resolve(manifest.pack.id) : Paths.get(packOut);
+                write(bundle, dir.resolve(DirectoryPackSource.BUNDLE_FILE));
+                writePackInfo(manifest.pack, bundle, dir.resolve(DirectoryPackSource.INFO_FILE));
+            } else {
+                write(bundle, dev ? DEV : SHIPPED);
+            }
         }
 	}
 
@@ -129,9 +156,9 @@ public class AssetGenerator
 
 		Map<Integer, Mesh> meshes = new LinkedHashMap<>();
 		Map<Integer, Rig> rigs = new LinkedHashMap<>();
-		Map<Integer, Clip> clips = new LinkedHashMap<>();
+		List<Clip> clips = new ArrayList<>();
+		Set<Long> clipKeys = new HashSet<>();
 		List<NpcBinding> bindings = new ArrayList<>();
-		Map<Integer, String> clipOwners = new HashMap<>();
 		Map<Integer, Integer> frameCounts = new HashMap<>();
 		List<String> problems = new ArrayList<>();
 
@@ -144,15 +171,9 @@ public class AssetGenerator
 			for (Map.Entry<String, Integer> entry : model.animations == null
 				? new LinkedHashMap<String, Integer>().entrySet() : model.animations.entrySet())
 			{
+				// Two models may both answer for one sequence: clips are keyed by rig as well, and every
+				// model has a rig of its own (reusing one is refused below)
 				int sequenceId = entry.getValue();
-				String owner = clipOwners.putIfAbsent(sequenceId, name);
-				if (owner != null)
-				{
-					// Clips are keyed by sequence id alone, so two models cannot both answer for one
-					problems.add(name + " and " + owner + " both map an animation to sequence " + sequenceId);
-					continue;
-				}
-
 				SequenceTiming timing = timings.get(sequenceId);
 				if (timing == null)
 				{
@@ -193,7 +214,14 @@ public class AssetGenerator
 			}
 			for (Clip clip : result.clips)
 			{
-				clips.put(clip.getSequenceId(), clip);
+				// Two animations mapped to one sequence would each become a clip under the same key,
+				// and the bundle would keep only the last
+				if (!clipKeys.add(AssetBundle.clipKey(clip.getRigId(), clip.getSequenceId())))
+				{
+					problems.add(name + " maps two animations to sequence " + clip.getSequenceId());
+					continue;
+				}
+				clips.add(clip);
 				System.out.println("  clip " + clip.getSequenceId() + "  frames=" + clip.getFrameCount());
 			}
 
@@ -209,7 +237,9 @@ public class AssetGenerator
 					replace[i] = (short) model.recolors.get(i).replace;
 				}
 			}
-			bindings.add(new NpcBinding(name, model.npcIds, new int[]{model.meshId},
+			// A glb with no skin converts to no rig, and so draws at rest; its binding names none
+			int rigId = result.rig == null ? NpcBinding.STATIC : model.rigId;
+			bindings.add(new NpcBinding(name, model.npcIds, new int[]{model.meshId}, rigId,
 				model.scaleXZ(), model.scaleY(), find, replace,
 				model.ambient == null ? 0 : model.ambient, model.contrast == null ? 0 : model.contrast));
 		}
@@ -270,6 +300,57 @@ public class AssetGenerator
 		return problems;
 	}
 
+	/** What stops the manifest being built into a pack with {@code -PpackOut}. */
+	static List<String> checkPack(Manifest manifest, boolean dev)
+	{
+		List<String> problems = new ArrayList<>();
+		if (dev)
+		{
+			problems.add("-PpackOut and -Pdev write to different places; use one or the other");
+		}
+		if (manifest.pack == null)
+		{
+			problems.add("The manifest has no \"pack\" block, which -PpackOut needs for the pack's id and name");
+		}
+		else
+		{
+			if (manifest.pack.id == null || !PACK_ID.matcher(manifest.pack.id).matches())
+			{
+				problems.add("The pack id '" + manifest.pack.id + "' may only use lowercase letters, digits and "
+					+ "hyphens, up to 64 of them");
+			}
+			if (manifest.pack.name == null || manifest.pack.name.trim().isEmpty())
+			{
+				problems.add("The pack has no \"name\"");
+			}
+		}
+		return problems;
+	}
+
+	/**
+	 * The pack's {@code pack.json}: the {@code pack} block as written, plus the models it carries -
+	 * taken from the bundle, so the list can never drift from what is actually in it.
+	 */
+	static void writePackInfo(Manifest.Pack pack, AssetBundle bundle, Path output) throws IOException
+	{
+		JsonObject json = Glb.GSON.toJsonTree(pack).getAsJsonObject();
+		JsonArray models = new JsonArray();
+		for (NpcBinding binding : bundle.getBindings())
+		{
+			JsonObject model = new JsonObject();
+			model.addProperty("key", binding.getMeshIds()[0]);
+			model.addProperty("name", binding.getName());
+			model.add("npcIds", Glb.GSON.toJsonTree(binding.getNpcIds()));
+			models.add(model);
+		}
+		json.add("models", models);
+
+		Files.createDirectories(output.getParent());
+		Files.write(output, Glb.GSON.newBuilder().setPrettyPrinting().create().toJson(json)
+			.getBytes(StandardCharsets.UTF_8));
+		System.out.println("Wrote " + output.toAbsolutePath());
+	}
+
 	private static void refuseIfAny(List<String> problems)
 	{
 		if (!problems.isEmpty())
@@ -286,6 +367,11 @@ public class AssetGenerator
 
 		// Read it back through the plugin's own loader, so a bundle the plugin would refuse is never written
 		AssetCodec.read(new ByteArrayInputStream(bytes.toByteArray()));
+		if (bytes.size() > AssetCodec.MAX_FILE_BYTES)
+		{
+			throw new IllegalStateException("Not writing the bundle; it is " + bytes.size() / (1024 * 1024)
+				+ " MiB, and the plugin refuses a pack past " + AssetCodec.MAX_FILE_BYTES / (1024 * 1024) + " MiB");
+		}
 
 		Files.createDirectories(output.getParent());
 		Files.write(output, bytes.toByteArray());
