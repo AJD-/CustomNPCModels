@@ -110,6 +110,9 @@ public class PacksPanel extends PluginPanel
 
 		/** Removes an installed hub pack, by its folder under {@code hub/}. */
 		void removeHubPack(String folder);
+
+		/** Deletes a local pack, by its folder under {@code local/}. */
+		void removeLocalPack(String folder);
 	}
 
 	/** Icons are shown this size, whatever size the pack ships. */
@@ -136,7 +139,10 @@ public class PacksPanel extends PluginPanel
 	/** Hub pack icons, by the commit they were fetched at. */
 	private final Map<String, ImageIcon> hubIcons = new HashMap<>();
 
-	/** Hub packs with an install or removal under way, by id, so their button can't be pressed twice. */
+	/**
+	 * Packs with an install or removal under way, so their button can't be pressed twice: hub packs by
+	 * their hub id, local packs by their pack id.
+	 */
 	private final Set<String> busy = new HashSet<>();
 
 	public PacksPanel(Actions actions)
@@ -296,10 +302,13 @@ public class PacksPanel extends PluginPanel
 		rebuild();
 	}
 
-	/** Marks a hub pack's install or removal as under way, or done. EDT only. */
-	public void setBusy(String hubId, boolean isBusy)
+	/**
+	 * Marks an install or removal as under way, or done. {@code key} is a hub pack's id, or a local
+	 * pack's whole pack id. EDT only.
+	 */
+	public void setBusy(String key, boolean isBusy)
 	{
-		if (isBusy ? busy.add(hubId) : busy.remove(hubId))
+		if (isBusy ? busy.add(key) : busy.remove(key))
 		{
 			rebuild();
 		}
@@ -487,26 +496,34 @@ public class PacksPanel extends PluginPanel
 		}
 		if (installed != null)
 		{
-			buttons.add(removeButton(entry.getId(), entry.getName(), working));
+			buttons.add(hubRemoveButton(entry.getId(), entry.getName()));
 		}
 		item.add(buttons);
 		return item;
 	}
 
-	private JButton removeButton(String folder, String name, boolean working)
+	private JButton hubRemoveButton(String folder, String name)
 	{
-		JButton remove = new JButton(working ? "Working..." : "Remove");
-		remove.setEnabled(!working);
-		remove.addActionListener(e ->
+		return removeButton(busy.contains(folder), "Remove '" + name + "'? You can install it again from the hub.",
+			() -> actions.removeHubPack(folder));
+	}
+
+	/**
+	 * A Remove button that asks first. While {@code working} it says so and can't be pressed again.
+	 */
+	private JButton removeButton(boolean working, String question, Runnable remove)
+	{
+		JButton button = new JButton(working ? "Working..." : "Remove");
+		button.setEnabled(!working);
+		button.addActionListener(e ->
 		{
-			int answer = JOptionPane.showConfirmDialog(this, "Remove '" + name + "'? You can install it again from "
-				+ "the hub.", "Remove pack", JOptionPane.OK_CANCEL_OPTION);
+			int answer = JOptionPane.showConfirmDialog(this, question, "Remove pack", JOptionPane.OK_CANCEL_OPTION);
 			if (answer == JOptionPane.OK_OPTION)
 			{
-				actions.removeHubPack(folder);
+				remove.run();
 			}
 		});
-		return remove;
+		return button;
 	}
 
 	private JPanel packItem(PackView pack)
@@ -559,7 +576,7 @@ public class PacksPanel extends PluginPanel
 		if (!readable)
 		{
 			item.add(detail("Could not be read: " + pack.getError(), ColorScheme.PROGRESS_ERROR_COLOR));
-			addHubRemove(item, pack);
+			addRemove(item, pack);
 			return item;
 		}
 
@@ -590,17 +607,27 @@ public class PacksPanel extends PluginPanel
 				item.add(modelRow(model));
 			}
 		}
-		addHubRemove(item, pack);
+		addRemove(item, pack);
 		return item;
 	}
 
-	/** A hub pack can be removed from its own card, even while the hub is switched off. */
-	private void addHubRemove(JPanel item, PackView pack)
+	/**
+	 * A hub or local pack can be removed from its own card - a hub pack even while the hub is
+	 * switched off, and either one when it can't be read. A local pack is busy under its whole pack
+	 * id, so it never shares a state with a hub entry whose folder has the same name.
+	 */
+	private void addRemove(JPanel item, PackView pack)
 	{
 		if (pack.getKind() == PackKind.HUB)
 		{
-			String folder = pack.getId().substring(PackKind.HUB.packId("").length());
-			item.add(removeButton(folder, pack.getName(), busy.contains(folder)));
+			item.add(hubRemoveButton(pack.getId().substring(PackKind.HUB.packId("").length()), pack.getName()));
+		}
+		else if (pack.getKind() == PackKind.LOCAL)
+		{
+			String folder = pack.getId().substring(PackKind.LOCAL.packId("").length());
+			item.add(removeButton(busy.contains(pack.getId()), "Delete '" + pack.getName() + "' from your local "
+				+ "packs folder? Its files are deleted; import the pack again to get it back.",
+				() -> actions.removeLocalPack(folder)));
 		}
 	}
 

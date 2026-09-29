@@ -27,6 +27,7 @@ package com.customnpcmodels.packs;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.AssetCodec;
 import com.customnpcmodels.inject.Mesh;
@@ -116,6 +117,45 @@ public class PackImporterTest
 
 		assertFalse(again.isImported());
 		assertTrue(again.getMessage(), again.getMessage().contains("already installed"));
+	}
+
+	@Test
+	public void testARemovedPackIsGone() throws IOException
+	{
+		Filepath local = local();
+		assertTrue(PackImporter.importFolder(source("mole", bundleBytes(), null), local, new Gson()).isImported());
+		assertTrue(PackImporter.importFolder(source("goblins", bundleBytes(), null), local, new Gson()).isImported());
+
+		PackImporter.remove(local, "mole");
+		PackImporter.remove(local, "never-imported");
+
+		List<LoadedPack> packs = new DirectoryPackSource(local, PackKind.LOCAL, new Gson()).load();
+		assertEquals(1, packs.size());
+		assertEquals("local:goblins", packs.get(0).getId());
+	}
+
+	/** A name no pack folder could have is refused outright, so it can never reach past local/. */
+	@Test
+	public void testRemovingAnInvalidNameDeletesNothing() throws IOException
+	{
+		Filepath local = local();
+		assertTrue(PackImporter.importFolder(source("mole", bundleBytes(), null), local, new Gson()).isImported());
+
+		for (String name : new String[]{"..", ".", "con", "", "mole/..", " mole"})
+		{
+			try
+			{
+				PackImporter.remove(local, name);
+				fail("'" + name + "' was accepted");
+			}
+			catch (IllegalArgumentException expected)
+			{
+				// Refused before any path was built
+			}
+		}
+
+		assertTrue(Files.isDirectory(folder.getRoot().toPath().resolve("local").resolve("mole")));
+		assertTrue(Files.isDirectory(folder.getRoot().toPath().resolve("source")));
 	}
 
 	/** Refused before anything is copied, so a broken pack never lands in the local folder. */
