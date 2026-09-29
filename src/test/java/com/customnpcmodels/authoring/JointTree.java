@@ -136,6 +136,25 @@ final class JointTree
 		return new JointTree(groups, parents, rest);
 	}
 
+	/**
+	 * This tree with every joint whose parent is {@code unusable} hung from that parent's nearest
+	 * usable ancestor instead, or made a root. Ancestors come first, so the order still holds.
+	 */
+	JointTree reparentedAround(boolean[] unusable)
+	{
+		int[] reparented = parents.clone();
+		for (int joint = 0; joint < groups.length; joint++)
+		{
+			int parent = reparented[joint];
+			while (parent != -1 && unusable[parent])
+			{
+				parent = parents[parent];
+			}
+			reparented[joint] = parent;
+		}
+		return new JointTree(groups, reparented, restPositions);
+	}
+
 	private static JointTree flat(Mesh mesh, List<Integer> used)
 	{
 		int[] groups = used.stream().mapToInt(Integer::intValue).toArray();

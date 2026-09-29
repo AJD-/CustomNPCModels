@@ -151,6 +151,10 @@ final class GlbWriter
 			}
 		}
 		JointTree tree = rigged ? JointTree.build(mesh, rig, report) : null;
+		if (tree != null && rigs != null)
+		{
+			tree = detachFromSingularParents(tree, mesh, rigs, clips, report);
+		}
 
 		int[] groupOf = new int[mesh.getVerticesCount()];
 		Arrays.fill(groupOf, -1);
@@ -438,7 +442,6 @@ final class GlbWriter
 
 		gltf.animations = new ArrayList<>();
 		int firstJoint = gltf.nodes.size() - tree.groups.length;
-		int groupCount = mesh.getVertexGroups().length;
 
 		// Joints every exported frame scales to nothing: geometry that only shows in the rest pose, or
 		// in a sequence that was not exported, which is otherwise a mystery once it is in Blender
@@ -482,13 +485,9 @@ final class GlbWriter
 
 			for (int frame = 0; frame <= frames; frame++)
 			{
-				double[][] rsGroups = RigPoser.pose(mesh, rig, clip, Math.min(frame, frames - 1), groupCount);
-				double[][] world = new double[joints][];
+				double[][] world = worldPose(mesh, tree, rig, clip, Math.min(frame, frames - 1));
 				for (int joint = 0; joint < joints; joint++)
 				{
-					double[] rest = restGltf(tree, joint);
-					double[] moved = Mat4.multiply(Mat4.GLTF_FROM_RS, rsGroups[tree.groups[joint]], Mat4.RS_FROM_GLTF);
-					world[joint] = Mat4.multiply(moved, Mat4.translation(rest[0], rest[1], rest[2]));
 					alwaysCollapsed[joint] &= isCollapsed(world[joint]);
 
 					double[] local = tree.parents[joint] == -1
@@ -551,6 +550,60 @@ final class GlbWriter
 					+ "or in sequences not exported (try -Pseqs)");
 			}
 		}
+	}
+
+	/** Each joint's glTF world transform at one frame of a clip. */
+	private static double[][] worldPose(Mesh mesh, JointTree tree, Rig rig, Clip clip, int frame)
+	{
+		double[][] rsGroups = RigPoser.pose(mesh, rig, clip, frame, mesh.getVertexGroups().length);
+		double[][] world = new double[tree.groups.length][];
+		for (int joint = 0; joint < world.length; joint++)
+		{
+			double[] rest = restGltf(tree, joint);
+			double[] moved = Mat4.multiply(Mat4.GLTF_FROM_RS, rsGroups[tree.groups[joint]], Mat4.RS_FROM_GLTF);
+			world[joint] = Mat4.multiply(moved, Mat4.translation(rest[0], rest[1], rest[2]));
+		}
+		return world;
+	}
+
+	/**
+	 * The tree, with any joint whose parent some exported frame flattens hung from a steadier
+	 * ancestor. A child's key is its transform relative to its parent's, which a flattened parent
+	 * has no inverse to give - and a joint scaled to nothing, as death clips often do, still
+	 * leaves children that animate on their own.
+	 */
+	private static JointTree detachFromSingularParents(JointTree tree, Mesh mesh, Map<Integer, Rig> rigs,
+		List<Clip> clips, List<String> report)
+	{
+		boolean[] singular = new boolean[tree.groups.length];
+		for (Clip clip : clips)
+		{
+			Rig rig = rigs.get(clip.getRigId());
+			for (int frame = 0; rig != null && frame < clip.getFrameCount(); frame++)
+			{
+				double[][] world = worldPose(mesh, tree, rig, clip, frame);
+				for (int joint = 0; joint < world.length; joint++)
+				{
+					singular[joint] |= !Mat4.isInvertible(world[joint]);
+				}
+			}
+		}
+
+		List<Integer> detached = new ArrayList<>();
+		for (int joint = 0; joint < tree.groups.length; joint++)
+		{
+			if (tree.parents[joint] != -1 && singular[tree.parents[joint]])
+			{
+				detached.add(tree.groups[joint]);
+			}
+		}
+		if (detached.isEmpty())
+		{
+			return tree;
+		}
+		report.add("Vertex groups " + detached + " hang from a joint some clip flattens; each is parented to "
+			+ "the nearest ancestor that stays whole instead");
+		return tree.reparentedAround(singular);
 	}
 
 	/** Whether a transform's linear part has scaled every axis to nothing. */

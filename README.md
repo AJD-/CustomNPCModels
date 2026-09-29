@@ -175,7 +175,9 @@ If the model still doesn't change, see the "Debugging" section below.
   Use it to seed Blender work from something that already animates correctly. An NPC built from
   several models gets one mesh per model, named `part_NN_model_<id>`, so each can be hidden on its
   own. A vertex group that every exported clip scales to nothing, such as an effect only an attack
-  shows, is reported: it is visible in the rest pose but not in those clips. **The output is Jagex
+  shows, is reported: it is visible in the rest pose but not in those clips. A joint that some clip
+  flattens, as death clips often do, can't have other joints keyed against it, so those hang from
+  the nearest ancestor that stays whole, and the export says which. **The output is Jagex
   geometry.** It defaults to the gitignored `build/gltf/` and must never be committed or bundled for
   release.
 - `./gradlew generateAssets -PassetsDir=assets` Builds the asset bundle from the authoring manifest

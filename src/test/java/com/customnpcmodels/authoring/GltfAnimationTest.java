@@ -274,6 +274,28 @@ public class GltfAnimationTest
 	}
 
 	/**
+	 * A joint some clip flattens can't have children keyed against it, so the writer hangs them
+	 * from the nearest ancestor that stays whole. The export must then go through and pose as the
+	 * original does.
+	 */
+	@Test
+	public void testChildrenOfAFlattenedJointExportAndRoundTrip() throws Exception
+	{
+		Mesh mesh = GltfExporter.npcMesh(LiveFixtures.store(), LiveFixtures.npc(LiveFixtures.GIANT_SPIDER));
+		int[] sequences = {LiveFixtures.GIANT_SPIDER_READY, LiveFixtures.GIANT_SPIDER_DEATH};
+		List<String> report = new ArrayList<>();
+
+		GltfToMeshConverter.Result result = roundTrip(mesh, report, sequences);
+		assertTrue("writer " + report, report.stream().anyMatch(line ->
+			line.contains("hang from a joint some clip flattens")));
+
+		double worst = worstPoseError(mesh, result, sequences);
+		System.out.println("Giant spider round trip: worst vertex error " + worst + " units; writer " + report
+			+ "; reader " + result.report);
+		assertTrue("worst vertex error " + worst, worst < 3.0);
+	}
+
+	/**
 	 * Every angle pair around both quarter turns of X, where Y and Z collapse onto one axis. The
 	 * gimbal test in {@link Mat4#rsEuler} has to catch x = 64 and 192 exactly - the 16-bit trig tables
 	 * never let the matrix reach a true quarter turn - and one step either side must not be caught.
