@@ -932,10 +932,26 @@ public class CustomNpcModelsPlugin extends Plugin
 		@Override
 		public void removeHubPack(String folder)
 		{
+			removePack(folder, "hub pack " + folder, data -> HubInstaller.remove(data.joinSegment(HUB_PACKS), folder));
+		}
+
+		@Override
+		public void removeLocalPack(String folder)
+		{
+			removePack(PackKind.LOCAL.packId(folder), "local pack " + folder,
+				data -> PackImporter.remove(data.joinSegment(LOCAL_PACKS), folder));
+		}
+
+		/**
+		 * Runs a removal on the executor, with the pack's button busy under {@code busyKey} until the
+		 * panel has read the packs again.
+		 */
+		private void removePack(String busyKey, String what, PackRemoval removal)
+		{
 			PacksPanel shown = panel;
 			if (shown != null)
 			{
-				shown.setBusy(folder, true);
+				shown.setBusy(busyKey, true);
 			}
 			int queuedUnder = generation.get();
 			executor.submit(() ->
@@ -950,26 +966,33 @@ public class CustomNpcModelsPlugin extends Plugin
 					Filepath data = dataDirectory();
 					if (data != null)
 					{
-						HubInstaller.remove(data.joinSegment(HUB_PACKS), folder);
+						removal.remove(data);
 						showStatus("Removed the pack.", false);
-						loadPacks(() -> onPanel(done -> done.setBusy(folder, false)));
+						loadPacks(() -> onPanel(done -> done.setBusy(busyKey, false)));
 						removed = true;
 					}
 				}
 				catch (IOException | RuntimeException ex)
 				{
-					log.warn("Could not remove hub pack {}", folder, ex);
+					log.warn("Could not remove {}", what, ex);
 					showStatus("The pack couldn't be removed: " + ex.getMessage(), true);
 				}
 				finally
 				{
 					if (!removed)
 					{
-						onPanel(done -> done.setBusy(folder, false));
+						onPanel(done -> done.setBusy(busyKey, false));
 					}
 				}
 			});
 		}
+	}
+
+	/** Deletes one pack's folder from under the plugin's data folder. Disk IO, so executor only. */
+	@FunctionalInterface
+	private interface PackRemoval
+	{
+		void remove(Filepath data) throws IOException;
 	}
 
 	/**

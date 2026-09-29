@@ -102,7 +102,7 @@ public final class PackImporter
 		if (target.exists())
 		{
 			return new Result(false, "A local pack called '" + name + "' is already installed. "
-				+ "Remove its folder first to replace it.");
+				+ "Remove it first to replace it.");
 		}
 
 		try
@@ -129,6 +129,25 @@ public final class PackImporter
 		}
 
 		return new Result(true, "Imported '" + name + "'.");
+	}
+
+	/**
+	 * Deletes a local pack's folder. Nothing happens when it is not there.
+	 *
+	 * @throws IllegalArgumentException when {@code folder} could never name a pack, so a name that
+	 *                                  reaches outside {@code localPacks} deletes nothing
+	 */
+	public static void remove(Filepath localPacks, String folder) throws IOException
+	{
+		if (!DirectoryPackSource.isValidFolderName(folder))
+		{
+			throw new IllegalArgumentException("'" + folder + "' is not a pack folder name");
+		}
+		Filepath pack = localPacks.joinSegment(folder);
+		if (pack.exists())
+		{
+			pack.deleteRecursively();
+		}
 	}
 
 	/** The id {@code pack.json} gives, or null. Only used to name the folder; see {@link DirectoryPackSource}. */

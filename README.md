@@ -28,6 +28,8 @@ The plugin's button in the sidebar opens a list of every model pack it found. Fr
 - Move packs up or down. Where two packs have a model for the same NPC, the higher one is drawn, and
   the lower one says which pack overrides it.
 - Import a pack folder with **Import pack...**, and read every pack from disk again with **Refresh**.
+- Remove a local or hub pack with the **Remove** button on its card. A local pack's folder is
+  deleted, so importing it again brings it back.
 
 What you switch off is remembered per RuneLite profile. A pack or model you haven't seen before starts
 switched on. Models for NPCs that can never be swapped (see "How it works") are listed, greyed out,
@@ -303,12 +305,12 @@ nothing about them leaves your machine.
    (`%USERPROFILE%\.runelite\plugin-data\custom-npc-models\local\<name>\` on Windows), and loaded
    straight away. `<name>` is the pack's id, or else its folder's name, lowercased, with anything but
    letters, digits, `-` and `_` turned into `-`. An import never overwrites a pack already there: to
-   replace one, delete its folder first, then import again.
+   replace one, remove it first, then import again.
 
 You can also copy a pack folder into `local` yourself, then choose **Refresh**. Folder names may use
 letters, digits, spaces, `.`, `-` and `_`, but may not start or end with a dot or a space, or be a
-name Windows reserves such as `con` or `aux`. To remove a local pack, delete its folder and choose
-**Refresh**.
+name Windows reserves such as `con` or `aux`. To remove a local pack, choose **Remove** on its card, or
+delete its folder and choose **Refresh**.
 
 Blacklisted NPCs are ignored in local packs too. A model made from an `exportGltf` export is Jagex
 geometry: it's fine in your own local folder, but never share or upload it.
