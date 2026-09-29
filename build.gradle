@@ -168,6 +168,29 @@ tasks.register('viewAnimations', JavaExec) {
 	}
 }
 
+// Puts a .glb's animations on another NPC's sequences: each output animation copies the source
+// the mapping names, renamed after its target sequence and spread over that sequence's live length
+// (looped first when the mapping says so). Reads sequence timings from the live cache, eg:
+//   ./gradlew retargetGltf -Pglb=crab.glb -Pmap=spider-map.json -Pout=crab-as-spider.glb
+tasks.register('retargetGltf', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.customnpcmodels.authoring.GltfRetargeter'
+	workingDir = rootDir
+
+	if (project.hasProperty('glb')) {
+		systemProperty 'customnpcmodels.glb', project.property('glb')
+	}
+	if (project.hasProperty('map')) {
+		systemProperty 'customnpcmodels.map', project.property('map')
+	}
+	if (project.hasProperty('out')) {
+		systemProperty 'customnpcmodels.out', project.property('out')
+	}
+	if (project.hasProperty('cacheDir')) {
+		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
+	}
+}
+
 // Builds the asset bundle from the authoring manifest (models.json) and the .glb files beside it.
 // Reads no geometry from any cache - only the live sequences' frame counts and lengths, which the
 // clips are sampled against. -Pdev writes the gitignored dev bundle on the test classpath instead

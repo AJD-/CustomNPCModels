@@ -3,8 +3,8 @@
 Replaces NPC models and animations with custom-authored ones: original geometry, rigs and animation
 clips modeled in Blender, exported as glTF and compiled into a bundle that ships inside the plugin.
 
-This repository currently holds the **framework and authoring pipeline**, and no content yet. The
-shipped bundle is empty until original models are authored.
+This repository holds the **framework and authoring pipeline**. The shipped bundle is empty: models
+come from packs, such as those on the Custom Model Hub.
 
 ## Requirements
 
@@ -178,8 +178,19 @@ If the model still doesn't change, see the "Debugging" section below.
   shows, is reported: it is visible in the rest pose but not in those clips. A joint that some clip
   flattens, as death clips often do, can't have other joints keyed against it, so those hang from
   the nearest ancestor that stays whole, and the export says which. **The output is Jagex
-  geometry.** It defaults to the gitignored `build/gltf/` and must never be committed or bundled for
-  release.
+  geometry.** It defaults to the gitignored `build/gltf/`. It must never be committed to this
+  repository or built into the shipped bundle. It may only be published as an opt-in Custom Model
+  Hub pack.
+- `./gradlew retargetGltf -Pglb=<file> -Pmap=<mapping.json> -Pout=<file>` puts a `.glb`'s
+  animations on another NPC's sequences, so one creature can wear another's model. The mapping
+  names each target sequence and the animation it copies:
+  `{"5326": {"from": "3424", "fit": "loop"}, "5327": "3428", "5329": {"from": "3430", "fit": "hold"}}`.
+  Each output animation is named after its target sequence and fitted to that sequence's live
+  length: `stretch` (the default, for attacks) spreads it once over the sequence. `loop` repeats it
+  as many whole times as fit best, then stretches that, so an idle or walk keeps its pace. `hold`
+  plays it at its own pace and cuts what runs past the sequence, for deaths that end on a long held
+  frame. The output keeps the mesh, skin and colors as they were, and only the retargeted
+  animations. Map each of them in `models.json` to the sequence it's named after.
 - `./gradlew generateAssets -PassetsDir=assets` Builds the asset bundle from the authoring manifest
   (`models.json`) and the .glb files beside it
 - `./gradlew generateAssets -PassetsDir=assets-dev -Pdev` writes the gitignored
@@ -313,7 +324,8 @@ name Windows reserves such as `con` or `aux`. To remove a local pack, delete its
 **Refresh**.
 
 Blacklisted NPCs are ignored in local packs too. A model made from an `exportGltf` export is Jagex
-geometry: it's fine in your own local folder, but never share or upload it.
+geometry. It's fine in your own local folder, and it may be submitted to the Custom Model Hub, which
+players have to switch on and install from. Don't share it anywhere else.
 </details>
 
 <details>
