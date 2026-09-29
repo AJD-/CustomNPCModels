@@ -32,19 +32,12 @@ import net.runelite.api.gameval.NpcID;
 
 /**
  * NPCs that are never drawn with a custom model, whatever a bundle binds them to.
- *
- * <p>Jagex's third-party client guidelines rule out anything that adds visual indicators of a boss
+ * <p>
+ * Jagex's third-party client guidelines rule out anything that adds visual indicators of a boss
  * mechanic, and name wave-based minigames - the Fight Caves and the Inferno - explicitly. A custom
  * model keeps the live animations, so an author could exaggerate an attack tell or give each attack
  * style its own look. Rather than trust every bundle, these NPCs are refused wherever bindings enter
  * the plugin, and the authoring tools refuse to build them at all.
- *
- * <p>The list is fixed in code on purpose, with no setting to change it.
- *
- * <p>Left out deliberately: pets, which follow the player and take no part in a fight; the NPCs
- * that start each minigame (TzHaar-Ket-Keh, TzHaar-Mej-Jal, TzHaar-Mej-Kah, TzHaar-Ket-Rak and
- * Minimus), which are not fought; the Colosseum's spectators and gladiators, which are scenery; the
- * Greater Zuk Deadman thrall, which is a player's summon; and bosses outside wave-based minigames.
  */
 public final class SwapBlacklist
 {
@@ -72,12 +65,9 @@ public final class SwapBlacklist
 			NpcID.INFERNO_MAGER_FINALWAVE,
 			NpcID.INFERNO_JAD_FINALWAVE,
 			NpcID.INFERNO_JAD_HEALER_FINALWAVE,
-			// TzKal-Zuk himself, despite the gameval name
 			NpcID.INFERNO_TZKALZUK_PLACEHOLDER,
-			// The Ancestral Glyph
 			NpcID.INFERNO_MOVING_SAFESPOT,
 			NpcID.INFERNO_ZUK_HEALER,
-			// The pillars
 			NpcID.INFERNO_INVISIBLE_3X3,
 			NpcID.INFERNO_SAFESPOT_DYING);
 

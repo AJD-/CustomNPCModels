@@ -26,8 +26,8 @@ package com.customnpcmodels.authoring;
 
 /**
  * How a live sequence plays: how many frames it has and how long each is held.
- *
- * <p>An authored clip stands in for a live sequence the client keeps playing, and the client hands
+ * <p>
+ * An authored clip stands in for a live sequence the client keeps playing, and the client hands
  * over that sequence's frame index. So the clip has to have exactly this many frames, and sampling
  * the authored animation at these frame start times is what lines its poses up with the client's
  * playback.

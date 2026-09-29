@@ -33,8 +33,8 @@ import java.util.List;
 /**
  * Reads the two packs that live on the classpath: the one shipped inside the plugin jar, and the
  * development bundle when one is present. Either is simply absent when its resource is.
- *
- * <p>The development bundle only ever exists on the test classpath - the generator writes it to
+ * <p>
+ * The development bundle only ever exists on the test classpath - the generator writes it to
  * {@code src/test/resources}, which is gitignored - so {@code ./gradlew run} sees it and the Hub jar,
  * built from the main sourceSet alone, never can. It carries round-trip verification assets exported
  * from the live cache, which must not ship. It takes priority over every other pack by default.

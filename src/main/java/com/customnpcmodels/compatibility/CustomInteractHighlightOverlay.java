@@ -49,13 +49,13 @@ import net.runelite.client.util.ColorUtil;
 /**
  * Draws Interact Highlight's NPC outlines, so that a swapped NPC is outlined around the custom model
  * on screen rather than the vanilla one the API still reports.
- *
- * <p>Registered only while {@link InteractHighlightCompat} has that plugin's own NPC outlines
+ * <p>
+ * Registered only while {@link InteractHighlightCompat} has that plugin's own NPC outlines
  * suppressed, so the two never draw at once. Every color, border width and feather value is read
  * from {@link InteractHighlightConfig}, so the result is that plugin's appearance and settings, not
  * a second set of them. NPCs this plugin does not swap take the ordinary path and look unchanged.
- *
- * <p>The hover and target logic is Interact Highlight's, reproduced because its own is package
+ * <p>
+ * The hover and target logic is Interact Highlight's, reproduced because its own is package
  * private. Only the NPC half is here; that plugin still draws objects, ground items and players.
  */
 public class CustomInteractHighlightOverlay extends Overlay

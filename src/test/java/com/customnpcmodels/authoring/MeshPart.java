@@ -29,8 +29,8 @@ import java.util.List;
 
 /**
  * A named, contiguous run of a mesh's faces - one of the models a multi-model NPC is merged from.
- *
- * <p>The merge appends each model's faces after the last's, so a model is always one run. The
+ * <p>
+ * The merge appends each model's faces after the last's, so a model is always one run. The
  * writer gives each part a glTF mesh of its own, which Blender imports as its own object and the
  * painter can hide.
  */

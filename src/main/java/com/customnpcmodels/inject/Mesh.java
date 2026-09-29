@@ -28,14 +28,14 @@ import lombok.Getter;
 
 /**
  * Rest-pose geometry plus the rigging that lets it be animated, owned entirely by this plugin.
- *
- * <p>This is what makes injecting a mesh with no live cache id possible. Everything the renderer
+ * <p>
+ * This is what makes injecting a mesh with no live cache id possible. Everything the renderer
  * needs is here or derived from it, so nothing has to come back through the client.
- *
- * <p>Immutable, and shared across every NPC using it: posing reads from here and writes elsewhere,
+ * <p>
+ * Immutable, and shared across every NPC using it: posing reads from here and writes elsewhere,
  * never back.
- *
- * <p>The generated accessors hand back the live arrays rather than copies. Callers read them into
+ * <p>
+ * The generated accessors hand back the live arrays rather than copies. Callers read them into
  * their own buffers; nothing mutates a mesh once it is built.
  */
 @Getter
@@ -46,10 +46,10 @@ public final class Mesh
 	/**
 	 * The model-level render priority, used as the per-face fallback when
 	 * {@link #faceRenderPriorities} is null.
-	 *
-	 * <p>Carried because merging two parts, only one of which has a per-face array, has to fill the
+	 * <p>
+	 * Carried because merging two parts, only one of which has a per-face array, has to fill the
 	 * other side with this rather than with zero - which is what the client's own
-	 * {@code mergeModels} does. Losing it would change draw order on exactly the multi-part NPCs
+	 * {@code mergeModels} does. Losing it would change draw order on exactly the multipart NPCs
 	 * merging exists for, and invisibly to any check that only compares vertices.
 	 */
 	private final int priority;
@@ -85,8 +85,8 @@ public final class Mesh
 	/**
 	 * The three vertices of each texture triangle. Indices into this mesh's own vertices, which is
 	 * why {@link MeshMerger} has to shift them like face indices.
-	 *
-	 * <p>All three are null together or none of them is; a texture triangle is one row across them.
+	 * <p>
+	 * All three are null together or none of them is; a texture triangle is one row across them.
 	 */
 	private final int[] texIndices1;
 	private final int[] texIndices2;
@@ -95,8 +95,8 @@ public final class Mesh
 	/**
 	 * Vertex indices per transform group, the unpacked form of the model's per-vertex labels. An
 	 * empty slot is a group nothing is bound to.
-	 *
-	 * <p>The accessor hands back the whole table, for callers building a derived mesh. Shared by
+	 * <p>
+	 * The accessor hands back the whole table, for callers building a derived mesh. Shared by
 	 * reference - a derived mesh rigs identically to the one it came from.
 	 */
 	private final int[][] vertexGroups;
@@ -140,8 +140,8 @@ public final class Mesh
 
 	/**
 	 * Vertices bound to a transform group, or an empty array when the group is out of range.
-	 *
-	 * <p>Out-of-range is normal rather than exceptional: a rig is shared across a whole category and
+	 * <p>
+	 * Out-of-range is normal rather than exceptional: a rig is shared across a whole category and
 	 * addresses more groups than any one mesh uses. The reference implementation makes the same
 	 * bounds check.
 	 */

@@ -30,8 +30,8 @@ import net.runelite.api.hooks.DrawCallbacks;
 
 /**
  * Sees through the stack of model-substituting decorators sitting in the draw callbacks slot.
- *
- * <p>This plugin and Retro NPC Swapper each wrap the renderer to swap NPC models, and can stack on
+ * <p>
+ * This plugin and Retro NPC Swapper each wrap the renderer to swap NPC models, and can stack on
  * top of one another. They are loaded by different classloaders, so neither can name the other's
  * decorator type. Instead, each decorator also implements {@link Supplier}, a JDK type both can see,
  * returning the callbacks it wraps. Only the decorators named here are unwrapped: anything else is

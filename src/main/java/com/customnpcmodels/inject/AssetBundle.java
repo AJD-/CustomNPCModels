@@ -24,7 +24,8 @@
  */
 package com.customnpcmodels.inject;
 
-import java.util.ArrayList;
+import lombok.Getter;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -35,17 +36,20 @@ import java.util.Map;
 /**
  * Everything needed to draw and animate custom NPC models: meshes, the rigs they are bound to, the
  * clips that drive them, and the bindings that say which NPCs wear them.
- *
- * <p>Meshes and rigs are keyed by the synthetic ids the authoring manifest assigns. Clips are keyed
+ * <p>
+ * Meshes and rigs are keyed by the synthetic ids the authoring manifest assigns. Clips are keyed
  * by their rig and the <em>live</em> sequence id they stand in for, because the client keeps playing
  * that sequence and hands over its frame index - which is why a clip's sequence is not a free choice.
  * The rig is what keeps two models that answer for the same sequence apart.
  */
 public final class AssetBundle
 {
+	@Getter
 	private final Map<Integer, Mesh> meshes;
+	@Getter
 	private final Map<Integer, Rig> rigs;
 	private final Map<Long, Clip> clips;
+	@Getter
 	private final List<NpcBinding> bindings;
 
 	/** Bindings indexed by NPC id, so the spawn path is a lookup. */
@@ -61,7 +65,7 @@ public final class AssetBundle
 	{
 		this.meshes = Collections.unmodifiableMap(new LinkedHashMap<>(meshes));
 		this.rigs = Collections.unmodifiableMap(new LinkedHashMap<>(rigs));
-		this.bindings = Collections.unmodifiableList(new ArrayList<>(bindings));
+		this.bindings = List.copyOf(bindings);
 
 		Map<Long, Clip> byKey = new LinkedHashMap<>();
 		for (Clip clip : clips)
@@ -114,24 +118,9 @@ public final class AssetBundle
 		return bindingsByNpc.get(npcId);
 	}
 
-	public Map<Integer, Mesh> getMeshes()
-	{
-		return meshes;
-	}
-
-	public Map<Integer, Rig> getRigs()
-	{
-		return rigs;
-	}
-
 	public Collection<Clip> getClips()
 	{
 		return clips.values();
-	}
-
-	public List<NpcBinding> getBindings()
-	{
-		return bindings;
 	}
 
 	public boolean isEmpty()

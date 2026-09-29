@@ -76,13 +76,13 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 /**
  * A face painter for NPC {@code .glb} files: open, click faces to recolor them, save.
- *
- * <p>Every color it offers is a packed engine HSL, so what is picked is what the game draws, and the
+ * <p>
+ * Every color it offers is a packed engine HSL, so what is picked is what the game draws, and the
  * model is lit the way the plugin lights it. Saving goes through {@link GlbPaintDocument}, which
  * changes nothing but the colors and checks the result before writing. The first save keeps the
  * original beside it as {@code <file>.bak}.
- *
- * <p>Run with {@code ./gradlew paintGltf [-Pglb=<file>]}; without {@code -Pglb} it asks for a file.
+ * <p>
+ * Run with {@code ./gradlew paintGltf [-Pglb=<file>]}; without {@code -Pglb} it asks for a file.
  * It is authoring tooling in the test sourceSet and never ships, hence plain Swing and
  * {@link JFileChooser}.
  */

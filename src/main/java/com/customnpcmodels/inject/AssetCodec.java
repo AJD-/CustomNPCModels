@@ -41,12 +41,12 @@ import java.util.zip.GZIPOutputStream;
 
 /**
  * Reads and writes {@link AssetBundle} as a compact binary blob.
- *
- * <p>Hand-rolled rather than serialized: Java serialization is off the table for a plugin, and a
+ * <p>
+ * Hand-rolled rather than serialized: Java serialization is off the table for a plugin, and a
  * text format would be several times the size for data that is almost entirely numeric arrays. The
  * payload is gzipped, which matters because vertex and index arrays compress well.
- *
- * <p>Every structure is length-prefixed and the whole thing starts with a magic number and a
+ * <p>
+ * Every structure is length-prefixed and the whole thing starts with a magic number and a
  * version, so a bundle produced by an older generator is rejected outright instead of being
  * misread into plausible-looking geometry.
  */
@@ -253,14 +253,14 @@ public final class AssetCodec
 
 	/**
 	 * Refuses a mesh whose geometry blocks disagree with each other.
-	 *
-	 * <p>Every column of a mesh is written as its own length-prefixed block, so nothing in the
+	 * <p>
+	 * Every column of a mesh is written as its own length-prefixed block, so nothing in the
 	 * format pairs them and nothing downstream re-checks them either: {@link Mesh} takes its
 	 * vertex count from {@code verticesX} alone and its face count from {@code faceIndices1} alone,
 	 * and every consumer indexes the rest by those. A short column reads cleanly here and throws
 	 * somewhere far away instead.
-	 *
-	 * <p>Worth being strict about because of where those throws land. A face index past the end of
+	 * <p>
+	 * Worth being strict about because of where those throws land. A face index past the end of
 	 * the vertex arrays reaches {@code Lighter.computeNormals} by way of
 	 * {@code ModelCache.ensureBuilt}, which only remembers an NPC id as unbuildable when the
 	 * build <em>returns</em> null - a throw skips that, so every spawn of that id retries it. A
@@ -409,8 +409,8 @@ public final class AssetCodec
 
 	/**
 	 * Refuses a mesh whose texture mapping cannot be drawn.
-	 *
-	 * <p>The per-face triangle index and the triangles themselves are separate blocks, so nothing
+	 * <p>
+	 * The per-face triangle index and the triangles themselves are separate blocks, so nothing
 	 * else pairs them: an index past the end of the triangle table reads cleanly here and throws
 	 * inside {@code ModelUploader.computeUv} on the first frame that draws the face. Same contract
 	 * as the magic and the version - a bundle that is wrong must not load.
@@ -533,16 +533,16 @@ public final class AssetCodec
 
 	/**
 	 * Refuses a clip whose four op columns disagree.
-	 *
-	 * <p>The frame list, and each frame's ops, are one table written as four blocks, and the
+	 * <p>
+	 * The frame list, and each frame's ops, are one table written as four blocks, and the
 	 * skinner is the only thing that ever pairs them again - it bounds its loop on
 	 * {@code getOpCount}, which is the transform column's own length, and then indexes the three
 	 * delta columns with it. A short column reads cleanly here and throws inside
 	 * {@code Skinner.apply} on the render path, where {@code CustomDrawCallbacks} catches it
 	 * and draws the vanilla model instead: the NPC is silently un-swapped, once per frame, with
 	 * nothing above debug level to say why.
-	 *
-	 * <p>Same contract as the rig's two tables, and for the same reason - a bundle that is wrong
+	 * <p>
+	 * Same contract as the rig's two tables, and for the same reason - a bundle that is wrong
 	 * must not load.
 	 */
 	private static void checkClip(int sequenceId, int[][] transforms, int[][] dx, int[][] dy,
@@ -613,8 +613,8 @@ public final class AssetCodec
 
 	/**
 	 * Refuses a binding the spawn path could not honor.
-	 *
-	 * <p>Every one of these would otherwise surface far from the bundle: a mesh id that does not
+	 * <p>
+	 * Every one of these would otherwise surface far from the bundle: a mesh id that does not
 	 * resolve makes {@code ModelCache} refuse a partial merge and quietly leave the NPC vanilla, an
 	 * unpaired recolor throws inside the recolor loop, and a non-positive scale collapses the model
 	 * to a point. An NPC bound twice would draw whichever binding happened to be indexed last. A rig

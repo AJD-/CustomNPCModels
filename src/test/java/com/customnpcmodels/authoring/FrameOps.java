@@ -28,8 +28,8 @@ import java.util.Arrays;
 
 /**
  * Turns one frame's per-transform axis masks and values into the op list a {@code Clip} carries.
- *
- * <p>A port of the body of {@code FrameLoader.load} from {@code net.runelite:cache}, reading plain
+ * <p>
+ * A port of the body of {@code FrameLoader.load} from {@code net.runelite:cache}, reading plain
  * arrays instead of a byte stream: the same mask semantics, the same pivot back-fill - a non-pivot
  * op re-emits the nearest preceding pivot transform with a zero delta, so it turns about its own
  * pivot rather than whichever the last op left behind - and the same default of 128 for a scale

@@ -31,11 +31,11 @@ package com.customnpcmodels.authoring;
  * luminance means to the engine - the lighter multiplies the light level by it, so it behaves as a
  * reflectance rather than a brightness, and 0 renders black under any light. That is why colors
  * coming back from an author are clamped to 1..126.
- *
- * <p>The forward direction is the client's own palette arithmetic, with each field sampled at the
- * centre of its bucket (the {@code 1/128} and {@code 1/16} offsets) and no brightness curve. The
+ * <p>
+ * The forward direction is the client's own palette arithmetic, with each field sampled at the
+ * center of its bucket (the {@code 1/128} and {@code 1/16} offsets) and no brightness curve. The
  * reverse has no closed form that lands back on the same bucket, so it starts from the analytic
- * inverse and searches the neighbouring buckets for the nearest RGB.
+ * inverse and searches the neighboring buckets for the nearest RGB.
  */
 final class RsColor
 {

@@ -32,9 +32,6 @@ import net.runelite.api.Node;
 /**
  * Geometry this plugin owns, presented to the renderer as a {@link Model}.
  *
- * <p>This is the whole point of the injection work: it makes it possible to draw a mesh that has no
- * live cache id at all, which is the only way to bring back assets Jagex overwrote.
- *
  * <h2>Why this can be handed to the renderer at all</h2>
  *
  * {@code Model} is an interface, and the GPU plugin consumes it purely through
@@ -67,20 +64,20 @@ import net.runelite.api.Node;
  * does set {@code NORMALS}, and {@code UNLIT_FACE_COLORS} under some shading modes, but null-checks
  * both: missing normals fall back to flat face normals, and missing unlit colors to the lit ones.
  * {@code drawFrustum} and {@code drawOrtho} belong to the software rasterizer, which neither uses.
- *
- * <p><b>Maintenance cost, deliberately accepted:</b> {@code Model} has no default methods, so a
+ * <p>
+ * <b>Maintenance cost, deliberately accepted:</b> {@code Model} has no default methods, so a
  * RuneLite release that adds one breaks compilation here. Nothing pins the client version to stop
  * that: {@code build.gradle} resolves {@code latest.release}, matching the example-plugin template,
  * and the Hub rebuilds against whatever is current regardless of what a plugin asks for.
- *
- * <p>That cuts two ways, and the difference matters. Through the Hub the failure is loud and
+ * <p>
+ * That cuts two ways, and the difference matters. Through the Hub the failure is loud and
  * contained - the rebuild fails, the plugin is delisted until it is patched, and no user ever runs
  * a jar missing a method. A <b>sideloaded</b> jar is the dangerous case: it meets whatever client
  * the launcher runs, and a method added since it was compiled surfaces at runtime as
  * {@link AbstractMethodError} inside the uploader - an {@code Error}, which the GPU plugin's
  * {@code catch (Exception)} will not contain.
- *
- * <p>So the mitigation is upkeep rather than a version range: when {@code Model} changes, this
+ * <p>
+ * So the mitigation is upkeep rather than a version range: when {@code Model} changes, this
  * class changes with it. The interface was last read in full against client 1.12.38.
  */
 @Slf4j

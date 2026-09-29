@@ -43,27 +43,32 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.NpcManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.NpcDefinition;
 import net.runelite.cache.fs.Store;
 
+import javax.annotation.Nonnull;
+
 /**
  * Exports an NPC from the live cache as a {@code .glb}, plus a manifest entry that binds it back to
  * the same NPC - to seed Blender work from something that already animates correctly, or to
  * round-trip it through the pipeline and into the game for comparison with the original.
- *
- * <p>The NPC's model parts are merged into one mesh, exactly as the plugin merges them at spawn, and
+ * <p>
+ * The NPC's model parts are merged into one mesh, exactly as the plugin merges them at spawn, and
  * each part is written as a glTF mesh of its own so it can be hidden in Blender or the painter. Its
  * recolors and scale go into the manifest entry rather than the mesh, the same split the plugin
  * applies them in, so the round-tripped model is dressed exactly as the original.
- *
- * <p><b>The output is Jagex geometry.</b> It goes to a gitignored directory and must never be
+ * <p>
+ * <b>The output is Jagex geometry.</b> It goes to a gitignored directory and must never be
  * committed or bundled for release; bundle it only with {@code generateAssets -Pdev}.
- *
- * <p>Run with {@code ./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]}. Without
+ * <p>
+ * Run with {@code ./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]}. Without
  * {@code -Pseqs} every sequence on the NPC's rig is exported - see {@link #defaultSequences}.
  */
+@Slf4j
 public class GltfExporter
 {
 	/** Synthetic ids for an exported NPC: this plus the NPC id, clear of anything a cache uses. */
@@ -127,26 +132,14 @@ public class GltfExporter
 	 * The sequences an NPC is exported with when none are named: its definition's own - standing,
 	 * walking, turning, running, crawling - then every other sequence animating the same rig, which
 	 * is where attacks, blocks and deaths live, since the definition never names those.
-	 *
-	 * <p>A rig shared by more than {@link #MAX_RIG_SEQUENCES} sequences - the humanoid rig is shared by
+	 * <p>
+	 * A rig shared by more than {@link #MAX_RIG_SEQUENCES} sequences - the humanoid rig is shared by
 	 * thousands - cannot say which are this NPC's, so only the definition's own are taken and the
 	 * author is told to name the rest with {@code -Pseqs}.
 	 */
 	static Set<Integer> defaultSequences(Store store, NpcDefinition npc, Consumer<String> report) throws IOException
 	{
-		Set<Integer> own = new LinkedHashSet<>();
-		for (int sequence : new int[]{
-			npc.standingAnimation, npc.walkingAnimation,
-			npc.idleRotateLeftAnimation, npc.idleRotateRightAnimation,
-			npc.rotate180Animation, npc.rotateLeftAnimation, npc.rotateRightAnimation,
-			npc.runAnimation, npc.runRotate180Animation, npc.runRotateLeftAnimation, npc.runRotateRightAnimation,
-			npc.crawlAnimation, npc.crawlRotate180Animation, npc.crawlRotateLeftAnimation, npc.crawlRotateRightAnimation})
-		{
-			if (sequence != -1)
-			{
-				own.add(sequence);
-			}
-		}
+		Set<Integer> own = createOwnSequences(npc);
 
 		int rig = -1;
 		for (int sequence : own)
@@ -175,6 +168,24 @@ public class GltfExporter
 		report.accept("  exporting " + sequences.size() + " sequences: " + own.size() + " from the definition, "
 			+ (sequences.size() - own.size()) + " more on rig " + rig);
 		return sequences;
+	}
+
+	@Nonnull
+	private static Set<Integer> createOwnSequences(NpcDefinition npc) {
+		Set<Integer> ownSequences = new LinkedHashSet<>();
+		for (int sequence : new int[]{
+			npc.standingAnimation, npc.walkingAnimation,
+			npc.idleRotateLeftAnimation, npc.idleRotateRightAnimation,
+			npc.rotate180Animation, npc.rotateLeftAnimation, npc.rotateRightAnimation,
+			npc.runAnimation, npc.runRotate180Animation, npc.runRotateLeftAnimation, npc.runRotateRightAnimation,
+			npc.crawlAnimation, npc.crawlRotate180Animation, npc.crawlRotateLeftAnimation, npc.crawlRotateRightAnimation})
+		{
+			if (sequence != -1)
+			{
+				ownSequences.add(sequence);
+			}
+		}
+		return ownSequences;
 	}
 
 	static void export(Store store, NpcDefinition npc, Set<Integer> sequences, Path out) throws IOException
@@ -212,7 +223,7 @@ public class GltfExporter
 			SequenceTiming timing = AssetGenerator.timing(store, sequenceId);
 			if (clip == null || timing == null)
 			{
-				System.out.println("  sequence " + sequenceId + " skipped: not a frame-based live sequence");
+                log.info("  sequence {} skipped: not a frame-based live sequence", sequenceId);
 				continue;
 			}
 			clips.add(clip);
@@ -260,8 +271,8 @@ public class GltfExporter
 			manifest.write(out);
 		}
 
-		System.out.println("  wrote " + out.resolve(file).toAbsolutePath() + " (" + glb.length / 1024 + " KB, "
-			+ mesh.getVerticesCount() + " verts, " + mesh.getFaceCount() + " faces, " + clips.size() + " clips)");
+        log.info("  wrote {} ({} KB, {} verts, {} faces, {} clips)", out.resolve(file).toAbsolutePath()
+				, glb.length / 1024, mesh.getVerticesCount(), mesh.getFaceCount(), clips.size());
 		if (!blocked)
 		{
 			System.out.println("  manifest " + out.resolve(Manifest.FILE_NAME).toAbsolutePath());

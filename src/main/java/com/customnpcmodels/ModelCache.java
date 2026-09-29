@@ -50,12 +50,12 @@ import net.runelite.api.NPC;
 
 /**
  * Holds the custom replacement geometry, built once per NPC id and reused every frame.
- *
- * <p>The draw callback runs per entity per frame, so it must do a map lookup and a skin and nothing
+ * <p>
+ * The draw callback runs per entity per frame, so it must do a map lookup and a skin and nothing
  * else. Everything expensive - merging, recoloring, scaling and lighting - happens here, driven from
  * NPC spawn and transform events rather than from the render path.
- *
- * <p>Every model comes from a pack. There is deliberately no fallback to the client's own cache:
+ * <p>
+ * Every model comes from a pack. There is deliberately no fallback to the client's own cache:
  * an authored mesh id means nothing to the live cache, so a pack miss must leave the NPC vanilla
  * rather than load whatever unrelated geometry happens to sit at that id.
  */
@@ -302,8 +302,8 @@ public class ModelCache
 
 	/**
 	 * Returns the mesh with the recolored palette.
-	 *
-	 * <p>Faces, texture mapping, rigging and vertices are shared with the bundle mesh - only the
+	 * <p>
+	 * Faces, texture mapping, rigging and vertices are shared with the bundle mesh - only the
 	 * colors differ per NPC, and neither the bundle nor any other NPC sees this copy.
 	 */
 	private static Mesh recolored(Mesh mesh, short[] colors)
@@ -319,8 +319,8 @@ public class ModelCache
 
 	/**
 	 * Poses built geometry for the frame the client is currently showing.
-	 *
-	 * <p>An action animation wins over the movement pose when the bundle carries it. The client
+	 * <p>
+	 * An action animation wins over the movement pose when the bundle carries it. The client
 	 * layers the two using the sequence's interleave mask; until the skinner implements that, the
 	 * action replacing the pose outright is the closer of the two approximations, because an action
 	 * is what the whole body is doing.
@@ -379,8 +379,8 @@ public class ModelCache
 
 	/**
 	 * Says once, per NPC id and animation, what the pose did with an action animation.
-	 *
-	 * <p>Bounded by construction: one line per id and animation, not per frame.
+	 * <p>
+	 * Bounded by construction: one line per id and animation, not per frame.
 	 */
 	private void reportAction(int npcId, int action, int frame, Clip clip)
 	{

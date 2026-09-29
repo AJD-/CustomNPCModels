@@ -50,25 +50,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.definitions.SequenceDefinition;
 import net.runelite.cache.fs.Store;
 
 /**
  * Builds the asset bundle from the authoring manifest and the {@code .glb} files beside it.
- *
- * <p>Reads no geometry from any cache. The live cache is opened only for the frame counts and
+ * <p>
+ * Reads no geometry from any cache. The live cache is opened only for the frame counts and
  * lengths of the sequences authored clips stand in for, which is what they are sampled against, and
  * only when some model has animations at all.
- *
- * <p>Every conversion's report is printed, and the result goes through {@link AssetValidator}
+ * <p>
+ * Every conversion's report is printed, and the result goes through {@link AssetValidator}
  * before anything is written, so a bundle that would draw wrongly is never produced. With
  * {@code -Pdev} the bundle is written to the gitignored development resource on the test classpath
- * rather than the shipped one - that is where round-trip checks of cache assets go, because those are
- * Jagex geometry and must never ship. With {@code -PpackOut} it is written as a pack instead - a
+ * rather than the shipped one. With {@code -PpackOut} it is written as a pack instead - a
  * {@code bundle.dat} and a {@code pack.json} - for the plugin's local packs folder or the hub.
- *
- * <p>Run with {@code ./gradlew generateAssets [-PassetsDir=dir] [-Pdev | -PpackOut[=dir]]}.
+ * <p>
+ * Run with {@code ./gradlew generateAssets [-PassetsDir=dir] [-Pdev | -PpackOut[=dir]]}.
  */
+@Slf4j
 public class AssetGenerator
 {
 	private static final String ASSETS_DIR_PROPERTY = "customnpcmodels.assetsDir";
@@ -97,8 +99,8 @@ public class AssetGenerator
 		String packOut = System.getProperty(PACK_OUT_PROPERTY);
 
 		Manifest manifest = Manifest.read(assetsDir);
-		System.out.println("Manifest " + assetsDir.resolve(Manifest.FILE_NAME).toAbsolutePath()
-			+ ": " + manifest.models.size() + " model(s)");
+        log.info("Manifest {}: {} model(s)",
+				assetsDir.resolve(Manifest.FILE_NAME).toAbsolutePath(), manifest.models.size());
 
 		// Before the cache is opened, so a manifest that can never build says so without needing one
 		List<String> problems = checkManifest(manifest, assetsDir);
@@ -110,35 +112,23 @@ public class AssetGenerator
 
 		boolean needsCache = manifest.models.stream().anyMatch(m -> m.animations != null && !m.animations.isEmpty());
 		Store store = needsCache ? CacheFiles.openLiveCache() : null;
-		if (needsCache && store == null)
-		{
-			System.err.println("Animated models are sampled against live sequences, but there is no live cache; "
-				+ "pass one with -PcacheDir=<path>");
-			System.exit(1);
-			return;
-		}
 
-		try
-		{
-			AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId));
-			if (packOut != null)
-			{
-				Path dir = packOut.isEmpty() ? PACKS.resolve(manifest.pack.id) : Paths.get(packOut);
-				write(bundle, dir.resolve(DirectoryPackSource.BUNDLE_FILE));
-				writePackInfo(manifest.pack, bundle, dir.resolve(DirectoryPackSource.INFO_FILE));
-			}
-			else
-			{
-				write(bundle, dev ? DEV : SHIPPED);
-			}
-		}
-		finally
-		{
-			if (store != null)
-			{
-				store.close();
-			}
-		}
+        try (store) {
+            if (needsCache && store == null) {
+                System.err.println("Animated models are sampled against live sequences, but there is no live cache; "
+                        + "pass one with -PcacheDir=<path>");
+                System.exit(1);
+                return;
+            }
+            AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId));
+            if (packOut != null) {
+                Path dir = packOut.isEmpty() ? PACKS.resolve(manifest.pack.id) : Paths.get(packOut);
+                write(bundle, dir.resolve(DirectoryPackSource.BUNDLE_FILE));
+                writePackInfo(manifest.pack, bundle, dir.resolve(DirectoryPackSource.INFO_FILE));
+            } else {
+                write(bundle, dev ? DEV : SHIPPED);
+            }
+        }
 	}
 
 	static SequenceTiming timing(Store store, int sequenceId) throws IOException
@@ -211,8 +201,8 @@ public class AssetGenerator
 			{
 				System.out.println("  " + line);
 			}
-			System.out.println("  mesh " + model.meshId + "  verts=" + result.mesh.getVerticesCount()
-				+ " faces=" + result.mesh.getFaceCount() + " rigged=" + result.mesh.isRigged());
+            log.info("  mesh {}  verts={} faces={} rigged={}",
+					model.meshId, result.mesh.getVerticesCount(), result.mesh.getFaceCount(), result.mesh.isRigged());
 
 			if (meshes.putIfAbsent(model.meshId, result.mesh) != null)
 			{
@@ -263,8 +253,8 @@ public class AssetGenerator
 	/**
 	 * What is wrong with the manifest itself, found before any {@code .glb} is read or any sequence
 	 * looked up.
-	 *
-	 * <p>These would otherwise surface as a bare exception from deep inside the build - a missing
+	 * <p>
+	 * These would otherwise surface as a bare exception from deep inside the build - a missing
 	 * {@code npcIds} as a NullPointerException, a missing file as a NoSuchFileException - or not at
 	 * all: a missing {@code meshId} quietly becomes 0. A blacklisted NPC is refused here too, so a
 	 * bundle binding one is never produced.
@@ -386,6 +376,6 @@ public class AssetGenerator
 		Files.createDirectories(output.getParent());
 		Files.write(output, bytes.toByteArray());
 		System.out.println();
-		System.out.println("Wrote " + output.toAbsolutePath() + "  (" + Files.size(output) / 1024 + " KB, " + bundle + ")");
+        log.info("Wrote {}  ({} KB, {})", output.toAbsolutePath(), Files.size(output) / 1024, bundle);
 	}
 }

@@ -28,12 +28,12 @@ import lombok.Getter;
 
 /**
  * Which NPCs wear a custom model, and how it is dressed for them.
- *
- * <p>Carried in the bundle rather than written in code, so adding a model is an authoring job - a
+ * <p>
+ * Carried in the bundle rather than written in code, so adding a model is an authoring job - a
  * glTF file and a manifest entry - and never a plugin change. Animation needs nothing here beyond
  * the rig: clips are keyed by that rig and the live sequence ids the NPC already plays.
- *
- * <p>The accessors hand back the live arrays. Nothing mutates a binding once it is built.
+ * <p>
+ * The accessors hand back the live arrays. Nothing mutates a binding once it is built.
  */
 @Getter
 public final class NpcBinding

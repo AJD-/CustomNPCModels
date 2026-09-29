@@ -72,14 +72,12 @@ don't edit it by hand. A hub pack can be removed from its own card even with the
   instead of the original. It does this by turning those two settings off in Interact Highlight
   while active, then restoring them when this plugin stops.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
-- Some NPCs are never swapped, whatever a pack says: the monsters, healers and hazards of the
-  Inferno, the Fight Caves and TzHaar fight pits, TzHaar-Ket-Rak's challenges and the Fortis
-  Colosseum, plus their Deadman copies. The NPCs that start each minigame, spectators and pets
-  aren't included. Jagex's third-party client rules forbid extra visual indicators of boss
-  mechanics, and name wave-based minigames explicitly. The list is fixed in code (`SwapBlacklist`)
-  and has no setting. `generateAssets` refuses a manifest that binds one of these NPCs, and the
-  plugin drops them from any binding that names them, so it never claims one from Retro NPC Swapper
-  either. `exportGltf` still exports them, but writes no manifest entry.
+- Some NPCs are never swapped, whatever a pack says: Jagex's third-party client rules forbid 
+  extra visual indicators of boss mechanics, and name wave-based minigames explicitly. 
+  The list is fixed in code (`SwapBlacklist`) and has no setting. `generateAssets` refuses a manifest
+  that binds one of these NPCs, and the plugin drops them from any binding that names them, so it 
+  never claims one from Retro NPC Swapper either. `exportGltf` still exports them, but writes no manifest
+  entry.
 - Retro NPC Swapper compatibility: both plugins wrap the renderer, and each can stack on top of the
   other. They're loaded by separate classloaders, so each wrapper exposes the renderer beneath it
   through a plain Java `Supplier`. Neither needs the other's classes. This plugin tells Retro which

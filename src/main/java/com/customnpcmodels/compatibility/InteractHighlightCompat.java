@@ -37,15 +37,15 @@ import net.runelite.client.plugins.interacthighlight.InteractHighlightPlugin;
 
 /**
  * Turns off Interact Highlight's own NPC outlines while this plugin draws them instead.
- *
- * <p>An outline has to be suppressed rather than painted over: the outline renderer writes straight
+ * <p>
+ * An outline has to be suppressed rather than painted over: the outline renderer writes straight
  * into the frame buffer, so a second overlay drawing later only adds a second outline. Interact
  * Highlight's overlay is package private and cannot be filtered or subclassed, but its config
  * interface is public, and it reads that config on every frame - so clearing the two NPC keys stops
  * it drawing NPCs on the next frame while it goes on drawing objects, ground items and players with
  * its own code.
- *
- * <p>The previous values are stashed in this plugin's own config group, not held in memory, so a
+ * <p>
+ * The previous values are stashed in this plugin's own config group, not held in memory, so a
  * client that dies while suppressing is repaired on the next startup rather than leaving the user's
  * Interact Highlight settings off for good.
  */
@@ -85,8 +85,8 @@ public class InteractHighlightCompat
 
 	/**
 	 * Whether the user wants NPC hover outlines, ignoring our own suppression of the setting.
-	 *
-	 * <p>While suppressing, the live value of these two keys is false because we put it there, so
+	 * <p>
+	 * While suppressing, the live value of these two keys is false because we put it there, so
 	 * reading them back would answer "no outlines" and nothing would ever be drawn. The stash holds
 	 * what the user actually chose, so it is the source of truth for as long as it exists.
 	 */
@@ -229,12 +229,12 @@ public class InteractHighlightCompat
 	/**
 	 * Hands Interact Highlight's NPC outlines back after the user re-enabled one of the settings
 	 * themselves.
-	 *
-	 * <p>The key they just set keeps their value - writing the stash back over it would undo the
+	 * <p>
+	 * The key they just set keeps their value - writing the stash back over it would undo the
 	 * choice they made. The other one is restored normally, so turning "show on hover" back on does
 	 * not silently leave "show on interact" off.
-	 *
-	 * <p>This gives up the two foreign keys and nothing else: the caller must turn
+	 * <p>
+	 * This gives up the two foreign keys and nothing else: the caller must turn
 	 * {@code overrideInteractHighlight} off afterward, which is what actually ends the takeover.
 	 * Left on, the config still asks for a takeover this object is no longer suppressing for, and
 	 * both plugins draw their outlines.
@@ -250,8 +250,8 @@ public class InteractHighlightCompat
 
 	/**
 	 * Drops the in-memory suppression state without writing anything.
-	 *
-	 * <p>For a profile switch: the config that was suppressed belongs to the profile we just left
+	 * <p>
+	 * For a profile switch: the config that was suppressed belongs to the profile we just left
 	 * and is no longer addressable, so writing a restore now would push the old profile's values
 	 * into the new one. The stash left behind there is repaired by {@link #restoreStaleStash()} the
 	 * next time that profile is active.

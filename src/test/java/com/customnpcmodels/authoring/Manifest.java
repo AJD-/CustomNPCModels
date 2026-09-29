@@ -54,8 +54,8 @@ import java.util.Map;
  *   ]
  * }
  * </pre>
- *
- * <p>{@code meshId} and {@code rigId} are synthetic and must stay stable across regenerations; keep
+ * <p>
+ * {@code meshId} and {@code rigId} are synthetic and must stay stable across regenerations; keep
  * them at 1 000 000 and up, clear of anything a cache would use. {@code animations} maps a glTF
  * animation's name to the live sequence it stands in for - the NPC keeps playing that sequence, and
  * the clip is sampled at its frame count. Scale is in 1/128ths and defaults to 128;
