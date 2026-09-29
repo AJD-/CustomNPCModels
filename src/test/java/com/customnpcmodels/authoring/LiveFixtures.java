@@ -73,6 +73,14 @@ final class LiveFixtures
 	static final int ZILYANA_READY = AnimationID.GODWARS_SARADOMIN_READY;
 	static final int ZILYANA_WALK = AnimationID.GODWARS_SARADOMIN_WALK;
 
+	/**
+	 * A giant spider, whose clips flatten a joint that other joints hang from - which has no inverse
+	 * to express those children against.
+	 */
+	static final int GIANT_SPIDER = NpcID.GIANTSPIDER1;
+	static final int GIANT_SPIDER_READY = AnimationID.SPIDER_UPDATE_READY;
+	static final int GIANT_SPIDER_DEATH = AnimationID.SPIDER_UPDATE_DEATH;
+
 	private static Store store;
 	private static NpcManager npcs;
 	private static final Map<Integer, Mesh> meshes = new HashMap<>();

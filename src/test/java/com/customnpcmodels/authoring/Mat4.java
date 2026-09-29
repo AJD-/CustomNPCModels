@@ -136,6 +136,24 @@ final class Mat4
 			m[2] * x + m[6] * y + m[10] * z + m[14]};
 	}
 
+	/** Whether {@link #invert} can invert an affine matrix. */
+	static boolean isInvertible(double[] m)
+	{
+		return Math.abs(determinant(m)) >= SINGULAR;
+	}
+
+	/** Determinant of an affine matrix's linear part. */
+	private static double determinant(double[] m)
+	{
+		double a = get(m, 0, 0), b = get(m, 0, 1), c = get(m, 0, 2);
+		double d = get(m, 1, 0), e = get(m, 1, 1), f = get(m, 1, 2);
+		double g = get(m, 2, 0), h = get(m, 2, 1), i = get(m, 2, 2);
+		return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+	}
+
+	/** Below this determinant a transform has flattened space and cannot be inverted. */
+	private static final double SINGULAR = 1e-12;
+
 	/** Inverse of an affine matrix (last row 0 0 0 1). */
 	static double[] invert(double[] m)
 	{
@@ -147,7 +165,7 @@ final class Mat4
 		double B = -(d * i - f * g);
 		double C = d * h - e * g;
 		double det = a * A + b * B + c * C;
-		if (Math.abs(det) < 1e-12)
+		if (Math.abs(det) < SINGULAR)
 		{
 			throw new GltfException("A transform is singular and cannot be inverted");
 		}
