@@ -28,13 +28,13 @@ import lombok.Getter;
 
 /**
  * One animation sequence, as a list of frames of transform operations.
- *
- * <p>Frames are addressed by the index the client is already using: {@code Actor#getAnimationFrame}
+ * <p>
+ * Frames are addressed by the index the client is already using: {@code Actor#getAnimationFrame}
  * indexes the live sequence's frame list, so a clip decoded from the live cache lines up with what
  * the server is driving, for free. That is why clips come from the live cache even for NPCs whose
  * mesh does not.
- *
- * <p>Ops are four parallel arrays per frame rather than objects, because this is walked per NPC per
+ * <p>
+ * Ops are four parallel arrays per frame rather than objects, because this is walked per NPC per
  * frame.
  */
 public final class Clip
@@ -69,8 +69,8 @@ public final class Clip
 
 	/**
 	 * Whether a frame index is one this clip actually has.
-	 *
-	 * <p>Worth checking rather than assuming: the frame index comes from the client, driven by the
+	 * <p>
+	 * Worth checking rather than assuming: the frame index comes from the client, driven by the
 	 * live sequence, so a clip that decoded short would otherwise index out of bounds on the render
 	 * path.
 	 */

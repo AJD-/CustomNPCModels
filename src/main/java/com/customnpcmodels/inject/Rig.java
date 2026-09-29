@@ -29,13 +29,13 @@ import lombok.Getter;
 /**
  * A skeleton, in the engine's own terms: an ordered list of transforms, each naming the vertex
  * groups it moves.
- *
- * <p>There is no parent/child hierarchy here. Nesting is expressed by membership instead - a
+ * <p>
+ * There is no parent/child hierarchy here. Nesting is expressed by membership instead - a
  * transform that should carry a limb and everything attached to it simply lists every one of those
  * groups. Anything authored from a modern rig has to be flattened the same way, with a parent's
  * group set being the union of its own and all its descendants'.
- *
- * <p>Corresponds to {@code FramemapDefinition} in the cache library.
+ * <p>
+ * Corresponds to {@code FramemapDefinition} in the cache library.
  */
 public final class Rig
 {

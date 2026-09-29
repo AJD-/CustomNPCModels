@@ -35,8 +35,8 @@ import java.util.Arrays;
 
 /**
  * The binary glTF container: a 12-byte header, a JSON chunk and a BIN chunk, all little-endian.
- *
- * <p>Also the one place accessors are decoded, because that is where every constraint on how the
+ * <p>
+ * Also the one place accessors are decoded, because that is where every constraint on how the
  * bytes are laid out has to be enforced. Anything the reader would otherwise misread - a sparse
  * accessor, an interleaved view, a component type it does not handle, a second buffer - is refused
  * by name.

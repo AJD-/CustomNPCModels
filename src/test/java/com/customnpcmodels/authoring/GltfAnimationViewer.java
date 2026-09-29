@@ -75,14 +75,14 @@ import net.runelite.cache.fs.Store;
 
 /**
  * Plays a {@code .glb}'s animations the way the game will draw them.
- *
- * <p>Each animation is converted into the clip {@code generateAssets} would bundle - sampled at its
+ * <p>
+ * Each animation is converted into the clip {@code generateAssets} would bundle - sampled at its
  * live sequence's frames - and posed by the plugin's own skinner, frame by frame with nothing in
  * between, each frame held for as many client cycles as the sequence says. The model is lit once at
  * rest and scaled and recolored as {@code models.json} says, as the plugin does. See
  * {@link AnimationDocument} for which sequence an animation plays against.
- *
- * <p>Run with {@code ./gradlew viewAnimations [-Pglb=<file>]}; without {@code -Pglb} it asks for a
+ * <p>
+ * Run with {@code ./gradlew viewAnimations [-Pglb=<file>]}; without {@code -Pglb} it asks for a
  * file. It is authoring tooling in the test sourceSet and never ships, hence plain Swing and
  * {@link JFileChooser}.
  */

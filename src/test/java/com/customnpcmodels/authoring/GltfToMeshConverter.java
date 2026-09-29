@@ -63,8 +63,8 @@ import java.util.regex.Pattern;
  * - its heaviest influence per vertex, with anything material that is discarded reported - and the
  * hierarchy is expressed the engine's way: per joint, parent before child, a translate, a rotate and
  * a scale naming the joint's whole subtree, turning about a pivot naming its own group.
- *
- * <p>Each animation is sampled at the start of every frame of the live sequence it is mapped to, and
+ * <p>
+ * Each animation is sampled at the start of every frame of the live sequence it is mapped to, and
  * for each joint the transform its group must end at is computed from the glTF skinning equation.
  * The ops that get it there are derived against what the preceding ops <em>actually</em> did once
  * rounded and quantised to 1/256 of a turn, not against the ideal, so the error never compounds down
@@ -662,13 +662,8 @@ final class GltfToMeshConverter
 		{
 			double[] p = geometry.positions.get(split);
 			List<Object> key = Arrays.asList(p[0], p[1], p[2], geometry.groups.get(split));
-			Integer vertex = keys.get(key);
-			if (vertex == null)
-			{
-				vertex = keys.size();
-				keys.put(key, vertex);
-			}
-			welded[split] = vertex;
+            Integer vertex = keys.computeIfAbsent(key, k -> keys.size());
+            welded[split] = vertex;
 		}
 		return welded;
 	}

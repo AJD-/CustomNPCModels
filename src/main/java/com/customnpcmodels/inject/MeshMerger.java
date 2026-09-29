@@ -73,8 +73,8 @@ public final class MeshMerger
 	/**
 	 * Merges parts into a single mesh under {@code id}, conventionally the first part's model id so
 	 * that logging still names something recognizable.
-	 *
-	 * <p>A single part is returned as-is rather than copied, exactly as the client uses a lone model
+	 * <p>
+	 * A single part is returned as-is rather than copied, exactly as the client uses a lone model
 	 * without merging it. {@link Mesh} is immutable and every consumer that needs to change one
 	 * builds a derived copy first, so sharing the instance is safe.
 	 */
@@ -210,7 +210,7 @@ public final class MeshMerger
 		if (overflowedFaces > 0)
 		{
 			// Unreachable from a bundle the generator produced - it refuses a set that would get
-			// here - so say it once, loudly, rather than once per face
+			// here
 			log.warn("Merged mesh {} maps {} of its {} faces to texture triangles past the {} the "
 				+ "renderer can address, the highest being {}; those faces fall back to the "
 				+ "face-as-UV projection", id, overflowedFaces, totalFaces,
@@ -314,11 +314,11 @@ public final class MeshMerger
 	/**
 	 * The merged per-face triangle index: -1 where the part named no triangle, and the part's own
 	 * index shifted into the concatenated table where it did.
-	 *
-	 * <p>A part can decline a triangle two ways - a null array, meaning no face on it names one, or
+	 * <p>
+	 * A part can decline a triangle two ways - a null array, meaning no face on it names one, or
 	 * a -1 entry, meaning that one face uses the renderer's projection - and both mean -1 here.
-	 *
-	 * <p>Returned as an {@code int} rather than a {@code byte} so the caller can tell an index the
+	 * <p>
+	 * Returned as an {@code int} rather than a {@code byte} so the caller can tell an index the
 	 * renderer cannot address from one it can; narrowing here would wrap it into a valid-looking
 	 * triangle and lose exactly the thing worth reporting.
 	 */

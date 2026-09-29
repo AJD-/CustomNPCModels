@@ -28,8 +28,8 @@ import java.io.IOException;
 
 /**
  * Where injected assets are read from.
- *
- * <p>Implementations do blocking IO and must not be called on the client thread.
+ * <p>
+ * Implementations do blocking IO and shouldn't be called on the client thread.
  */
 public interface AssetSource
 {

@@ -30,15 +30,15 @@ import com.customnpcmodels.inject.Rig;
 
 /**
  * Replays a clip frame as one affine transform per vertex group, rather than as moved vertices.
- *
- * <p>The same ops, in the same order, with the same pivot rule and trig tables as {@code Skinner} -
+ * <p>
+ * The same ops, in the same order, with the same pivot rule and trig tables as {@code Skinner} -
  * but each op is folded into the matrices of the groups it names instead of being applied to their
  * vertices. That turns "where did every vertex go" into "how did every group move", which is what a
  * glTF joint animates, and it does so exactly: no fitting, and no trouble with a group too small to
  * fit a rotation to. Applying a group's matrix to its rest vertices reproduces the skinner's pose,
  * which the tests check.
- *
- * <p>A scale op makes a group's matrix non-rigid. That is reported by the writer rather than
+ * <p>
+ * A scale op makes a group's matrix non-rigid. That is reported by the writer rather than
  * handled here.
  */
 final class RigPoser

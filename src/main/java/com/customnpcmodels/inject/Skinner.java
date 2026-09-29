@@ -28,16 +28,15 @@ import net.runelite.api.Perspective;
 
 /**
  * Poses a {@link Mesh} for one animation frame.
- *
- * <p>Exists because {@code Client#applyTransformations} casts to the client's own concrete model
+ * <p>
+ * Exists because {@code Client#applyTransformations} casts to the client's own concrete model
  * class, so injected geometry can never be animated by the client. That is the single constraint
  * that makes a skinner necessary - and, usefully, it is also what makes a custom rig format
  * possible at all.
- *
- * <p>A port of {@code ModelDefinition.animate} from the cache library, with one deliberate change:
+ * <p>
+ * A port of {@code ModelDefinition.animate} from the cache library, with one deliberate change:
  * vertices are floats here, as they are in the modern client, so the fixed-point shifts of the
- * original become float divisions. Everything else - the op types, the rotation encoding, the order
- * the axes are applied in - is kept as-is.
+ * original become float divisions.
  */
 public final class Skinner
 {
