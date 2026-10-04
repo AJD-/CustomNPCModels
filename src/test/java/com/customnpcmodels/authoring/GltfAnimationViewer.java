@@ -32,6 +32,7 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.KeyboardFocusManager;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
@@ -39,13 +40,17 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -63,10 +68,12 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSlider;
+import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.WindowConstants;
@@ -82,9 +89,14 @@ import net.runelite.cache.fs.Store;
  * rest and scaled and recolored as {@code models.json} says, as the plugin does. See
  * {@link AnimationDocument} for which sequence an animation plays against.
  * <p>
- * Run with {@code ./gradlew viewAnimations [-Pglb=<file>]}; without {@code -Pglb} it asks for a
- * file. It is authoring tooling in the test sourceSet and never ships, hence plain Swing and
- * {@link JFileChooser}.
+ * Given several models - picked together, or a folder, which opens every {@code .glb} directly in
+ * it - it shows one tab each, loading each the first time its tab is shown. Ctrl+Page Up / Page Down
+ * or Ctrl+(Shift+)Tab move between them; the playback settings in the toolbar apply to whichever is
+ * shown.
+ * <p>
+ * Run with {@code ./gradlew viewAnimations [-Pglb=<file or folder>]}; without {@code -Pglb} it asks
+ * for one or more files. It is authoring tooling in the test sourceSet and never ships, hence plain
+ * Swing and {@link JFileChooser}.
  */
 public class GltfAnimationViewer
 {
@@ -94,19 +106,21 @@ public class GltfAnimationViewer
 	private static final String[] SPEED_LABELS = {"1x", "0.5x", "0.25x"};
 	private static final double[] SPEEDS = {1, 0.5, 0.25};
 
-	private final Path path;
-	private final AnimationDocument document;
-	private final AnimationViewport viewport;
+	private final List<ModelTab> tabs = new ArrayList<>();
+	/** One tab per model; null for a single model. */
+	private final JTabbedPane tabStrip;
 
 	private final JFrame window = new JFrame();
-	private final JList<AnimationDocument.Animation> list;
 	private final JToggleButton play = new JToggleButton("Play (Space)");
 	private final JSlider slider = new JSlider(0, 0, 0);
 	private final JCheckBox loop = new JCheckBox("Loop", true);
 	private final JComboBox<String> speed = new JComboBox<>(SPEED_LABELS);
+	private final JCheckBox lighting = new JCheckBox("Game lighting", true);
 	private final JLabel status = new JLabel(" ");
 	private final Timer timer = new Timer(20, e -> tick());
 
+	/** The model being shown. */
+	private ModelTab active;
 	private AnimationDocument.Animation current;
 	private int shownFrame = -1;
 	private boolean updatingSlider;
@@ -116,77 +130,158 @@ public class GltfAnimationViewer
 	private long baseNanos;
 	private double speedFactor = 1;
 
+	/** Orders models by file name, ignoring case. */
+	private static final Comparator<Path> BY_NAME =
+		Comparator.comparing(glb -> glb.getFileName().toString(), String.CASE_INSENSITIVE_ORDER);
+
 	public static void main(String[] args)
 	{
 		String glbArg = System.getProperty("customnpcmodels.glb");
 		SwingUtilities.invokeLater(() ->
 		{
-			Path path = glbArg == null || glbArg.isEmpty() ? choose() : Paths.get(glbArg);
-			if (path == null)
-			{
-				return;
-			}
+			Path argPath = glbArg == null || glbArg.isEmpty() ? null : Paths.get(glbArg);
+			List<Path> models = Collections.emptyList();
 			try
 			{
-				new GltfAnimationViewer(path).window.setVisible(true);
+				if (argPath == null)
+				{
+					models = choose();
+				}
+				else if (Files.isDirectory(argPath))
+				{
+					models = glbsIn(argPath);
+					if (models.isEmpty())
+					{
+						throw new IOException("there are no .glb files in it");
+					}
+				}
+				else
+				{
+					models = Collections.singletonList(argPath);
+				}
+				if (!models.isEmpty())
+				{
+					new GltfAnimationViewer(models).window.setVisible(true);
+				}
 			}
 			catch (IOException | GltfException ex)
 			{
-				JOptionPane.showMessageDialog(null, "Could not open " + path.getFileName() + ":\n" + ex.getMessage(),
+				// Only a lone model or an empty folder throws; with several, each tab reports its own
+				Path failed = models.size() == 1 ? models.get(0) : argPath;
+				String name = failed == null ? "the model" : failed.getFileName().toString();
+				JOptionPane.showMessageDialog(null, "Could not open " + name + ":\n" + ex.getMessage(),
 					"View animations", JOptionPane.ERROR_MESSAGE);
 			}
 		});
 	}
 
-	private static Path choose()
+	/** Asks for one or more models, by name, or none when cancelled. */
+	private static List<Path> choose()
 	{
 		JFileChooser chooser = new JFileChooser(Paths.get("").toAbsolutePath().toFile());
-		chooser.setDialogTitle("Open a model to view its animations");
+		chooser.setDialogTitle("Open models to view their animations (Ctrl+A selects the whole folder)");
+		chooser.setMultiSelectionEnabled(true);
 		chooser.setFileFilter(new FileNameExtensionFilter("glTF binary (*.glb)", "glb"));
-		return chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION ? chooser.getSelectedFile().toPath() : null;
+		if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION)
+		{
+			return Collections.emptyList();
+		}
+		List<Path> models = new ArrayList<>();
+		for (File file : chooser.getSelectedFiles())
+		{
+			models.add(file.toPath());
+		}
+		models.sort(BY_NAME);
+		return models;
 	}
 
-	private GltfAnimationViewer(Path path) throws IOException
+	/** The {@code .glb} files directly in a folder, by name. */
+	static List<Path> glbsIn(Path dir) throws IOException
 	{
-		this.path = path.toAbsolutePath();
-		byte[] glb = Files.readAllBytes(this.path);
-		Manifest.Model entry = Manifest.entryFor(this.path);
-
-		// The cache is only read for sequence timings, all of them now, so it is closed straight after
-		try (Store store = CacheFiles.openLiveCache())
+		List<Path> glbs = new ArrayList<>();
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(dir))
 		{
-			document = AnimationDocument.load(glb, entry,
-				store == null ? null : sequenceId -> AssetGenerator.timing(store, sequenceId));
+			for (Path entry : entries)
+			{
+				if (Files.isRegularFile(entry) && entry.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".glb"))
+				{
+					glbs.add(entry);
+				}
+			}
+		}
+		glbs.sort(BY_NAME);
+		return glbs;
+	}
+
+	/**
+	 * @param models the models to show, as tabs when there are several; a lone model must load or
+	 *               this throws
+	 */
+	private GltfAnimationViewer(List<Path> models) throws IOException
+	{
+		for (Path model : models)
+		{
+			tabs.add(new ModelTab(model));
 		}
 
-		viewport = new AnimationViewport(document);
-		List<Clip> clips = new ArrayList<>();
-		for (AnimationDocument.Animation animation : document.playable())
+		JComponent center;
+		if (tabs.size() == 1)
 		{
-			clips.add(animation.clip);
-		}
-		viewport.frameClips(clips);
-
-		list = new JList<>(document.animations().toArray(new AnimationDocument.Animation[0]));
-		buildWindow();
-
-		List<AnimationDocument.Animation> playable = document.playable();
-		if (!playable.isEmpty())
-		{
-			list.setSelectedValue(playable.get(0), true);
-			setPlaying(true);
+			tabStrip = null;
+			tabs.get(0).load();
+			center = tabs.get(0).panel;
 		}
 		else
 		{
-			select(null);
+			tabStrip = new JTabbedPane(SwingConstants.TOP, JTabbedPane.SCROLL_TAB_LAYOUT);
+			tabStrip.setFocusable(false);
+			for (ModelTab tab : tabs)
+			{
+				tabStrip.addTab(tab.path.getFileName().toString(), null, tab.panel, tab.path.toString());
+			}
+			center = tabStrip;
+		}
+
+		// Loaded and shown before packing, so the window is sized to a real view
+		activate(tabs.get(0));
+		setPlaying(true);
+		if (tabStrip != null)
+		{
+			tabStrip.addChangeListener(e -> activate(tabs.get(tabStrip.getSelectedIndex())));
+		}
+		buildWindow(center);
+	}
+
+	/** Shows a model, loading it first if this is the first time, and plays its selected animation. */
+	private void activate(ModelTab tab)
+	{
+		if (tab.document == null && tab.error == null)
+		{
+			tab.tryLoad();
+		}
+		active = tab;
+		window.setTitle(tab.path.getFileName() + (tabStrip == null ? "" : " - " + tab.path.getParent().getFileName())
+			+ " - View animations");
+		select(tab.list == null ? null : tab.list.getSelectedValue());
+		if (tab.viewport != null)
+		{
+			tab.viewport.requestFocusInWindow();
+		}
+	}
+
+	/** Moves to the next or previous model, wrapping around. */
+	private void cycleModel(int delta)
+	{
+		if (tabStrip != null)
+		{
+			tabStrip.setSelectedIndex(Math.floorMod(tabStrip.getSelectedIndex() + delta, tabs.size()));
 		}
 	}
 
 	// --- Layout ---------------------------------------------------------------------------------
 
-	private void buildWindow()
+	private void buildWindow(JComponent center)
 	{
-		window.setTitle(path.getFileName() + " - View animations");
 		window.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 		window.addWindowListener(new WindowAdapter()
 		{
@@ -199,12 +294,10 @@ public class GltfAnimationViewer
 
 		JPanel root = new JPanel(new BorderLayout());
 		root.add(toolbar(), BorderLayout.NORTH);
-		root.add(viewport, BorderLayout.CENTER);
-		root.add(animationList(), BorderLayout.WEST);
+		root.add(center, BorderLayout.CENTER);
 		root.add(bottom(), BorderLayout.SOUTH);
 		window.setContentPane(root);
 
-		installMouse();
 		installKeys(root);
 		window.pack();
 		window.setLocationRelativeTo(null);
@@ -223,9 +316,17 @@ public class GltfAnimationViewer
 		speed.addActionListener(e -> setSpeed(SPEEDS[speed.getSelectedIndex()]));
 		bar.add(unfocusable(speed));
 		bar.add(Box.createHorizontalStrut(16));
-		JCheckBox lighting = new JCheckBox("Game lighting", true);
 		lighting.setToolTipText("Off shows each face's flat color, with no shading");
-		lighting.addActionListener(e -> viewport.setGameLighting(lighting.isSelected()));
+		lighting.addActionListener(e ->
+		{
+			for (ModelTab tab : tabs)
+			{
+				if (tab.viewport != null)
+				{
+					tab.viewport.setGameLighting(lighting.isSelected());
+				}
+			}
+		});
 		bar.add(unfocusable(lighting));
 		bar.add(unfocusable(button("Reset view (F)", e -> frameCurrent())));
 		return bar;
@@ -243,51 +344,6 @@ public class GltfAnimationViewer
 	{
 		component.setFocusable(false);
 		return component;
-	}
-
-	private JComponent animationList()
-	{
-		list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-		list.setFocusable(false);
-		list.setCellRenderer(new DefaultListCellRenderer()
-		{
-			@Override
-			public Component getListCellRendererComponent(JList<?> jList, Object value, int index, boolean selected,
-				boolean focused)
-			{
-				AnimationDocument.Animation animation = (AnimationDocument.Animation) value;
-				JLabel label = (JLabel) super.getListCellRendererComponent(jList, describe(animation), index, selected, focused);
-				label.setBorder(BorderFactory.createEmptyBorder(3, 6, 3, 6));
-				if (!animation.isPlayable())
-				{
-					label.setForeground(Color.GRAY);
-					label.setToolTipText(animation.unplayableReason);
-				}
-				else
-				{
-					label.setToolTipText(null);
-				}
-				return label;
-			}
-		});
-		list.addListSelectionListener(e ->
-		{
-			if (!e.getValueIsAdjusting())
-			{
-				select(list.getSelectedValue());
-			}
-		});
-
-		JPanel panel = new JPanel(new BorderLayout());
-		panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 0));
-		JLabel heading = new JLabel("Animations");
-		heading.setFont(heading.getFont().deriveFont(Font.BOLD));
-		heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
-		panel.add(heading, BorderLayout.NORTH);
-		JScrollPane scroll = new JScrollPane(list);
-		scroll.setPreferredSize(new Dimension(280, 200));
-		panel.add(scroll, BorderLayout.CENTER);
-		return panel;
 	}
 
 	private static String describe(AnimationDocument.Animation animation)
@@ -322,46 +378,6 @@ public class GltfAnimationViewer
 		});
 		panel.add(left(slider));
 		panel.add(left(status));
-
-		List<String> notes = new ArrayList<>();
-		if (document.isRecolored())
-		{
-			notes.add("models.json recolors this model; the colors shown are the recolored ones.");
-		}
-		if (document.scaleXZ() != 1f || document.scaleY() != 1f)
-		{
-			notes.add(String.format("models.json scales this model by %.2f across and %.2f up, after posing, as the game does.",
-				document.scaleXZ(), document.scaleY()));
-		}
-		for (String note : notes)
-		{
-			JLabel label = new JLabel(note);
-			label.setForeground(new Color(0xB36B00));
-			panel.add(left(label));
-		}
-
-		List<String> report = document.report();
-		if (!report.isEmpty())
-		{
-			JTextArea text = new JTextArea(String.join("\n", report));
-			text.setEditable(false);
-			text.setLineWrap(true);
-			text.setWrapStyleWord(true);
-			JScrollPane scroll = new JScrollPane(text);
-			scroll.setPreferredSize(new Dimension(600, 90));
-			scroll.setVisible(false);
-
-			JToggleButton toggle = new JToggleButton("Conversion report (" + report.size() + ")");
-			toggle.setFocusable(false);
-			toggle.addActionListener(e ->
-			{
-				scroll.setVisible(toggle.isSelected());
-				panel.revalidate();
-			});
-			panel.add(Box.createVerticalStrut(4));
-			panel.add(left(toggle));
-			panel.add(left(scroll));
-		}
 		return panel;
 	}
 
@@ -373,7 +389,7 @@ public class GltfAnimationViewer
 
 	// --- Input ----------------------------------------------------------------------------------
 
-	private void installMouse()
+	private static void installMouse(AnimationViewport viewport)
 	{
 		MouseAdapter mouse = new MouseAdapter()
 		{
@@ -422,6 +438,24 @@ public class GltfAnimationViewer
 		bind(root, "LEFT", "back", () -> step(-1));
 		bind(root, "RIGHT", "forward", () -> step(1));
 		bind(root, "F", "frame", this::frameCurrent);
+		if (tabStrip == null)
+		{
+			return;
+		}
+
+		bind(root, "ctrl PAGE_DOWN", "nextModel", () -> cycleModel(1));
+		bind(root, "ctrl PAGE_UP", "previousModel", () -> cycleModel(-1));
+		bind(root, "ctrl TAB", "nextModelTab", () -> cycleModel(1));
+		bind(root, "ctrl shift TAB", "previousModelTab", () -> cycleModel(-1));
+		// The focus manager would otherwise take Ctrl+Tab for itself, and the tab strip Ctrl+Page Up/Down
+		window.setFocusTraversalKeys(KeyboardFocusManager.FORWARD_TRAVERSAL_KEYS,
+			Collections.singleton(KeyStroke.getKeyStroke("TAB")));
+		window.setFocusTraversalKeys(KeyboardFocusManager.BACKWARD_TRAVERSAL_KEYS,
+			Collections.singleton(KeyStroke.getKeyStroke("shift TAB")));
+		for (String key : new String[]{"ctrl PAGE_DOWN", "ctrl PAGE_UP"})
+		{
+			tabStrip.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), "none");
+		}
 	}
 
 	private static void bind(JComponent root, String key, String name, Runnable action)
@@ -456,9 +490,14 @@ public class GltfAnimationViewer
 		if (!playable)
 		{
 			setPlaying(false);
-			viewport.show(null, 0);
+			if (active.document == null)
+			{
+				status.setText("Could not open " + active.path.getFileName() + ": " + active.error);
+				return;
+			}
+			active.viewport.show(null, 0);
 			status.setText(animation == null
-				? (document.animations().isEmpty() ? "The file has no animations; showing the rest pose"
+				? (active.document.animations().isEmpty() ? "The file has no animations; showing the rest pose"
 				: "No animation can be played; showing the rest pose")
 				: "Can't play '" + animation.name + "': " + animation.unplayableReason + ". Showing the rest pose.");
 			return;
@@ -561,7 +600,7 @@ public class GltfAnimationViewer
 		if (frame != shownFrame)
 		{
 			shownFrame = frame;
-			viewport.show(current.clip, frame);
+			active.viewport.show(current.clip, frame);
 			updatingSlider = true;
 			slider.setValue(frame);
 			updatingSlider = false;
@@ -570,14 +609,197 @@ public class GltfAnimationViewer
 		long total = Playback.cycles(timing);
 		long cycle = loop.isSelected() ? cycles % total : Math.min(cycles, total - 1);
 		status.setText(String.format("Frame %d / %d   Cycle %d / %d   %.2f s / %.2f s   Sequence %d   "
-				+ "Drag: turn   Shift+drag: move   Wheel: zoom   Left / Right: step",
+				+ "Drag: turn   Shift+drag: move   Wheel: zoom   Left / Right: step%s",
 			frame + 1, timing.frameCount(), cycle, total, cycle * SequenceTiming.SECONDS_PER_CYCLE, timing.duration(),
-			current.sequenceId));
+			current.sequenceId, tabs.size() > 1 ? "   Ctrl+PgUp / PgDn: model" : ""));
 	}
 
 	private void frameCurrent()
 	{
-		viewport.frameClips(current != null && current.isPlayable()
-			? Collections.singletonList(current.clip) : Collections.emptyList());
+		if (active.viewport != null)
+		{
+			active.viewport.frameClips(current != null && current.isPlayable()
+				? Collections.singletonList(current.clip) : Collections.emptyList());
+		}
+	}
+
+	// --- Models ---------------------------------------------------------------------------------
+
+	/**
+	 * One model: its document, view and animation list, built when it is first shown. Its view keeps
+	 * its own camera and its list its own selection while other models are shown.
+	 */
+	private class ModelTab
+	{
+		final Path path;
+		/** Holds the view once loaded, or the reason it could not be. */
+		final JPanel panel = new JPanel(new BorderLayout());
+
+		AnimationDocument document;
+		AnimationViewport viewport;
+		JList<AnimationDocument.Animation> list;
+		/** Why the model could not be loaded, or null. */
+		String error;
+
+		ModelTab(Path path)
+		{
+			this.path = path.toAbsolutePath();
+		}
+
+		/** Loads the model, or shows why it could not be in its place. */
+		void tryLoad()
+		{
+			try
+			{
+				load();
+			}
+			catch (IOException | RuntimeException ex)
+			{
+				document = null;
+				viewport = null;
+				list = null;
+				panel.removeAll();
+				error = ex.getMessage() == null ? ex.toString() : ex.getMessage();
+				JLabel label = new JLabel("<html>Could not open " + escape(path.getFileName().toString()) + ":<br>"
+					+ escape(error) + "</html>", SwingConstants.CENTER);
+				label.setPreferredSize(new Dimension(900, 720));
+				panel.add(label, BorderLayout.CENTER);
+			}
+			// Already in the tab strip, unless this is the first model
+			panel.revalidate();
+		}
+
+		void load() throws IOException
+		{
+			byte[] glb = Files.readAllBytes(path);
+			Manifest.Model entry = Manifest.entryFor(path);
+
+			// The cache is only read for sequence timings, all of them now, so it is closed straight after
+			try (Store store = CacheFiles.openLiveCache())
+			{
+				document = AnimationDocument.load(glb, entry,
+					store == null ? null : sequenceId -> AssetGenerator.timing(store, sequenceId));
+			}
+
+			viewport = new AnimationViewport(document);
+			viewport.setGameLighting(lighting.isSelected());
+			List<Clip> clips = new ArrayList<>();
+			for (AnimationDocument.Animation animation : document.playable())
+			{
+				clips.add(animation.clip);
+			}
+			viewport.frameClips(clips);
+			installMouse(viewport);
+
+			list = new JList<>(document.animations().toArray(new AnimationDocument.Animation[0]));
+			panel.add(animationList(), BorderLayout.WEST);
+			panel.add(viewport, BorderLayout.CENTER);
+			JComponent notes = notes();
+			if (notes != null)
+			{
+				panel.add(notes, BorderLayout.SOUTH);
+			}
+
+			List<AnimationDocument.Animation> playable = document.playable();
+			if (!playable.isEmpty())
+			{
+				list.setSelectedValue(playable.get(0), true);
+			}
+		}
+
+		private JComponent animationList()
+		{
+			list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+			list.setFocusable(false);
+			list.setCellRenderer(new DefaultListCellRenderer()
+			{
+				@Override
+				public Component getListCellRendererComponent(JList<?> jList, Object value, int index, boolean selected,
+					boolean focused)
+				{
+					AnimationDocument.Animation animation = (AnimationDocument.Animation) value;
+					JLabel label = (JLabel) super.getListCellRendererComponent(jList, describe(animation), index, selected, focused);
+					label.setBorder(BorderFactory.createEmptyBorder(3, 6, 3, 6));
+					if (!animation.isPlayable())
+					{
+						label.setForeground(Color.GRAY);
+						label.setToolTipText(animation.unplayableReason);
+					}
+					else
+					{
+						label.setToolTipText(null);
+					}
+					return label;
+				}
+			});
+			list.addListSelectionListener(e ->
+			{
+				if (!e.getValueIsAdjusting() && active == this)
+				{
+					select(list.getSelectedValue());
+				}
+			});
+
+			JPanel box = new JPanel(new BorderLayout());
+			box.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 0));
+			JLabel heading = new JLabel("Animations");
+			heading.setFont(heading.getFont().deriveFont(Font.BOLD));
+			heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
+			box.add(heading, BorderLayout.NORTH);
+			JScrollPane scroll = new JScrollPane(list);
+			scroll.setPreferredSize(new Dimension(280, 200));
+			box.add(scroll, BorderLayout.CENTER);
+			return box;
+		}
+
+		/** What models.json does to this model and the conversion report, or null when neither applies. */
+		private JComponent notes()
+		{
+			JPanel box = new JPanel();
+			box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+			box.setBorder(BorderFactory.createEmptyBorder(4, 8, 0, 8));
+
+			List<String> notes = new ArrayList<>();
+			if (document.isRecolored())
+			{
+				notes.add("models.json recolors this model; the colors shown are the recolored ones.");
+			}
+			if (document.scaleXZ() != 1f || document.scaleY() != 1f)
+			{
+				notes.add(String.format("models.json scales this model by %.2f across and %.2f up, after posing, as the game does.",
+					document.scaleXZ(), document.scaleY()));
+			}
+			for (String note : notes)
+			{
+				JLabel label = new JLabel(note);
+				label.setForeground(new Color(0xB36B00));
+				box.add(left(label));
+			}
+
+			List<String> report = document.report();
+			if (!report.isEmpty())
+			{
+				JTextArea text = new JTextArea(String.join("\n", report));
+				text.setEditable(false);
+				text.setLineWrap(true);
+				text.setWrapStyleWord(true);
+				// Leaves Ctrl+Tab to move between models when the report has focus
+				text.setFocusTraversalKeysEnabled(false);
+				JScrollPane scroll = new JScrollPane(text);
+				scroll.setPreferredSize(new Dimension(600, 90));
+				scroll.setVisible(false);
+
+				JToggleButton toggle = new JToggleButton("Conversion report (" + report.size() + ")");
+				toggle.setFocusable(false);
+				toggle.addActionListener(e ->
+				{
+					scroll.setVisible(toggle.isSelected());
+					box.revalidate();
+				});
+				box.add(left(toggle));
+				box.add(left(scroll));
+			}
+			return notes.isEmpty() && report.isEmpty() ? null : box;
+		}
 	}
 }
