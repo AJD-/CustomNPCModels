@@ -327,11 +327,7 @@ public class GltfExporter
 	static Mesh merge(NpcDefinition npc, List<Mesh> parts)
 	{
 		int id = ID_BASE + npc.id;
-		Mesh mesh = MeshMerger.merge(id, parts);
-		return new Mesh(id, mesh.getPriority(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
-			mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(), mesh.getFaceColors(),
-			mesh.getFaceRenderTypes(), mesh.getFaceTransparencies(), mesh.getFaceRenderPriorities(),
-			mesh.getFaceTextures(), mesh.getTextureCoords(), mesh.getTexIndices1(), mesh.getTexIndices2(),
-			mesh.getTexIndices3(), mesh.getVertexGroups());
+		// A lone part comes back from the merge under its own id
+		return MeshMerger.merge(id, parts).withId(id);
 	}
 }

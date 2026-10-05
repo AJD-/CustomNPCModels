@@ -24,8 +24,8 @@
  */
 package com.customnpcmodels.authoring;
 
-import com.customnpcmodels.inject.Lighter;
 import com.customnpcmodels.inject.Mesh;
+import com.customnpcmodels.inject.NpcAppearance;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -60,14 +60,6 @@ import javax.swing.JComponent;
  */
 abstract class ModelViewport extends JComponent
 {
-	// The NPC lighting ModelCache uses: light(64 + ambient, 850 + contrast * 5, -30, -50, -30)
-	private static final int NPC_AMBIENT = 64;
-	private static final int NPC_CONTRAST = 850;
-	private static final int NPC_CONTRAST_STEP = 5;
-	private static final int NPC_LIGHT_X = -30;
-	private static final int NPC_LIGHT_Y = -50;
-	private static final int NPC_LIGHT_Z = -30;
-
 	/** Lighter's faceColors3 sentinels. */
 	private static final int FLAT_SHADED = -1;
 	private static final int HIDDEN = -2;
@@ -144,13 +136,7 @@ abstract class ModelViewport extends JComponent
 		{
 			colors[face] = faceColor(face);
 		}
-		Lighter.light(
-			mesh.getVerticesCount(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
-			faces, mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(),
-			colors, mesh.getFaceRenderTypes(), null,
-			NPC_AMBIENT + ambient, NPC_CONTRAST + contrast * NPC_CONTRAST_STEP,
-			NPC_LIGHT_X, NPC_LIGHT_Y, NPC_LIGHT_Z,
-			lit1, lit2, lit3);
+		NpcAppearance.light(mesh, colors, ambient, contrast, lit1, lit2, lit3);
 		repaint();
 	}
 

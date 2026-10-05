@@ -27,9 +27,11 @@ package com.customnpcmodels.authoring;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.MeshMerger;
+import com.customnpcmodels.inject.NpcAppearance;
 import com.customnpcmodels.inject.Rig;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -217,27 +219,20 @@ final class AnimationDocument
 		mesh = MeshMerger.merge(result.mesh.getId(), Collections.singletonList(result.mesh));
 		rig = result.rig;
 
-		faceColors = mesh.getFaceColors().clone();
-		boolean anyRecolored = false;
-		if (entry != null && entry.recolors != null)
+		List<Manifest.Recolor> recolors = entry == null || entry.recolors == null
+			? Collections.emptyList() : entry.recolors;
+		short[] find = new short[recolors.size()];
+		short[] replace = new short[recolors.size()];
+		for (int pair = 0; pair < recolors.size(); pair++)
 		{
-			for (int face = 0; face < faceColors.length; face++)
-			{
-				for (Manifest.Recolor recolor : entry.recolors)
-				{
-					if (faceColors[face] == (short) recolor.find)
-					{
-						faceColors[face] = (short) recolor.replace;
-						anyRecolored = true;
-						break;
-					}
-				}
-			}
+			find[pair] = (short) recolors.get(pair).find;
+			replace[pair] = (short) recolors.get(pair).replace;
 		}
-		recolored = anyRecolored;
+		faceColors = NpcAppearance.recolor(mesh.getFaceColors(), find, replace);
+		recolored = !Arrays.equals(faceColors, mesh.getFaceColors());
 
-		scaleXZ = (entry == null ? 128 : entry.scaleXZ()) / 128f;
-		scaleY = (entry == null ? 128 : entry.scaleY()) / 128f;
+		scaleXZ = NpcAppearance.scale(entry == null ? Rig.SCALE_UNIT : entry.scaleXZ());
+		scaleY = NpcAppearance.scale(entry == null ? Rig.SCALE_UNIT : entry.scaleY());
 		ambient = entry == null || entry.ambient == null ? 0 : entry.ambient;
 		contrast = entry == null || entry.contrast == null ? 0 : entry.contrast;
 	}

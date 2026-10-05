@@ -132,6 +132,25 @@ public final class Mesh
 		this.vertexGroups = vertexGroups;
 	}
 
+	/** This mesh under another id. Everything else is shared, as a mesh never changes. */
+	public Mesh withId(int newId)
+	{
+		return copy(newId, faceColors);
+	}
+
+	/** This mesh with other face colors, one per face. Everything else is shared. */
+	public Mesh withFaceColors(short[] colors)
+	{
+		return copy(id, colors);
+	}
+
+	private Mesh copy(int newId, short[] colors)
+	{
+		return new Mesh(newId, priority, verticesX, verticesY, verticesZ, faceIndices1, faceIndices2, faceIndices3,
+			colors, faceRenderTypes, faceTransparencies, faceRenderPriorities, faceTextures,
+			textureCoords, texIndices1, texIndices2, texIndices3, vertexGroups);
+	}
+
 	/** True when this mesh carries rigging and can be posed at all. */
 	public boolean isRigged()
 	{

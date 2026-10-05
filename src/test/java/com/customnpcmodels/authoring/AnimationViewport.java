@@ -25,6 +25,7 @@
 package com.customnpcmodels.authoring;
 
 import com.customnpcmodels.inject.Clip;
+import com.customnpcmodels.inject.NpcAppearance;
 import com.customnpcmodels.inject.Skinner;
 import java.util.ArrayList;
 import java.util.List;
@@ -91,16 +92,6 @@ final class AnimationViewport extends ModelViewport
 	private void pose(Clip clip, int frame, float[] outX, float[] outY, float[] outZ)
 	{
 		skinner.pose(mesh, document.rig(), clip, frame, outX, outY, outZ);
-		float scaleXZ = document.scaleXZ();
-		float scaleY = document.scaleY();
-		if (scaleXZ != 1f || scaleY != 1f)
-		{
-			for (int v = 0; v < mesh.getVerticesCount(); v++)
-			{
-				outX[v] *= scaleXZ;
-				outY[v] *= scaleY;
-				outZ[v] *= scaleXZ;
-			}
-		}
+		NpcAppearance.resize(outX, outY, outZ, mesh.getVerticesCount(), document.scaleXZ(), document.scaleY());
 	}
 }
