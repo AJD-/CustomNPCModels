@@ -52,6 +52,13 @@ final class ToolCli
 		return value == null || value.isBlank() ? null : value.trim();
 	}
 
+	/** A {@code -P} switch: on when given with no value, or with any value but "false". */
+	static boolean flag(String name)
+	{
+		String value = System.getProperty(PREFIX + name);
+		return value != null && !"false".equalsIgnoreCase(value.trim());
+	}
+
 	/** A {@code -P} option the tool cannot run without. Prints {@code usage} and exits when it is missing. */
 	static String required(String name, String usage)
 	{
