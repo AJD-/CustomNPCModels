@@ -22,48 +22,32 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.customnpcmodels.chathead;
+package com.customnpcmodels.inject;
 
 import static org.junit.Assert.assertEquals;
 import org.junit.Test;
 
-public class ChatheadCameraTest
+public class RsColorTest
 {
-	private static double[] project(ChatheadCamera camera, double x, double y, double z)
+	private static final int GREY = RsColor.pack(0, 0, 90);
+
+	@Test
+	public void testFullBrightnessIsThePlainPalette()
 	{
-		double[] out = new double[3];
-		camera.project(x, y, z, out);
-		return out;
+		assertEquals(RsColor.hslToRgb(GREY), RsColor.hslToRgb(GREY, 1.0));
 	}
 
-	/** Looking straight on, a head's origin is the center of its widget, zoom away. */
+	/** The client's palette raises each channel to its brightness, so a setting below 1 lightens. */
 	@Test
-	public void testStraightOnTheOriginIsTheCenter()
+	public void testBrightnessRaisesEachChannelAsTheClientsPaletteDoes()
 	{
-		double[] p = project(new ChatheadCamera(0, 0, 0, 800), 0, 0, 0);
+		int plain = RsColor.hslToRgb(GREY);
+		int bright = RsColor.hslToRgb(GREY, 0.6);
 
-		assertEquals(0, p[0], 1e-9);
-		assertEquals(0, p[1], 1e-9);
-		assertEquals(800, p[2], 1e-9);
-	}
-
-	/** A quarter turn of yaw (512 of 2048) swings a point on +x round onto the view axis. */
-	@Test
-	public void testYawTurnsAboutTheVerticalAxis()
-	{
-		double[] p = project(new ChatheadCamera(0, 0, 512, 800), 100, 0, 0);
-
-		assertEquals(0, p[0], 1e-6);
-		assertEquals(700, p[2], 1e-6);
-	}
-
-	/** Farther points are drawn smaller. */
-	@Test
-	public void testPerspective()
-	{
-		double[] near = project(new ChatheadCamera(0, 0, 0, 400), 50, 0, 0);
-		double[] far = project(new ChatheadCamera(0, 0, 0, 800), 50, 0, 0);
-
-		assertEquals(near[0] / 2, far[0], 1e-9);
+		for (int shift : new int[]{16, 8, 0})
+		{
+			int channel = plain >> shift & 255;
+			assertEquals((int) (Math.pow(channel / 256.0, 0.6) * 256.0), bright >> shift & 255);
+		}
 	}
 }

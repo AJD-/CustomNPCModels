@@ -35,11 +35,11 @@ import org.junit.Test;
 
 public class HeadRendererTest
 {
-	/** One upright triangle, 128 wide and 128 tall, facing the camera. */
+	/** One upright triangle, 128 wide and 128 tall, centered on the origin and facing the camera. */
 	private static HeadModel triangle()
 	{
 		Mesh mesh = new TestMesh()
-			.vx(new float[]{-64f, 64f, 0f}).vy(new float[]{0f, 0f, -128f}).vz(new float[]{0f, 0f, 0f})
+			.vx(new float[]{-64f, 64f, 0f}).vy(new float[]{64f, 64f, -64f}).vz(new float[]{0f, 0f, 0f})
 			.i1(new int[]{0}).i2(new int[]{1}).i3(new int[]{2})
 			.colors(new short[]{(short) 0x3A05})
 			.groups(null)
@@ -100,5 +100,22 @@ public class HeadRendererTest
 
 		assertEquals("the triangle is drawn around the given center", 0xFF, image.getRGB(60, 60) >>> 24);
 		assertEquals("and not around the image's middle", 0, image.getRGB(150, 60) >>> 24);
+	}
+
+	/** The player's brightness setting lightens the head as it lightens everything the client draws. */
+	@Test
+	public void testDrawsAtThePlayersBrightness()
+	{
+		HeadModel head = triangle();
+		Mesh mesh = head.getMesh();
+		ChatheadCamera camera = new ChatheadCamera(0, 0, 0, 600);
+
+		int plain = new HeadRenderer().render(head, mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
+			camera, 100, 100, 50, 50, 1.0).getRGB(50, 50);
+		int bright = new HeadRenderer().render(head, mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
+			camera, 100, 100, 50, 50, 0.6).getRGB(50, 50);
+
+		assertTrue("brighter at 0.6: " + Integer.toHexString(plain) + " vs " + Integer.toHexString(bright),
+			(bright >> 8 & 255) > (plain >> 8 & 255));
 	}
 }

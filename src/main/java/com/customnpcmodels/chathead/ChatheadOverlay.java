@@ -37,6 +37,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import net.runelite.api.Animation;
 import net.runelite.api.Client;
+import net.runelite.api.TextureProvider;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.ui.overlay.Overlay;
@@ -127,8 +128,11 @@ public class ChatheadOverlay extends Overlay
 		// The head is bigger than its widget, so it is drawn over the whole dialogue around the widget
 		Widget dialogue = client.getWidget(InterfaceID.ChatLeft.UNIVERSE);
 		Rectangle area = dialogue == null || dialogue.isHidden() ? bounds : dialogue.getBounds();
+		// The client lightens everything it draws by the player's brightness setting, chatheads too
+		TextureProvider textures = client.getTextureProvider();
+		double brightness = textures == null ? 1 : textures.getBrightness();
 		BufferedImage image = renderer.render(head, x, y, z, ChatheadCamera.of(widget), area.width, area.height,
-			bounds.getCenterX() - area.x, bounds.getCenterY() - area.y);
+			bounds.getCenterX() - area.x, bounds.getCenterY() - area.y, brightness);
 		graphics.drawImage(image, area.x, area.y, null);
 		return null;
 	}

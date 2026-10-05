@@ -63,12 +63,21 @@ public final class HeadRenderer
 		return render(head, x, y, z, camera, width, height, width / 2.0, height / 2.0);
 	}
 
+	/** {@link #render(HeadModel, float[], float[], float[], ChatheadCamera, int, int, double, double, double)} at full brightness. */
+	public BufferedImage render(HeadModel head, float[] x, float[] y, float[] z, ChatheadCamera camera,
+		int width, int height, double centerX, double centerY)
+	{
+		return render(head, x, y, z, camera, width, height, centerX, centerY, 1);
+	}
+
 	/**
 	 * Draws the head into a {@code width} by {@code height} image, centered on {@code centerX},
 	 * {@code centerY}: the head widget's center within the area it may be drawn over.
+	 *
+	 * @param brightness the player's brightness setting, as the client's palette uses it
 	 */
 	public BufferedImage render(HeadModel head, float[] x, float[] y, float[] z, ChatheadCamera camera,
-		int width, int height, double centerX, double centerY)
+		int width, int height, double centerX, double centerY, double brightness)
 	{
 		if (image == null || image.getWidth() != width || image.getHeight() != height)
 		{
@@ -90,7 +99,7 @@ public final class HeadRenderer
 			{
 				continue;
 			}
-			double[][] p = projectFace(mesh, face, x, y, z, camera, head.getHeight(), centerX, centerY);
+			double[][] p = projectFace(mesh, face, x, y, z, camera, centerX, centerY);
 			if (p == null)
 			{
 				continue;
@@ -101,7 +110,7 @@ public final class HeadRenderer
 				seeThroughFaces.add(face);
 				continue;
 			}
-			fillTriangle(pixels, width, height, p, cornerColors(head, face), 1);
+			fillTriangle(pixels, width, height, p, cornerColors(head, face, brightness), 1);
 		}
 
 		Integer[] order = new Integer[seeThrough.size()];
@@ -114,7 +123,7 @@ public final class HeadRenderer
 		{
 			int face = seeThroughFaces.get(i);
 			double alpha = (FULLY_TRANSPARENT - (transparencies[face] & 0xFF)) / (double) FULLY_TRANSPARENT;
-			fillTriangle(pixels, width, height, seeThrough.get(i), cornerColors(head, face), alpha);
+			fillTriangle(pixels, width, height, seeThrough.get(i), cornerColors(head, face, brightness), alpha);
 		}
 		return image;
 	}
@@ -124,29 +133,30 @@ public final class HeadRenderer
 		return (p[0][2] + p[1][2] + p[2][2]) / 3;
 	}
 
-	private static int[] cornerColors(HeadModel head, int face)
+	private static int[] cornerColors(HeadModel head, int face, double brightness)
 	{
 		int[] lit1 = head.getLit1();
 		int[] lit2 = head.getLit2();
 		int[] lit3 = head.getLit3();
 		if (lit3[face] == FLAT_SHADED)
 		{
-			int rgb = RsColor.hslToRgb(lit1[face]);
+			int rgb = RsColor.hslToRgb(lit1[face], brightness);
 			return new int[]{rgb, rgb, rgb};
 		}
-		return new int[]{RsColor.hslToRgb(lit1[face]), RsColor.hslToRgb(lit2[face]), RsColor.hslToRgb(lit3[face])};
+		return new int[]{RsColor.hslToRgb(lit1[face], brightness), RsColor.hslToRgb(lit2[face], brightness),
+			RsColor.hslToRgb(lit3[face], brightness)};
 	}
 
 	/** Screen x, y and depth of the face's corners, or null when any is behind the camera. */
 	private double[][] projectFace(Mesh mesh, int face, float[] x, float[] y, float[] z, ChatheadCamera camera,
-		int headHeight, double centerX, double centerY)
+		double centerX, double centerY)
 	{
 		int[] corners = {mesh.getFaceIndices1()[face], mesh.getFaceIndices2()[face], mesh.getFaceIndices3()[face]};
 		double[][] out = new double[3][];
 		for (int k = 0; k < 3; k++)
 		{
 			int v = corners[k];
-			camera.project(x[v], y[v], z[v], headHeight, projected);
+			camera.project(x[v], y[v], z[v], projected);
 			if (projected[2] < NEAR)
 			{
 				return null;

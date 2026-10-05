@@ -250,7 +250,7 @@ public class ModelCacheTest
 		assertEquals(NpcBinding.NO_CHATHEAD, cache.chatheadFor(NPC_ID));
 	}
 
-	/** A head mesh beside the body, standing 128 above its origin: engine y points down. */
+	/** A head mesh beside the body. */
 	private static AssetBundle bundleWithHead(NpcBinding binding)
 	{
 		AssetBundle body = bundle(binding);
@@ -271,7 +271,6 @@ public class ModelCacheTest
 		assertNotNull(head);
 		assertEquals(2, head.getMesh().getId());
 		assertEquals(7, head.getRigId());
-		assertEquals(128, head.getHeight());
 		assertNotNull("emotes are looked up on the head's rig", head.clip(SEQUENCE));
 		assertSame("built once", head, cache.headFor(NPC_ID));
 		assertNull("an NPC no pack has a model for has none", cache.headFor(NPC_ID + 1));

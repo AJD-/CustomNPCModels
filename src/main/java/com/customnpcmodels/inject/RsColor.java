@@ -68,6 +68,24 @@ public final class RsColor
 	}
 
 	/**
+	 * Packed HSL to 0xRRGGBB as the client draws it at a brightness setting: each channel raised to
+	 * {@code brightness}, as the client builds its palette. 1 is the plain palette; the game's settings
+	 * are below it, and lighten.
+	 */
+	public static int hslToRgb(int hsl, double brightness)
+	{
+		int rgb = hslToRgb(hsl);
+		if (brightness == 1)
+		{
+			return rgb;
+		}
+		int r = (int) (Math.pow((rgb >> 16 & 255) / 256.0, brightness) * 256.0);
+		int g = (int) (Math.pow((rgb >> 8 & 255) / 256.0, brightness) * 256.0);
+		int b = (int) (Math.pow((rgb & 255) / 256.0, brightness) * 256.0);
+		return Math.min(255, r) << 16 | Math.min(255, g) << 8 | Math.min(255, b);
+	}
+
+	/**
 	 * 0xRRGGBB to the packed HSL whose {@link #hslToRgb} is nearest, luminance clamped to
 	 * {@link #MIN_LUMINANCE}..{@link #MAX_LUMINANCE}.
 	 */

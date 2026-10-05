@@ -28,7 +28,7 @@ import net.runelite.api.widgets.Widget;
 
 /**
  * Where the client draws an interface model, chatheads among them: the head turns (roll, then yaw)
- * about its origin, is lowered by half its height, and is pushed {@code zoom} away along a view
+ * about its origin, which is the widget's center, and is pushed {@code zoom} away along a view
  * pitched down by {@code pitch}, as the client's widget model drawing does. Angles are in the
  * client's 2048ths of a turn; the projection's focal length is the interface one.
  * <p>
@@ -64,10 +64,8 @@ public final class ChatheadCamera
 	/**
 	 * An engine point (y down) on screen: x and y from the center of the widget, and in {@code out[2]}
 	 * the depth in front of the camera.
-	 *
-	 * @param height how far the head reaches above its origin
 	 */
-	public void project(double x, double y, double z, int height, double[] out)
+	public void project(double x, double y, double z, double[] out)
 	{
 		double cr = Math.cos(roll);
 		double sr = Math.sin(roll);
@@ -81,7 +79,7 @@ public final class ChatheadCamera
 
 		double cp = Math.cos(pitch);
 		double sp = Math.sin(pitch);
-		double y2 = y1 + height / 2.0 + sp * zoom;
+		double y2 = y1 + sp * zoom;
 		double z3 = z2 + cp * zoom;
 		double y3 = y2 * cp - z3 * sp;
 		double z4 = y2 * sp + z3 * cp;

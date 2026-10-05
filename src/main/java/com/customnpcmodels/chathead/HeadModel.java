@@ -47,9 +47,6 @@ public final class HeadModel
 	private final int[] lit2;
 	private final int[] lit3;
 
-	/** How far the head reaches above its origin, which the client centers it by. */
-	private final int height;
-
 	public HeadModel(Mesh mesh, Rig rig, int rigId, AssetBundle source, int[] lit1, int[] lit2, int[] lit3)
 	{
 		this.mesh = mesh;
@@ -59,12 +56,6 @@ public final class HeadModel
 		this.lit1 = lit1;
 		this.lit2 = lit2;
 		this.lit3 = lit3;
-		float top = 0;
-		for (int v = 0; v < mesh.getVerticesCount(); v++)
-		{
-			top = Math.max(top, -mesh.getVerticesY()[v]);
-		}
-		this.height = (int) Math.ceil(top);
 	}
 
 	/** The head's clip for an emote, or null when it has none. */
