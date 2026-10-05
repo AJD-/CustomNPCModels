@@ -102,7 +102,7 @@ public class HubClient
 				failed.accept("The Custom Model Hub's list of packs couldn't be read: " + LoadedPack.describe(ex));
 				return;
 			}
-			// Outside the try, so a failure in the caller's own handling isn't blamed on the manifest
+			// Outside the try, so a failure in the caller's handling isn't blamed on the manifest
 			done.accept(entries);
 		}, failed);
 	}
@@ -180,8 +180,8 @@ public class HubClient
 	}
 
 	/**
-	 * Runs a caller's callback. One that throws is the caller's bug, not the hub's, so it is logged
-	 * here rather than left to escape onto OkHttp's shared dispatcher thread.
+	 * Runs a caller's callback. A callback that throws is a bug in the caller rather than the hub, so
+	 * it's logged here instead of escaping onto OkHttp's shared dispatcher thread.
 	 */
 	private static void deliver(String path, Runnable callback)
 	{

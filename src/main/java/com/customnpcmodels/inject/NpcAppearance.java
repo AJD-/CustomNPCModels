@@ -29,8 +29,8 @@ package com.customnpcmodels.inject;
  * its resize. The plugin builds every model with these, and the authoring tools preview with them,
  * so a preview shows what the game draws.
  * <p>
- * Applied in the client's order: recolor, then light at rest and unscaled, then - per frame, after
- * the pose - resize.
+ * Applied in the client's order: recolor, then light at rest and unscaled, then resize (per frame,
+ * after the pose).
  */
 public final class NpcAppearance
 {
@@ -52,8 +52,8 @@ public final class NpcAppearance
 	 * A copy of {@code colors} with each color in {@code find} swapped for the one at the same index
 	 * in {@code replace}, the first match winning. Null pairs swap nothing.
 	 * <p>
-	 * Done before lighting, not after: lit colors are baked once and never recomputed, so a recolor
-	 * applied afterward would have nothing left to bite on.
+	 * Done before lighting since lit colors are baked once and never recomputed, so a recolor applied
+	 * afterward would have no effect.
 	 */
 	public static short[] recolor(short[] colors, short[] find, short[] replace)
 	{

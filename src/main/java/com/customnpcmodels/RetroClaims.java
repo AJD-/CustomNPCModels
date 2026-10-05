@@ -54,9 +54,9 @@ class RetroClaims
 	private Set<Integer> posted = Collections.emptySet();
 
 	/**
-	 * Claims every bound NPC while custom models can be drawn at all, and none while they cannot -
-	 * off, detached, or stood down by a safety setting - so Retro can have them back. Posted only
-	 * when the set changes, unless {@code always}.
+	 * Claims every bound NPC while custom models can be drawn at all, and none while they can't (off,
+	 * detached, or stood down by a safety setting) so Retro can have them back. Posted only when the
+	 * set changes, unless {@code always}.
 	 */
 	void publish(boolean drawing, boolean always)
 	{

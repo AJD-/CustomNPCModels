@@ -218,7 +218,8 @@ class HubController
 			{
 				return;
 			}
-			// Said only while the hub is still on, as with the list; the button is freed either way
+			// Only show the error while the hub is still on (the same as the list), however the
+			// button is freed either way
 			if (isCurrentHub(queuedUnder, hubQueuedUnder))
 			{
 				panel.showStatus(error, true);

@@ -73,8 +73,8 @@ class Session
 		active = false;
 		generation.incrementAndGet();
 
-		// The executor is RuneLite's own and is not ours to shut down, but the work we put on it is.
-		// Work already running carries on to its own isCurrent check, which drops its result.
+		// The executor is RuneLite's, so only the work we put on it gets cancelled. Work that's
+		// already running carries on to its own isCurrent check, which drops its result.
 		for (Future<?> future : submitted)
 		{
 			future.cancel(false);

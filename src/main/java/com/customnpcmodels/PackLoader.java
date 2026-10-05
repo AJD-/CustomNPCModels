@@ -47,7 +47,7 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.util.Filepath;
 
 /**
- * Reads every pack - inside the plugin, from the hub and the user's own - and decides from them and
+ * Reads every pack (inside the plugin, from the hub and the user's) and decides from them and
  * the side panel's selection which model each NPC is drawn with.
  */
 @Singleton

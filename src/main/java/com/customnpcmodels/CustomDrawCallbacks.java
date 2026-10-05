@@ -113,8 +113,8 @@ public class CustomDrawCallbacks implements DrawCallbacks, Supplier<DrawCallback
 			catch (Exception ex)
 			{
 				substitute = null;
-				// This runs for every NPC every frame, so a failure that persists is said once, not
-				// thousands of times a minute
+				// This runs for every NPC every frame, so a failure that keeps happening is only logged
+				// once instead of thousands of times a minute
 				if (!failureReported)
 				{
 					failureReported = true;

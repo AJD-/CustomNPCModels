@@ -75,8 +75,9 @@ public final class MeshMerger
 	 * that logging still names something recognizable.
 	 * <p>
 	 * A single part is returned as-is rather than copied, exactly as the client uses a lone model
-	 * without merging it - keeping its own id, so {@code id} only names a merged result. {@link Mesh} is immutable and every consumer that needs to change one
-	 * builds a derived copy first, so sharing the instance is safe.
+	 * without merging it. It keeps its own id, so {@code id} only names a merged result.
+	 * {@link Mesh} is immutable and every consumer that needs to change one builds a derived copy
+	 * first, so sharing the instance is safe.
 	 */
 	public static Mesh merge(int id, List<Mesh> parts)
 	{

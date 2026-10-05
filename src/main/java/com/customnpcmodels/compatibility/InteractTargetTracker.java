@@ -54,8 +54,8 @@ import net.runelite.client.eventbus.Subscribe;
  * plugin draws NPC outlines, that plugin is still the one drawing objects, ground items and
  * players, with its own code and its own state.
  * <p>
- * {@link CustomNpcModelsPlugin} registers this on the event bus while it runs - the bus registers
- * the plugin itself, not the objects it injects.
+ * {@link CustomNpcModelsPlugin} registers this on the event bus while it runs, since the bus only
+ * registers the plugin itself and none of the objects it injects.
  */
 @Singleton
 public class InteractTargetTracker
@@ -201,7 +201,7 @@ public class InteractTargetTracker
 	}
 
 	/**
-	 * Whether {@code action} on an NPC is an attack, as Interact Highlight colours it: the attack
+	 * Whether {@code action} on an NPC is an attack, as Interact Highlight colors it: the attack
 	 * option, or a spell from the spellbook cast on it.
 	 */
 	static boolean isAttack(Client client, MenuAction action)

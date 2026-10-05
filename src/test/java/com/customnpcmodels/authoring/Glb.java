@@ -335,8 +335,8 @@ final class Glb
 	}
 
 	/**
-	 * Per component, the {@code min} and {@code max} glTF wants on an accessor - of the floats
-	 * actually stored, not the doubles they came from.
+	 * Per component, the {@code min} and {@code max} glTF wants on an accessor, using the floats
+	 * actually stored rather than the doubles they came from.
 	 */
 	static double[][] floatBounds(double[] values, int components)
 	{
