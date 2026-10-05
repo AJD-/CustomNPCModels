@@ -64,25 +64,28 @@ import net.runelite.client.eventbus.Subscribe;
 @Singleton
 class ChatheadSwapper
 {
-	@Inject
-	private Client client;
+	private final Client client;
+	private final ModelCache modelCache;
+	private final CustomNpcModelsConfig config;
+	private final ChatheadOverlay overlay;
 
-	@Inject
-	private ModelCache modelCache;
-
-	@Inject
-	private CustomNpcModelsConfig config;
-
-	@Inject
-	private ChatheadOverlay overlay;
-
-	private BooleanSupplier canSubstitute = () -> false;
+	/** Set from startUp on the EDT, read on the client thread. */
+	private volatile BooleanSupplier canSubstitute = () -> false;
 
 	/** The swap the head is showing, or null while it shows what the client gave it. */
 	private Swap shown;
 
 	/** Whether each chathead NPC named so far has a head the client can draw, looked up once. */
 	private final Map<Integer, Boolean> drawable = new HashMap<>();
+
+	@Inject
+	ChatheadSwapper(Client client, ModelCache modelCache, CustomNpcModelsConfig config, ChatheadOverlay overlay)
+	{
+		this.client = client;
+		this.modelCache = modelCache;
+		this.config = config;
+		this.overlay = overlay;
+	}
 
 	/** What the head is swapped to: a borrowed cache chathead, or {@link #DRAWN}. */
 	@Value
@@ -125,7 +128,11 @@ class ChatheadSwapper
 		this.canSubstitute = canSubstitute;
 	}
 
-	/** Puts back the head a dialogue still open would have shown, and forgets everything. */
+	/**
+	 * Puts back the head a dialogue still open would have shown, and forgets the swap. Runs on the
+	 * client thread after shutDown, which can be after the next startUp, so it leaves
+	 * {@link #canSubstitute} alone: the swapper is off the event bus by then anyway.
+	 */
 	void stop()
 	{
 		Widget head = client.getWidget(InterfaceID.ChatLeft.HEAD);
@@ -138,16 +145,21 @@ class ChatheadSwapper
 		overlay.hide();
 		shown = null;
 		drawable.clear();
-		canSubstitute = () -> false;
 	}
 
 	@Subscribe
 	public void onBeforeRender(BeforeRender event)
 	{
 		Widget head = client.getWidget(InterfaceID.ChatLeft.HEAD);
-		if (head == null || head.isHidden())
+		if (head == null)
 		{
 			shown = null;
+			overlay.hide();
+			return;
+		}
+		if (head.isHidden())
+		{
+			// Hidden, not gone: it still shows the swap when it comes back, so the swap is kept
 			overlay.hide();
 			return;
 		}

@@ -38,9 +38,10 @@ import java.util.List;
  * head is not: z-buffered and Gouraud shaded, opaque faces first, then see-through ones farthest
  * first, as the client orders them. Ported from the authoring tools' viewport.
  * <p>
- * The image is reused while the size holds, so a frame allocates nothing. Client thread only.
+ * The image and depth buffer are reused while the size holds, and each face's colors are worked out
+ * once per head and brightness, as they never change in between. Client thread only.
  */
-public final class HeadRenderer
+public class HeadRenderer
 {
 	/** Lighter's corner sentinels. */
 	private static final int FLAT_SHADED = -1;
@@ -55,6 +56,14 @@ public final class HeadRenderer
 	private BufferedImage image;
 	private float[] depth = new float[0];
 	private final double[] projected = new double[3];
+
+	// Each face's three corner colors as RGB, for the head and brightness they were worked out for
+	private HeadModel coloredHead;
+	private double coloredBrightness = Double.NaN;
+	private int[] rgb1 = new int[0];
+	private int[] rgb2 = new int[0];
+	private int[] rgb3 = new int[0];
+	private final int[] corners = new int[3];
 
 	/** {@link #render(HeadModel, float[], float[], float[], ChatheadCamera, int, int, double, double)}, centered. */
 	public BufferedImage render(HeadModel head, float[] x, float[] y, float[] z, ChatheadCamera camera,
@@ -87,6 +96,7 @@ public final class HeadRenderer
 		int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
 		Arrays.fill(pixels, 0);
 		Arrays.fill(depth, 0f);
+		color(head, brightness);
 
 		Mesh mesh = head.getMesh();
 		byte[] transparencies = mesh.getFaceTransparencies();
@@ -110,7 +120,7 @@ public final class HeadRenderer
 				seeThroughFaces.add(face);
 				continue;
 			}
-			fillTriangle(pixels, width, height, p, cornerColors(head, face, brightness), 1);
+			fillTriangle(pixels, width, height, p, cornerColors(face), 1);
 		}
 
 		Integer[] order = new Integer[seeThrough.size()];
@@ -123,7 +133,7 @@ public final class HeadRenderer
 		{
 			int face = seeThroughFaces.get(i);
 			double alpha = (FULLY_TRANSPARENT - (transparencies[face] & 0xFF)) / (double) FULLY_TRANSPARENT;
-			fillTriangle(pixels, width, height, seeThrough.get(i), cornerColors(head, face, brightness), alpha);
+			fillTriangle(pixels, width, height, seeThrough.get(i), cornerColors(face), alpha);
 		}
 		return image;
 	}
@@ -133,18 +143,42 @@ public final class HeadRenderer
 		return (p[0][2] + p[1][2] + p[2][2]) / 3;
 	}
 
-	private static int[] cornerColors(HeadModel head, int face, double brightness)
+	/** Works out every face's corner colors, unless they are already for this head and brightness. */
+	private void color(HeadModel head, double brightness)
 	{
+		if (head == coloredHead && brightness == coloredBrightness)
+		{
+			return;
+		}
+		int faces = head.getMesh().getFaceCount();
 		int[] lit1 = head.getLit1();
 		int[] lit2 = head.getLit2();
 		int[] lit3 = head.getLit3();
-		if (lit3[face] == FLAT_SHADED)
+		rgb1 = new int[faces];
+		rgb2 = new int[faces];
+		rgb3 = new int[faces];
+		for (int face = 0; face < faces; face++)
 		{
-			int rgb = RsColor.hslToRgb(lit1[face], brightness);
-			return new int[]{rgb, rgb, rgb};
+			if (lit3[face] == HIDDEN)
+			{
+				continue;
+			}
+			rgb1[face] = RsColor.hslToRgb(lit1[face], brightness);
+			boolean flat = lit3[face] == FLAT_SHADED;
+			rgb2[face] = flat ? rgb1[face] : RsColor.hslToRgb(lit2[face], brightness);
+			rgb3[face] = flat ? rgb1[face] : RsColor.hslToRgb(lit3[face], brightness);
 		}
-		return new int[]{RsColor.hslToRgb(lit1[face], brightness), RsColor.hslToRgb(lit2[face], brightness),
-			RsColor.hslToRgb(lit3[face], brightness)};
+		coloredHead = head;
+		coloredBrightness = brightness;
+	}
+
+	/** A face's corner colors, in a buffer the next face reuses. */
+	private int[] cornerColors(int face)
+	{
+		corners[0] = rgb1[face];
+		corners[1] = rgb2[face];
+		corners[2] = rgb3[face];
+		return corners;
 	}
 
 	/** Screen x, y and depth of the face's corners, or null when any is behind the camera. */

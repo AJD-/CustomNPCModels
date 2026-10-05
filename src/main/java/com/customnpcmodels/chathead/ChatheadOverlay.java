@@ -51,7 +51,11 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  * <p>
  * The widget does not say which frame of the emote the client is on, so the head keeps its own time
  * from when the page opened, with the frame lengths the client plays that emote with. An emote the
- * head has no clip for, or a skeletal one, shows the head at rest. Client thread only.
+ * head has no clip for, or a skeletal one, shows the head at rest.
+ * <p>
+ * The pose changes every few client cycles at most, and a head at rest never does, so the image is
+ * only posed and rendered again when something it shows changes; every other frame draws the last
+ * one. Client thread only.
  */
 @Singleton
 public class ChatheadOverlay extends Overlay
@@ -60,7 +64,7 @@ public class ChatheadOverlay extends Overlay
 	private static final int[] UNTIMED = new int[0];
 
 	private final Client client;
-	private final HeadRenderer renderer = new HeadRenderer();
+	private final HeadRenderer renderer;
 	private final Skinner skinner = new Skinner();
 	private final Map<Integer, int[]> frameLengths = new HashMap<>();
 
@@ -71,10 +75,29 @@ public class ChatheadOverlay extends Overlay
 	private float[] y = new float[0];
 	private float[] z = new float[0];
 
+	// What the last image was rendered for; null after show, so a new head is always rendered
+	private BufferedImage image;
+	private HeadModel renderedHead;
+	private int renderedEmote;
+	private int renderedFrame;
+	private final Rectangle renderedBounds = new Rectangle();
+	private final Rectangle renderedArea = new Rectangle();
+	private int renderedPitch;
+	private int renderedRoll;
+	private int renderedYaw;
+	private int renderedZoom;
+	private double renderedBrightness;
+
 	@Inject
-	ChatheadOverlay(Client client)
+	public ChatheadOverlay(Client client)
+	{
+		this(client, new HeadRenderer());
+	}
+
+	ChatheadOverlay(Client client, HeadRenderer renderer)
 	{
 		this.client = client;
+		this.renderer = renderer;
 		setPosition(OverlayPosition.DYNAMIC);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 	}
@@ -85,6 +108,7 @@ public class ChatheadOverlay extends Overlay
 		this.head = head;
 		startCycle = gameCycle;
 		animation = -1;
+		renderedHead = null;
 		int count = head == null ? 0 : head.getMesh().getVerticesCount();
 		if (x.length < count)
 		{
@@ -121,9 +145,6 @@ public class ChatheadOverlay extends Overlay
 			startCycle = client.getGameCycle();
 		}
 		int frame = EmoteClock.frameAt(lengths(emote), client.getGameCycle() - startCycle);
-		Clip clip = frame < 0 ? null : head.clip(emote);
-		Mesh mesh = head.getMesh();
-		skinner.pose(mesh, head.getRig(), clip, frame, x, y, z);
 
 		// The head is bigger than its widget, so it is drawn over the whole dialogue around the widget
 		Widget dialogue = client.getWidget(InterfaceID.ChatLeft.UNIVERSE);
@@ -131,8 +152,30 @@ public class ChatheadOverlay extends Overlay
 		// The client lightens everything it draws by the player's brightness setting, chatheads too
 		TextureProvider textures = client.getTextureProvider();
 		double brightness = textures == null ? 1 : textures.getBrightness();
-		BufferedImage image = renderer.render(head, x, y, z, ChatheadCamera.of(widget), area.width, area.height,
-			bounds.getCenterX() - area.x, bounds.getCenterY() - area.y, brightness);
+
+		if (head != renderedHead || emote != renderedEmote || frame != renderedFrame
+			|| !bounds.equals(renderedBounds) || !area.equals(renderedArea)
+			|| widget.getRotationX() != renderedPitch || widget.getRotationY() != renderedRoll
+			|| widget.getRotationZ() != renderedYaw || widget.getModelZoom() != renderedZoom
+			|| brightness != renderedBrightness)
+		{
+			Clip clip = frame < 0 ? null : head.clip(emote);
+			Mesh mesh = head.getMesh();
+			skinner.pose(mesh, head.getRig(), clip, frame, x, y, z);
+			image = renderer.render(head, x, y, z, ChatheadCamera.of(widget), area.width, area.height,
+				bounds.getCenterX() - area.x, bounds.getCenterY() - area.y, brightness);
+
+			renderedHead = head;
+			renderedEmote = emote;
+			renderedFrame = frame;
+			renderedBounds.setBounds(bounds);
+			renderedArea.setBounds(area);
+			renderedPitch = widget.getRotationX();
+			renderedRoll = widget.getRotationY();
+			renderedYaw = widget.getRotationZ();
+			renderedZoom = widget.getModelZoom();
+			renderedBrightness = brightness;
+		}
 		graphics.drawImage(image, area.x, area.y, null);
 		return null;
 	}
