@@ -594,6 +594,7 @@ public final class AssetCodec
 		writeShorts(data, binding.getRecolorReplace());
 		data.writeByte(binding.getAmbient());
 		data.writeByte(binding.getContrast());
+		data.writeInt(binding.getChatheadNpcId());
 	}
 
 	private static NpcBinding readBinding(DataInputStream data) throws IOException
@@ -608,8 +609,9 @@ public final class AssetCodec
 		short[] recolorReplace = readShorts(data);
 		int ambient = data.readByte();
 		int contrast = data.readByte();
+		int chatheadNpcId = data.readInt();
 		return new NpcBinding(name, npcIds, meshIds, rigId, scaleXZ, scaleY, recolorFind, recolorReplace,
-			ambient, contrast);
+			ambient, contrast, chatheadNpcId);
 	}
 
 	/**
@@ -619,7 +621,8 @@ public final class AssetCodec
 	 * resolve makes {@code ModelCache} refuse a partial merge and quietly leave the NPC vanilla, an
 	 * unpaired recolor throws inside the recolor loop, and a non-positive scale collapses the model
 	 * to a point. An NPC bound twice would draw whichever binding happened to be indexed last. A rig
-	 * that does not resolve leaves the model frozen at rest. Two bindings sharing a first mesh would
+	 * that does not resolve leaves the model frozen at rest, and a chathead below
+	 * {@link NpcBinding#NO_CHATHEAD} names no NPC at all. Two bindings sharing a first mesh would
 	 * share the key a user switches one model off by, and a merge past the ceilings is more than the
 	 * renderer can upload.
 	 */
@@ -675,6 +678,11 @@ public final class AssetCodec
 		{
 			throw malformed("Binding '" + name + "' names rig " + binding.getRigId()
 				+ ", which the bundle does not carry");
+		}
+
+		if (binding.getChatheadNpcId() < NpcBinding.NO_CHATHEAD)
+		{
+			throw malformed("Binding '" + name + "' names chathead NPC " + binding.getChatheadNpcId());
 		}
 
 		if (!firstMeshes.add(binding.getMeshIds()[0]))

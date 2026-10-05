@@ -484,6 +484,37 @@ public class AssetCodecTest
 	}
 
 	@Test
+	public void testBindingKeepsItsChathead() throws IOException
+	{
+		NpcBinding binding = roundTrip(withBindings(
+			TestBinding.of("Vyrewatch maid", new int[]{223}, new int[]{2944}).chathead(3709).build()))
+			.getBinding(223);
+
+		assertEquals(3709, binding.getChatheadNpcId());
+		assertTrue(binding.hasChathead());
+	}
+
+	@Test
+	public void testBindingWithoutAChatheadKeepsItsOwn() throws IOException
+	{
+		NpcBinding binding = roundTrip(withBindings(
+			TestBinding.of("Plain", new int[]{70}, new int[]{2944}).build()))
+			.getBinding(70);
+
+		assertEquals(NpcBinding.NO_CHATHEAD, binding.getChatheadNpcId());
+		assertTrue(!binding.hasChathead());
+	}
+
+	@Test
+	public void testRejectsANegativeChathead() throws IOException
+	{
+		String message = refusalFor(withBindings(
+			TestBinding.of("Headless", new int[]{70}, new int[]{2944}).chathead(-2).build()));
+
+		assertTrue(message, message.contains("chathead NPC -2"));
+	}
+
+	@Test
 	public void testRejectsABindingToAMissingMesh() throws IOException
 	{
 		String message = refusalFor(withBindings(

@@ -88,7 +88,7 @@ public final class BlacklistFixture
 		System.arraycopy(first.getNpcIds(), 0, npcIds, 1, first.getNpcIds().length);
 		bindings.set(0, new NpcBinding(first.getName(), npcIds, first.getMeshIds(), first.getRigId(),
 			first.getScaleXZ(), first.getScaleY(), first.getRecolorFind(), first.getRecolorReplace(),
-			first.getAmbient(), first.getContrast()));
+			first.getAmbient(), first.getContrast(), first.getChatheadNpcId()));
 
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		AssetCodec.write(new AssetBundle(dev.getMeshes(), dev.getRigs(), dev.getClips(), bindings), bytes);

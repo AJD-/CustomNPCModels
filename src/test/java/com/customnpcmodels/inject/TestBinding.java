@@ -25,8 +25,8 @@
 package com.customnpcmodels.inject;
 
 /**
- * Builds bindings for tests: unrigged, unscaled, with no recolors or lighting changes, unless a test
- * says otherwise - so each names only what it is about.
+ * Builds bindings for tests: unrigged, unscaled, with no recolors, lighting changes or chathead,
+ * unless a test says otherwise - so each names only what it is about.
  */
 public final class TestBinding
 {
@@ -40,6 +40,7 @@ public final class TestBinding
 	private short[] recolorReplace;
 	private int ambient;
 	private int contrast;
+	private int chatheadNpcId = NpcBinding.NO_CHATHEAD;
 
 	private TestBinding(String name, int[] npcIds, int[] meshIds)
 	{
@@ -80,9 +81,15 @@ public final class TestBinding
 		return this;
 	}
 
+	public TestBinding chathead(int npcId)
+	{
+		this.chatheadNpcId = npcId;
+		return this;
+	}
+
 	public NpcBinding build()
 	{
 		return new NpcBinding(name, npcIds, meshIds, rigId, scaleXZ, scaleY, recolorFind, recolorReplace,
-			ambient, contrast);
+			ambient, contrast, chatheadNpcId);
 	}
 }

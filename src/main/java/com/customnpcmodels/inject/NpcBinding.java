@@ -71,11 +71,21 @@ public final class NpcBinding
 	private final int ambient;
 	private final int contrast;
 
+	/**
+	 * The NPC whose chathead these NPCs show in dialogue instead of their own, or
+	 * {@link #NO_CHATHEAD} to keep their own. A dialogue head can only draw from the game cache, so
+	 * this names a cache NPC rather than a bundle mesh.
+	 */
+	private final int chatheadNpcId;
+
 	/** The {@link #rigId} of a model with no rig, which only ever draws in its rest pose. */
 	public static final int STATIC = -1;
 
+	/** The {@link #chatheadNpcId} of a model that leaves the NPCs' own chathead alone. */
+	public static final int NO_CHATHEAD = -1;
+
 	public NpcBinding(String name, int[] npcIds, int[] meshIds, int rigId, int scaleXZ, int scaleY,
-		short[] recolorFind, short[] recolorReplace, int ambient, int contrast)
+		short[] recolorFind, short[] recolorReplace, int ambient, int contrast, int chatheadNpcId)
 	{
 		this.name = name;
 		this.npcIds = npcIds;
@@ -87,10 +97,16 @@ public final class NpcBinding
 		this.recolorReplace = recolorReplace;
 		this.ambient = ambient;
 		this.contrast = contrast;
+		this.chatheadNpcId = chatheadNpcId;
 	}
 
 	public boolean hasRecolors()
 	{
 		return recolorFind != null && recolorFind.length > 0;
+	}
+
+	public boolean hasChathead()
+	{
+		return chatheadNpcId != NO_CHATHEAD;
 	}
 }
