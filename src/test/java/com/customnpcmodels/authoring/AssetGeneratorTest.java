@@ -41,6 +41,7 @@ import com.customnpcmodels.inject.TestBinding;
 import com.customnpcmodels.inject.TestMesh;
 import com.customnpcmodels.packs.TestPacks;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -307,7 +308,7 @@ public class AssetGeneratorTest
 		model.glb = "still.glb";
 		model.meshId = GltfExporter.ID_BASE + NpcID.MOLE_GIANT;
 		model.npcIds = new int[]{NpcID.MOLE_GIANT};
-		model.chathead = chathead;
+		model.chathead = new JsonPrimitive(chathead);
 		Manifest manifest = new Manifest();
 		manifest.models.add(model);
 		return manifest;
@@ -370,6 +371,105 @@ public class AssetGeneratorTest
 		catch (IllegalStateException ex)
 		{
 			assertTrue(ex.getMessage(), ex.getMessage().contains("chathead NPC " + VYREWATCH));
+		}
+	}
+
+	/** An unrigged head glb, written beside the manifest under the given name. */
+	private void writeHead(String file) throws Exception
+	{
+		Mesh head = new TestMesh().id(GltfExporter.HEAD_ID_BASE + NpcID.MOLE_GIANT).groups(null).build();
+		Files.write(folder.getRoot().toPath().resolve(file), GlbWriter.write(head, new ArrayList<>()));
+	}
+
+	private static JsonObject head(String glb, int meshId)
+	{
+		JsonObject head = new JsonObject();
+		head.addProperty("glb", glb);
+		head.addProperty("meshId", meshId);
+		return head;
+	}
+
+	@Test
+	public void testACustomChatheadReachesTheBundle() throws Exception
+	{
+		writeHead("head.glb");
+		Manifest manifest = chatheadManifest(VYREWATCH);
+		int headId = GltfExporter.HEAD_ID_BASE + NpcID.MOLE_GIANT;
+		manifest.models.get(0).chathead = head("head.glb", headId);
+
+		AssetBundle bundle = codecRoundTrip(AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null));
+
+		NpcBinding binding = bundle.getBinding(NpcID.MOLE_GIANT);
+		assertEquals(headId, binding.getChatheadMeshId());
+		assertEquals(NpcBinding.STATIC, binding.getChatheadRigId());
+		assertEquals(NpcBinding.NO_CHATHEAD, binding.getChatheadNpcId());
+		assertNotNull(bundle.getMesh(headId));
+	}
+
+	/** The Maid and the Demon butler wear one head: it is converted once and both name it. */
+	@Test
+	public void testTwoModelsShareOneHead() throws Exception
+	{
+		writeHead("head.glb");
+		Manifest manifest = chatheadManifest(VYREWATCH);
+		int headId = GltfExporter.HEAD_ID_BASE + NpcID.MOLE_GIANT;
+		manifest.models.get(0).chathead = head("head.glb", headId);
+		Manifest.Model second = new Manifest.Model();
+		second.name = "Still too";
+		second.glb = "still.glb";
+		second.meshId = GltfExporter.ID_BASE + NpcID.MOLE_GIANT + 1;
+		second.npcIds = new int[]{NpcID.MOLE_GIANT + 1};
+		second.chathead = head("head.glb", headId);
+		manifest.models.add(second);
+
+		AssetBundle bundle = codecRoundTrip(AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null));
+
+		assertEquals(headId, bundle.getBinding(NpcID.MOLE_GIANT).getChatheadMeshId());
+		assertEquals(headId, bundle.getBinding(NpcID.MOLE_GIANT + 1).getChatheadMeshId());
+	}
+
+	@Test
+	public void testOneHeadIdForTwoGlbsIsRefused() throws Exception
+	{
+		writeHead("head.glb");
+		writeHead("other.glb");
+		Manifest manifest = chatheadManifest(VYREWATCH);
+		int headId = GltfExporter.HEAD_ID_BASE + NpcID.MOLE_GIANT;
+		manifest.models.get(0).chathead = head("head.glb", headId);
+		Manifest.Model second = new Manifest.Model();
+		second.name = "Still too";
+		second.glb = "still.glb";
+		second.meshId = GltfExporter.ID_BASE + NpcID.MOLE_GIANT + 1;
+		second.npcIds = new int[]{NpcID.MOLE_GIANT + 1};
+		second.chathead = head("other.glb", headId);
+		manifest.models.add(second);
+
+		try
+		{
+			AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null);
+			fail("expected the reused head id to be refused");
+		}
+		catch (IllegalStateException ex)
+		{
+			assertTrue(ex.getMessage(), ex.getMessage().contains("chathead mesh id " + headId));
+		}
+	}
+
+	@Test
+	public void testAHeadIdBelowTheBaseIsRefused() throws Exception
+	{
+		writeHead("head.glb");
+		Manifest manifest = chatheadManifest(VYREWATCH);
+		manifest.models.get(0).chathead = head("head.glb", 5);
+
+		try
+		{
+			AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null);
+			fail("expected the head id to be refused");
+		}
+		catch (IllegalStateException ex)
+		{
+			assertTrue(ex.getMessage(), ex.getMessage().contains("chathead mesh id 5"));
 		}
 	}
 
