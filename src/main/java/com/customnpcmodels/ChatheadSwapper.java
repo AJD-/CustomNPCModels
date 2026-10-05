@@ -128,7 +128,7 @@ class ChatheadSwapper
 
 		int type = head.getModelType();
 		int id = head.getModelId();
-		Head next = decide(type, id, shown, this::speakerAt, this::chatheadFor);
+		Head next = decide(type, id, shown, this::speakerAt, this::resolve, this::chatheadFor);
 		shown = next.getShown();
 		if (next.getType() != type || next.getId() != id)
 		{
@@ -147,9 +147,11 @@ class ChatheadSwapper
 	 * when its model names a chathead, and every other kind of head is left alone.
 	 *
 	 * @param speakerAt   the NPC id at a scene index, or -1 when there is none
+	 * @param resolve     the NPC a multi NPC shows as, -1 for none; any other NPC is itself
 	 * @param chatheadFor the chathead to show for an NPC id, or {@link NpcBinding#NO_CHATHEAD}
 	 */
-	static Head decide(int type, int id, Swap shown, IntUnaryOperator speakerAt, IntUnaryOperator chatheadFor)
+	static Head decide(int type, int id, Swap shown, IntUnaryOperator speakerAt, IntUnaryOperator resolve,
+		IntUnaryOperator chatheadFor)
 	{
 		if (shown != null && type == WidgetModelType.NPC_CHATHEAD && id == shown.getChathead())
 		{
@@ -169,12 +171,29 @@ class ChatheadSwapper
 		int speaker = type == WidgetModelType.NPC_CHATHEAD ? id
 			: type == WidgetModelType.NPC_INDEX_CHATHEAD ? speakerAt.applyAsInt(id)
 			: -1;
+		// The dialogue may name a multi NPC, which packs bind by the NPC it shows as
+		if (speaker >= 0)
+		{
+			speaker = resolve.applyAsInt(speaker);
+		}
 		int chathead = speaker < 0 ? NpcBinding.NO_CHATHEAD : chatheadFor.applyAsInt(speaker);
 		if (chathead == NpcBinding.NO_CHATHEAD || (type == WidgetModelType.NPC_CHATHEAD && id == chathead))
 		{
 			return new Head(type, id, null);
 		}
 		return new Head(WidgetModelType.NPC_CHATHEAD, chathead, new Swap(type, id, speaker, chathead));
+	}
+
+	/** The NPC a multi NPC shows as right now, -1 for none, or the NPC itself when it isn't one. */
+	private int resolve(int npcId)
+	{
+		NPCComposition npc = client.getNpcDefinition(npcId);
+		if (npc == null || npc.getConfigs() == null)
+		{
+			return npcId;
+		}
+		NPCComposition shows = npc.transform();
+		return shows == null ? -1 : shows.getId();
 	}
 
 	private int speakerAt(int index)

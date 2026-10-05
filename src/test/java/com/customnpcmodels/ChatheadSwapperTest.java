@@ -45,6 +45,9 @@ public class ChatheadSwapperTest
 	private static final IntUnaryOperator NOTHING_SWAPPED = npcId -> NpcBinding.NO_CHATHEAD;
 	private static final IntUnaryOperator MAID_AT_INDEX = index -> index == MAID_INDEX ? MAID : -1;
 
+	/** No NPC is a multi NPC: every id is its own. */
+	private static final IntUnaryOperator SINGLE = npcId -> npcId;
+
 	private static void assertShows(Head head, int type, int id)
 	{
 		assertEquals(type, head.getType());
@@ -54,7 +57,7 @@ public class ChatheadSwapperTest
 	@Test
 	public void testAnNpcsOwnHeadIsSwapped()
 	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, MAID_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, SINGLE, MAID_SWAPPED);
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
 		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, VYREWATCH), head.getShown());
@@ -63,7 +66,7 @@ public class ChatheadSwapperTest
 	@Test
 	public void testAHeadByNpcIndexIsSwappedToTheNpcsChathead()
 	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX, null, MAID_AT_INDEX,
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX, null, MAID_AT_INDEX, SINGLE,
 			MAID_SWAPPED);
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
@@ -73,7 +76,7 @@ public class ChatheadSwapperTest
 	@Test
 	public void testAnNpcWithoutAChatheadKeepsItsOwn()
 	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, NOTHING_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, SINGLE, NOTHING_SWAPPED);
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, MAID);
 		assertNull(head.getShown());
@@ -82,7 +85,7 @@ public class ChatheadSwapperTest
 	@Test
 	public void testAnIndexWithNoNpcIsLeftAlone()
 	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX + 1, null, MAID_AT_INDEX,
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX + 1, null, MAID_AT_INDEX, SINGLE,
 			MAID_SWAPPED);
 
 		assertShows(head, WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX + 1);
@@ -95,7 +98,7 @@ public class ChatheadSwapperTest
 		for (int type : new int[]{WidgetModelType.LOCAL_PLAYER_CHATHEAD, WidgetModelType.MODEL, WidgetModelType.ITEM})
 		{
 			// A model or item whose id happens to match a swapped NPC is not that NPC
-			Head head = ChatheadSwapper.decide(type, MAID, null, MAID_AT_INDEX, MAID_SWAPPED);
+			Head head = ChatheadSwapper.decide(type, MAID, null, MAID_AT_INDEX, SINGLE, MAID_SWAPPED);
 
 			assertShows(head, type, MAID);
 			assertNull(head.getShown());
@@ -107,7 +110,7 @@ public class ChatheadSwapperTest
 	{
 		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, VYREWATCH);
 
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, swap, MAID_AT_INDEX, MAID_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, swap, MAID_AT_INDEX, SINGLE, MAID_SWAPPED);
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
 		assertEquals(swap, head.getShown());
@@ -119,7 +122,7 @@ public class ChatheadSwapperTest
 	{
 		Swap byIndex = new Swap(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX, MAID, VYREWATCH);
 
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, byIndex, MAID_AT_INDEX,
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, byIndex, MAID_AT_INDEX, SINGLE,
 			NOTHING_SWAPPED);
 
 		assertShows(head, WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX);
@@ -132,7 +135,7 @@ public class ChatheadSwapperTest
 		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, VYREWATCH);
 		int demon = NpcID.POH_SERVANT_DEMON;
 
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, swap, MAID_AT_INDEX,
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, swap, MAID_AT_INDEX, SINGLE,
 			npcId -> npcId == MAID ? demon : NpcBinding.NO_CHATHEAD);
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, demon);
@@ -145,7 +148,7 @@ public class ChatheadSwapperTest
 	{
 		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, VYREWATCH);
 
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, swap, MAID_AT_INDEX, MAID_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, swap, MAID_AT_INDEX, SINGLE, MAID_SWAPPED);
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
 		assertEquals(swap, head.getShown());
@@ -155,10 +158,35 @@ public class ChatheadSwapperTest
 	@Test
 	public void testANpcWhoseChatheadIsItsOwnIsLeftAlone()
 	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, null, MAID_AT_INDEX,
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, null, MAID_AT_INDEX, SINGLE,
 			npcId -> VYREWATCH);
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
+		assertNull(head.getShown());
+	}
+
+	/** The Demon butler speaks as 230, a multi NPC that shows as 229 - the NPC the model is bound to. */
+	@Test
+	public void testAMultiNpcIsSwappedAsTheNpcItShows()
+	{
+		int butler = NpcID.POH_SERVANT_DEMON;
+		int multi = NpcID.POH_SERVANT_MULTI_DEMON;
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, multi, null, MAID_AT_INDEX,
+			npcId -> npcId == multi ? butler : npcId,
+			npcId -> npcId == butler ? VYREWATCH : NpcBinding.NO_CHATHEAD);
+
+		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
+		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, multi, butler, VYREWATCH), head.getShown());
+	}
+
+	/** A multi NPC showing as nothing (-1) has no head to swap. */
+	@Test
+	public void testAMultiNpcShowingNothingIsLeftAlone()
+	{
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX,
+			npcId -> -1, MAID_SWAPPED);
+
+		assertShows(head, WidgetModelType.NPC_CHATHEAD, MAID);
 		assertNull(head.getShown());
 	}
 }
