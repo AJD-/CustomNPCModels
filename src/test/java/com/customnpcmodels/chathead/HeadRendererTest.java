@@ -84,4 +84,21 @@ public class HeadRendererTest
 		assertEquals(90, large.getHeight());
 		assertTrue("the larger image is drawn too", (large.getRGB(60, 45) >>> 24) == 0xFF);
 	}
+
+	/**
+	 * The client draws a chathead centered on its widget but past the widget's edges, as far as the
+	 * dialogue reaches, so the head is drawn into the dialogue's bounds around the widget's center.
+	 */
+	@Test
+	public void testDrawsAroundTheCenterAsked()
+	{
+		HeadModel head = triangle();
+		Mesh mesh = head.getMesh();
+
+		BufferedImage image = new HeadRenderer().render(head, mesh.getVerticesX(), mesh.getVerticesY(),
+			mesh.getVerticesZ(), new ChatheadCamera(0, 0, 0, 600), 300, 120, 60, 60);
+
+		assertEquals("the triangle is drawn around the given center", 0xFF, image.getRGB(60, 60) >>> 24);
+		assertEquals("and not around the image's middle", 0, image.getRGB(150, 60) >>> 24);
+	}
 }

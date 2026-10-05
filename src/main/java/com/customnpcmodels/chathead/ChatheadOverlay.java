@@ -45,7 +45,8 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
  * Draws a pack's own chathead over the dialogue head widget, which ChatheadSwapper has blanked:
- * posed by the line's emote, at the widget's bounds and with its camera, every frame.
+ * posed by the line's emote, centered on the widget and with its camera, every frame. Like the
+ * client, it may draw past the widget's own edges, as far as the dialogue reaches.
  * <p>
  * The widget does not say which frame of the emote the client is on, so the head keeps its own time
  * from when the page opened, with the frame lengths the client plays that emote with. An emote the
@@ -123,8 +124,12 @@ public class ChatheadOverlay extends Overlay
 		Mesh mesh = head.getMesh();
 		skinner.pose(mesh, head.getRig(), clip, frame, x, y, z);
 
-		BufferedImage image = renderer.render(head, x, y, z, ChatheadCamera.of(widget), bounds.width, bounds.height);
-		graphics.drawImage(image, bounds.x, bounds.y, null);
+		// The head is bigger than its widget, so it is drawn over the whole dialogue around the widget
+		Widget dialogue = client.getWidget(InterfaceID.ChatLeft.UNIVERSE);
+		Rectangle area = dialogue == null || dialogue.isHidden() ? bounds : dialogue.getBounds();
+		BufferedImage image = renderer.render(head, x, y, z, ChatheadCamera.of(widget), area.width, area.height,
+			bounds.getCenterX() - area.x, bounds.getCenterY() - area.y);
+		graphics.drawImage(image, area.x, area.y, null);
 		return null;
 	}
 

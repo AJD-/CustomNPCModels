@@ -56,8 +56,19 @@ public final class HeadRenderer
 	private float[] depth = new float[0];
 	private final double[] projected = new double[3];
 
+	/** {@link #render(HeadModel, float[], float[], float[], ChatheadCamera, int, int, double, double)}, centered. */
 	public BufferedImage render(HeadModel head, float[] x, float[] y, float[] z, ChatheadCamera camera,
 		int width, int height)
+	{
+		return render(head, x, y, z, camera, width, height, width / 2.0, height / 2.0);
+	}
+
+	/**
+	 * Draws the head into a {@code width} by {@code height} image, centered on {@code centerX},
+	 * {@code centerY}: the head widget's center within the area it may be drawn over.
+	 */
+	public BufferedImage render(HeadModel head, float[] x, float[] y, float[] z, ChatheadCamera camera,
+		int width, int height, double centerX, double centerY)
 	{
 		if (image == null || image.getWidth() != width || image.getHeight() != height)
 		{
@@ -79,7 +90,7 @@ public final class HeadRenderer
 			{
 				continue;
 			}
-			double[][] p = projectFace(mesh, face, x, y, z, camera, head.getHeight(), width, height);
+			double[][] p = projectFace(mesh, face, x, y, z, camera, head.getHeight(), centerX, centerY);
 			if (p == null)
 			{
 				continue;
@@ -128,7 +139,7 @@ public final class HeadRenderer
 
 	/** Screen x, y and depth of the face's corners, or null when any is behind the camera. */
 	private double[][] projectFace(Mesh mesh, int face, float[] x, float[] y, float[] z, ChatheadCamera camera,
-		int headHeight, int width, int height)
+		int headHeight, double centerX, double centerY)
 	{
 		int[] corners = {mesh.getFaceIndices1()[face], mesh.getFaceIndices2()[face], mesh.getFaceIndices3()[face]};
 		double[][] out = new double[3][];
@@ -140,7 +151,7 @@ public final class HeadRenderer
 			{
 				return null;
 			}
-			out[k] = new double[]{width / 2.0 + projected[0], height / 2.0 + projected[1], projected[2]};
+			out[k] = new double[]{centerX + projected[0], centerY + projected[1], projected[2]};
 		}
 		return out;
 	}
