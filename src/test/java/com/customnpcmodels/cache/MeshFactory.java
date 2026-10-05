@@ -28,7 +28,6 @@ import com.customnpcmodels.inject.Mesh;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.definitions.ModelDefinition;
 
@@ -261,8 +260,8 @@ public final class MeshFactory
 			rebound[group] = members.stream().mapToInt(Integer::intValue).toArray();
 		}
 
-        log.info("  mesh {}: bound {} vertices off the no-bone group 255, {} stay static",
-				meshId, reboundVertices.size(), rebound[NO_BONE].length);
+		log.info("  mesh {}: bound {} vertices off the no-bone group 255, {} stay static",
+			meshId, reboundVertices.size(), rebound[NO_BONE].length);
 		return rebound;
 	}
 }

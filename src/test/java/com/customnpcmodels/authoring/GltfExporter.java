@@ -43,13 +43,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-
+import javax.annotation.Nonnull;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.NpcDefinition;
 import net.runelite.cache.fs.Store;
-
-import javax.annotation.Nonnull;
 
 /**
  * Exports an NPC from the live cache as a {@code .glb}, plus a manifest entry that binds it back to
@@ -142,7 +140,8 @@ public class GltfExporter
 	}
 
 	@Nonnull
-	private static Set<Integer> createOwnSequences(NpcDefinition npc) {
+	private static Set<Integer> createOwnSequences(NpcDefinition npc)
+	{
 		Set<Integer> ownSequences = new LinkedHashSet<>();
 		for (int sequence : new int[]{
 			npc.standingAnimation, npc.walkingAnimation,
@@ -194,7 +193,7 @@ public class GltfExporter
 			SequenceTiming timing = AssetGenerator.timing(store, sequenceId);
 			if (clip == null || timing == null)
 			{
-                log.info("  sequence {} skipped: not a frame-based live sequence", sequenceId);
+				log.info("  sequence {} skipped: not a frame-based live sequence", sequenceId);
 				continue;
 			}
 			clips.add(clip);
@@ -242,7 +241,7 @@ public class GltfExporter
 			manifest.write(out);
 		}
 
-        log.info("  wrote {} ({} KB, {} verts, {} faces, {} clips)", out.resolve(file).toAbsolutePath()
+		log.info("  wrote {} ({} KB, {} verts, {} faces, {} clips)", out.resolve(file).toAbsolutePath()
 				, glb.length / 1024, mesh.getVerticesCount(), mesh.getFaceCount(), clips.size());
 		if (!blocked)
 		{

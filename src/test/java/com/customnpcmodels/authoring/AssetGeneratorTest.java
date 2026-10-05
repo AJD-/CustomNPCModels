@@ -104,8 +104,8 @@ public class AssetGeneratorTest
 	{
 		Manifest manifest = new Manifest();
 		manifest.models.add(model);
-        assertEquals("the entry should differ from a valid one only by the change under test",
-				1, AssetGenerator.checkManifest(manifest, folder.getRoot().toPath()).size());
+		assertEquals("the entry should differ from a valid one only by the change under test",
+			1, AssetGenerator.checkManifest(manifest, folder.getRoot().toPath()).size());
 		try
 		{
 			AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null);

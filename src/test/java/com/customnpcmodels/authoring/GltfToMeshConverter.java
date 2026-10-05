@@ -666,8 +666,8 @@ final class GltfToMeshConverter
 		{
 			double[] p = geometry.positions.get(split);
 			List<Object> key = Arrays.asList(p[0], p[1], p[2], geometry.groups.get(split));
-            Integer vertex = keys.computeIfAbsent(key, k -> keys.size());
-            welded[split] = vertex;
+			Integer vertex = keys.computeIfAbsent(key, k -> keys.size());
+			welded[split] = vertex;
 		}
 		return welded;
 	}

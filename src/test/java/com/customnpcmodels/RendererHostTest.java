@@ -24,13 +24,13 @@
  */
 package com.customnpcmodels;
 
-import com.customnpcmodels.compatibility.RendererChain;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
+import com.customnpcmodels.compatibility.RendererChain;
 import java.util.function.Supplier;
 import net.runelite.api.hooks.DrawCallbacks;
 import net.runelite.client.plugins.Plugin;

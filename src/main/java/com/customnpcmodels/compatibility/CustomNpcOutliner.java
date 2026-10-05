@@ -24,12 +24,11 @@
  */
 package com.customnpcmodels.compatibility;
 
+import com.customnpcmodels.CustomDrawCallbacks;
+import com.customnpcmodels.ModelCache;
 import java.awt.Color;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-
-import com.customnpcmodels.CustomDrawCallbacks;
-import com.customnpcmodels.ModelCache;
 import net.runelite.api.Client;
 import net.runelite.api.Model;
 import net.runelite.api.NPC;

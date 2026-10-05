@@ -24,13 +24,13 @@
  */
 package com.customnpcmodels.inject;
 
-import java.util.Arrays;
-import java.util.Collections;
-import org.junit.Test;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import java.util.Arrays;
+import java.util.Collections;
+import org.junit.Test;
 
 /**
  * Covers the merge that lets the bundle store one part per model id.

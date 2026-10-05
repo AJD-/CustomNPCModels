@@ -24,10 +24,10 @@
  */
 package com.customnpcmodels.authoring;
 
-import com.customnpcmodels.inject.Mesh;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
+import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.TestMesh;
 import org.junit.Test;
 

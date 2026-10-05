@@ -50,7 +50,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
-
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.definitions.SequenceDefinition;
 import net.runelite.cache.fs.Store;
@@ -99,8 +98,8 @@ public class AssetGenerator
 		String packOut = System.getProperty(PACK_OUT_PROPERTY);
 
 		Manifest manifest = Manifest.read(assetsDir);
-        log.info("Manifest {}: {} model(s)",
-				assetsDir.resolve(Manifest.FILE_NAME).toAbsolutePath(), manifest.models.size());
+		log.info("Manifest {}: {} model(s)",
+			assetsDir.resolve(Manifest.FILE_NAME).toAbsolutePath(), manifest.models.size());
 
 		// Before the cache is opened, so a manifest that can never build says so without needing one
 		List<String> problems = checkManifest(manifest, assetsDir);
@@ -113,22 +112,27 @@ public class AssetGenerator
 		boolean needsCache = manifest.models.stream().anyMatch(m -> m.animations != null && !m.animations.isEmpty());
 		Store store = needsCache ? CacheFiles.openLiveCache() : null;
 
-        try (store) {
-            if (needsCache && store == null) {
-                System.err.println("Animated models are sampled against live sequences, but there is no live cache; "
-                        + "pass one with -PcacheDir=<path>");
-                System.exit(1);
-                return;
-            }
-            AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId));
-            if (packOut != null) {
-                Path dir = packOut.isEmpty() ? PACKS.resolve(manifest.pack.id) : Paths.get(packOut);
-                write(bundle, dir.resolve(DirectoryPackSource.BUNDLE_FILE));
-                writePackInfo(manifest.pack, bundle, dir.resolve(DirectoryPackSource.INFO_FILE));
-            } else {
-                write(bundle, dev ? DEV : SHIPPED);
-            }
-        }
+		try (store)
+		{
+			if (needsCache && store == null)
+			{
+				System.err.println("Animated models are sampled against live sequences, but there is no live cache; "
+					+ "pass one with -PcacheDir=<path>");
+				System.exit(1);
+				return;
+			}
+			AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId));
+			if (packOut != null)
+			{
+				Path dir = packOut.isEmpty() ? PACKS.resolve(manifest.pack.id) : Paths.get(packOut);
+				write(bundle, dir.resolve(DirectoryPackSource.BUNDLE_FILE));
+				writePackInfo(manifest.pack, bundle, dir.resolve(DirectoryPackSource.INFO_FILE));
+			}
+			else
+			{
+				write(bundle, dev ? DEV : SHIPPED);
+			}
+		}
 	}
 
 	static SequenceTiming timing(Store store, int sequenceId) throws IOException
@@ -201,8 +205,8 @@ public class AssetGenerator
 			{
 				System.out.println("  " + line);
 			}
-            log.info("  mesh {}  verts={} faces={} rigged={}",
-					model.meshId, result.mesh.getVerticesCount(), result.mesh.getFaceCount(), result.mesh.isRigged());
+			log.info("  mesh {}  verts={} faces={} rigged={}",
+				model.meshId, result.mesh.getVerticesCount(), result.mesh.getFaceCount(), result.mesh.isRigged());
 
 			if (meshes.putIfAbsent(model.meshId, result.mesh) != null)
 			{
@@ -387,6 +391,6 @@ public class AssetGenerator
 		Files.createDirectories(output.getParent());
 		Files.write(output, bytes.toByteArray());
 		System.out.println();
-        log.info("Wrote {}  ({} KB, {})", output.toAbsolutePath(), Files.size(output) / 1024, bundle);
+		log.info("Wrote {}  ({} KB, {})", output.toAbsolutePath(), Files.size(output) / 1024, bundle);
 	}
 }

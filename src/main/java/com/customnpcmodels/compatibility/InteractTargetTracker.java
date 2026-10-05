@@ -25,10 +25,9 @@
  */
 package com.customnpcmodels.compatibility;
 
+import com.customnpcmodels.CustomNpcModelsPlugin;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-
-import com.customnpcmodels.CustomNpcModelsPlugin;
 import lombok.Getter;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
