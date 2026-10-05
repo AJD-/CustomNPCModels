@@ -457,6 +457,11 @@ public final class AssetValidator
 				+ "; both must fit a signed byte");
 		}
 
+		if (binding.getChatheadNpcId() < NpcBinding.NO_CHATHEAD)
+		{
+			problems.add(name + " names chathead NPC " + binding.getChatheadNpcId());
+		}
+
 		// The ceilings apply to what is drawn, which is the merge
 		if (problems.isEmpty() && parts.size() > 1)
 		{

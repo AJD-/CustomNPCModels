@@ -294,6 +294,85 @@ public class AssetGeneratorTest
 		assertTrue(bundle.getRigs().isEmpty());
 	}
 
+	/** A Meiyerditch Vyrewatch, which has a chathead. */
+	private static final int VYREWATCH = NpcID.SANG_MYQ3_FEMALE_WALK_VYREWATCH_1;
+
+	/** An unskinned model naming a chathead, the smallest manifest that builds. */
+	private Manifest chatheadManifest(int chathead) throws Exception
+	{
+		Mesh still = new TestMesh().groups(null).build();
+		Files.write(folder.getRoot().toPath().resolve("still.glb"), GlbWriter.write(still, new ArrayList<>()));
+		Manifest.Model model = new Manifest.Model();
+		model.name = "Still";
+		model.glb = "still.glb";
+		model.meshId = GltfExporter.ID_BASE + NpcID.MOLE_GIANT;
+		model.npcIds = new int[]{NpcID.MOLE_GIANT};
+		model.chathead = chathead;
+		Manifest manifest = new Manifest();
+		manifest.models.add(model);
+		return manifest;
+	}
+
+	@Test
+	public void testAChatheadReachesTheBinding() throws Exception
+	{
+		AssetBundle bundle = codecRoundTrip(AssetGenerator.build(chatheadManifest(VYREWATCH),
+			folder.getRoot().toPath(), id -> null, npcId -> npcId == VYREWATCH));
+
+		assertEquals(VYREWATCH, bundle.getBinding(NpcID.MOLE_GIANT).getChatheadNpcId());
+	}
+
+	@Test
+	public void testAModelWithoutAChatheadKeepsItsOwn() throws Exception
+	{
+		Manifest manifest = chatheadManifest(VYREWATCH);
+		manifest.models.get(0).chathead = null;
+
+		AssetBundle bundle = codecRoundTrip(AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null));
+
+		assertEquals(NpcBinding.NO_CHATHEAD, bundle.getBinding(NpcID.MOLE_GIANT).getChatheadNpcId());
+	}
+
+	@Test
+	public void testAChatheadTheCacheHasNoneForIsRefused() throws Exception
+	{
+		try
+		{
+			AssetGenerator.build(chatheadManifest(VYREWATCH), folder.getRoot().toPath(), id -> null, npcId -> false);
+			fail("expected the chathead to be refused");
+		}
+		catch (IllegalStateException ex)
+		{
+			assertTrue(ex.getMessage(), ex.getMessage().contains("chathead NPC " + VYREWATCH));
+		}
+	}
+
+	@Test
+	public void testTheLiveCacheKnowsWhichNpcsHaveChatheads() throws Exception
+	{
+		AssetGenerator.Chatheads chatheads = AssetGenerator.chatheads(LiveFixtures.store());
+
+		assertTrue(chatheads.has(VYREWATCH));
+		assertTrue(chatheads.has(NpcID.POH_SERVANT_WAITER_WOMAN));
+		// A Vyrewatch Sentinel has no dialogue, and so no chathead
+		assertFalse(chatheads.has(NpcID.VYREWATCH_ELITE_1));
+		assertFalse(chatheads.has(-5));
+	}
+
+	@Test
+	public void testAChatheadIsRefusedWithoutACacheToCheckIt() throws Exception
+	{
+		try
+		{
+			AssetGenerator.build(chatheadManifest(VYREWATCH), folder.getRoot().toPath(), id -> null);
+			fail("expected the chathead to be refused");
+		}
+		catch (IllegalStateException ex)
+		{
+			assertTrue(ex.getMessage(), ex.getMessage().contains("chathead NPC " + VYREWATCH));
+		}
+	}
+
 	@Test
 	public void testAPackNeedsAnIdAndName()
 	{

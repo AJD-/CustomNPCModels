@@ -287,6 +287,15 @@ public class AssetValidatorTest
 	}
 
 	@Test
+	public void testRejectsANegativeChathead()
+	{
+		String problem = only(AssetValidator.validate(bundleWith(
+			TestBinding.of("a", new int[]{5}, new int[]{1}).chathead(-2).build()), id -> -1));
+
+		assertTrue(problem, problem.contains("chathead NPC -2"));
+	}
+
+	@Test
 	public void testRejectsABlacklistedNpc()
 	{
 		String problem = only(AssetValidator.validate(bundleWith(

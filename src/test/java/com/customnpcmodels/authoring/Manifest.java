@@ -49,7 +49,8 @@ import java.util.Map;
  *       "scaleXZ": 118,
  *       "scaleY": 118,
  *       "recolors": [{"find": 5169, "replace": 21662}],
- *       "animations": {"3309": 3309, "3313": 3313}
+ *       "animations": {"3309": 3309, "3313": 3313},
+ *       "chathead": 3709
  *     }
  *   ]
  * }
@@ -60,6 +61,7 @@ import java.util.Map;
  * animation's name to the live sequence it stands in for - the NPC keeps playing that sequence, and
  * the clip is sampled at its frame count. Scale is in 1/128ths and defaults to 128;
  * {@code ambient} and {@code contrast} are the NPC definition's lighting bytes and default to 0.
+ * {@code chathead} is optional: a cache NPC whose dialogue head these NPCs show instead of their own.
  */
 final class Manifest
 {
@@ -102,6 +104,12 @@ final class Manifest
 		Integer contrast;
 		List<Recolor> recolors;
 		Map<String, Integer> animations = new LinkedHashMap<>();
+
+		/**
+		 * The cache NPC whose chathead these NPCs show in dialogue, or null to keep their own. A
+		 * dialogue head can only draw from the cache, so it names an NPC rather than a mesh.
+		 */
+		Integer chathead;
 
 		int scaleXZ()
 		{
