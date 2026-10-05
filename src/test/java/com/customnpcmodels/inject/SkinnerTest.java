@@ -41,14 +41,17 @@ public class SkinnerTest
 	/** Two vertices on the X axis, both in group 0. */
 	private static Mesh mesh()
 	{
-		return new Mesh(1, 0,
-			new float[]{0f, 100f},
-			new float[]{0f, 0f},
-			new float[]{0f, 0f},
-			new int[]{0}, new int[]{1}, new int[]{0},
-			new short[]{0}, null, null, null, null,
-			null, null, null, null,
-			new int[][]{{0, 1}});
+		return new TestMesh()
+			.id(1)
+			.vx(new float[]{0f, 100f})
+			.vy(new float[]{0f, 0f})
+			.vz(new float[]{0f, 0f})
+			.i1(new int[]{0})
+			.i2(new int[]{1})
+			.i3(new int[]{0})
+			.colors(new short[]{0})
+			.groups(new int[][]{{0, 1}})
+			.build();
 	}
 
 	/** Transform 0 sets the pivot, transform 1 is the op under test. */
@@ -153,12 +156,17 @@ public class SkinnerTest
 	@Test
 	public void testUnriggedMeshReportsFailureAndKeepsTheRestPose()
 	{
-		Mesh unrigged = new Mesh(1, 0,
-			new float[]{7f}, new float[]{8f}, new float[]{9f},
-			new int[]{0}, new int[]{0}, new int[]{0},
-			new short[]{0}, null, null, null, null,
-			null, null, null, null,
-			null);
+		Mesh unrigged = new TestMesh()
+			.id(1)
+			.vx(new float[]{7f})
+			.vy(new float[]{8f})
+			.vz(new float[]{9f})
+			.i1(new int[]{0})
+			.i2(new int[]{0})
+			.i3(new int[]{0})
+			.colors(new short[]{0})
+			.groups(null)
+			.build();
 
 		float[] x = new float[1];
 		float[] y = new float[1];

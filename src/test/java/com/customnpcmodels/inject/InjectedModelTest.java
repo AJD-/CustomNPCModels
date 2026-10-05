@@ -36,8 +36,17 @@ public class InjectedModelTest
 	/** A one-face mesh of these vertices, with nothing optional set. */
 	private static Mesh mesh(float[] x, float[] y, float[] z)
 	{
-		return new Mesh(1, 0, x, y, z, new int[]{0}, new int[]{1}, new int[]{2}, new short[]{0},
-			null, null, null, null, null, null, null, null, new int[0][]);
+		return new TestMesh()
+			.id(1)
+			.vx(x)
+			.vy(y)
+			.vz(z)
+			.i1(new int[]{0})
+			.i2(new int[]{1})
+			.i3(new int[]{2})
+			.colors(new short[]{0})
+			.groups(new int[0][])
+			.build();
 	}
 
 	private static InjectedModel bind(Mesh mesh)

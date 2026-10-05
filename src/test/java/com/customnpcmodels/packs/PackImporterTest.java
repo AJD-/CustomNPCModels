@@ -28,19 +28,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import com.customnpcmodels.inject.AssetBundle;
-import com.customnpcmodels.inject.AssetCodec;
-import com.customnpcmodels.inject.Mesh;
-import com.customnpcmodels.inject.NpcBinding;
 import com.google.gson.Gson;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
 import java.util.List;
-import net.runelite.api.gameval.NpcID;
 import net.runelite.client.util.Filepath;
 import org.junit.Rule;
 import org.junit.Test;
@@ -54,20 +47,6 @@ public class PackImporterTest
 {
 	@Rule
 	public TemporaryFolder folder = new TemporaryFolder();
-
-	private static byte[] bundleBytes() throws IOException
-	{
-		Mesh triangle = new Mesh(1_005_779, 0,
-			new float[]{0, 10, 0}, new float[]{0, 0, 10}, new float[]{0, 0, 0},
-			new int[]{0}, new int[]{1}, new int[]{2}, new short[]{(short) 0x3A05},
-			null, null, null, null, null, null, null, null, null);
-		NpcBinding binding = new NpcBinding("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779},
-			NpcBinding.STATIC, 128, 128, null, null, 0, 0);
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		AssetCodec.write(new AssetBundle(Collections.singletonMap(1_005_779, triangle), Collections.emptyMap(),
-			Collections.emptyList(), Collections.singletonList(binding)), out);
-		return out.toByteArray();
-	}
 
 	private Filepath source(String name, byte[] bundle, String packJson) throws IOException
 	{
@@ -97,7 +76,7 @@ public class PackImporterTest
 		Filepath local = local();
 		// The source folder's name differs, so the folder can only have come from the id
 		PackImporter.Result result = PackImporter.importFolder(
-			source("exported", bundleBytes(), "{\"id\": \"Mole Test\", \"name\": \"Mole test\"}"), local, new Gson());
+			source("exported", TestPacks.bundleBytes(), "{\"id\": \"Mole Test\", \"name\": \"Mole test\"}"), local, new Gson());
 
 		assertTrue(result.getMessage(), result.isImported());
 		List<LoadedPack> packs = new DirectoryPackSource(local, PackKind.LOCAL, new Gson()).load();
@@ -112,7 +91,7 @@ public class PackImporterTest
 	{
 		Filepath local = local();
 		PackImporter.Result result = PackImporter.importFolder(
-			source("exported", bundleBytes(), "{\"id\": {\"not\": \"a string\"}, \"name\": \"Mole\"}"), local, new Gson());
+			source("exported", TestPacks.bundleBytes(), "{\"id\": {\"not\": \"a string\"}, \"name\": \"Mole\"}"), local, new Gson());
 
 		assertTrue(result.getMessage(), result.isImported());
 		List<LoadedPack> packs = new DirectoryPackSource(local, PackKind.LOCAL, new Gson()).load();
@@ -124,9 +103,9 @@ public class PackImporterTest
 	public void testAnExistingPackIsNeverOverwritten() throws IOException
 	{
 		Filepath local = local();
-		assertTrue(PackImporter.importFolder(source("mole", bundleBytes(), null), local, new Gson()).isImported());
+		assertTrue(PackImporter.importFolder(source("mole", TestPacks.bundleBytes(), null), local, new Gson()).isImported());
 
-		PackImporter.Result again = PackImporter.importFolder(source("mole", bundleBytes(), null), local, new Gson());
+		PackImporter.Result again = PackImporter.importFolder(source("mole", TestPacks.bundleBytes(), null), local, new Gson());
 
 		assertFalse(again.isImported());
 		assertTrue(again.getMessage(), again.getMessage().contains("already installed"));
@@ -136,8 +115,8 @@ public class PackImporterTest
 	public void testARemovedPackIsGone() throws IOException
 	{
 		Filepath local = local();
-		assertTrue(PackImporter.importFolder(source("mole", bundleBytes(), null), local, new Gson()).isImported());
-		assertTrue(PackImporter.importFolder(source("goblins", bundleBytes(), null), local, new Gson()).isImported());
+		assertTrue(PackImporter.importFolder(source("mole", TestPacks.bundleBytes(), null), local, new Gson()).isImported());
+		assertTrue(PackImporter.importFolder(source("goblins", TestPacks.bundleBytes(), null), local, new Gson()).isImported());
 
 		PackImporter.remove(local, "mole");
 		PackImporter.remove(local, "never-imported");
@@ -152,7 +131,7 @@ public class PackImporterTest
 	public void testRemovingAnInvalidNameDeletesNothing() throws IOException
 	{
 		Filepath local = local();
-		assertTrue(PackImporter.importFolder(source("mole", bundleBytes(), null), local, new Gson()).isImported());
+		assertTrue(PackImporter.importFolder(source("mole", TestPacks.bundleBytes(), null), local, new Gson()).isImported());
 
 		for (String name : new String[]{"..", ".", "con", "", "mole/..", " mole"})
 		{
@@ -180,7 +159,7 @@ public class PackImporterTest
 		PackImporter.Result missing = PackImporter.importFolder(source("empty", null, null), local, new Gson());
 		PackImporter.Result corrupt = PackImporter.importFolder(source("junk", new byte[]{1, 2, 3}, null), local, new Gson());
 		PackImporter.Result badInfo = PackImporter.importFolder(
-			source("tagged", bundleBytes(), "{\"name\": \"Tagged\", \"tags\": \"not a list\"}"), local, new Gson());
+			source("tagged", TestPacks.bundleBytes(), "{\"name\": \"Tagged\", \"tags\": \"not a list\"}"), local, new Gson());
 
 		assertFalse(missing.isImported());
 		assertTrue(missing.getMessage(), missing.getMessage().contains("no bundle.dat"));

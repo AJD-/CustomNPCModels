@@ -30,6 +30,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.NpcBinding;
+import com.customnpcmodels.inject.TestBinding;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -41,7 +42,7 @@ public class PackViewTest
 {
 	private static NpcBinding binding(String name, int meshId, int... npcIds)
 	{
-		return new NpcBinding(name, npcIds, new int[]{meshId}, NpcBinding.STATIC, 128, 128, null, null, 0, 0);
+		return TestBinding.of(name, npcIds, new int[]{meshId}).build();
 	}
 
 	private static LoadedPack pack(String folder, NpcBinding... bindings)

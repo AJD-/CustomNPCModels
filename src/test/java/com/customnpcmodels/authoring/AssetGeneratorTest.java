@@ -37,6 +37,8 @@ import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.AssetCodec;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcBinding;
+import com.customnpcmodels.inject.TestBinding;
+import com.customnpcmodels.inject.TestMesh;
 import com.customnpcmodels.packs.TestPacks;
 import com.google.gson.JsonObject;
 import java.io.ByteArrayInputStream;
@@ -316,8 +318,7 @@ public class AssetGeneratorTest
 		pack.id = "my-pack";
 		pack.name = "My pack";
 		pack.author = "Someone";
-		NpcBinding binding = new NpcBinding("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779},
-			NpcBinding.STATIC, 128, 128, null, null, 0, 0);
+		NpcBinding binding = TestBinding.of("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779}).build();
 		AssetBundle bundle = new AssetBundle(Collections.emptyMap(), Collections.emptyMap(),
 			Collections.emptyList(), Collections.singletonList(binding));
 

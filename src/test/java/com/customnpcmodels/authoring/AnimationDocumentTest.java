@@ -28,6 +28,7 @@ import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.Skinner;
+import com.customnpcmodels.inject.TestMesh;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;

@@ -28,6 +28,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import java.io.ByteArrayInputStream;
@@ -451,14 +452,16 @@ public class AssetCodecTest
 	@Test
 	public void testBindingSurvivesRoundTrip() throws IOException
 	{
-		NpcBinding original = new NpcBinding("Skeleton", new int[]{70, 71}, new int[]{2944}, NpcBinding.STATIC,
-			118, 140, new short[]{0x3A05}, new short[]{(short) -25049}, 0, 0);
+		NpcBinding original = TestBinding.of("Skeleton", new int[]{70, 71}, new int[]{2944})
+			.scale(118, 140)
+			.recolors(new short[]{0x3A05}, new short[]{(short) -25049})
+			.build();
 		AssetBundle restored = roundTrip(withBindings(original));
 
 		assertEquals(1, restored.getBindings().size());
 		NpcBinding binding = restored.getBinding(71);
 		assertNotNull("every NPC id a binding names should look it up", binding);
-		assertTrue(binding == restored.getBinding(70));
+		assertSame(binding, restored.getBinding(70));
 		assertEquals("Skeleton", binding.getName());
 		assertArrayEquals(new int[]{70, 71}, binding.getNpcIds());
 		assertArrayEquals(new int[]{2944}, binding.getMeshIds());
@@ -472,7 +475,7 @@ public class AssetCodecTest
 	public void testBindingWithoutRecolorsKeepsThemNull() throws IOException
 	{
 		NpcBinding binding = roundTrip(withBindings(
-			new NpcBinding("Plain", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)))
+			TestBinding.of("Plain", new int[]{70}, new int[]{2944}).build()))
 			.getBinding(70);
 
 		assertNull(binding.getRecolorFind());
@@ -484,7 +487,7 @@ public class AssetCodecTest
 	public void testRejectsABindingToAMissingMesh() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("Ghost", new int[]{70}, new int[]{2944, 9999}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)));
+			TestBinding.of("Ghost", new int[]{70}, new int[]{2944, 9999}).build()));
 
 		assertTrue("the message should name the missing mesh: " + message, message.contains("mesh 9999"));
 	}
@@ -493,8 +496,8 @@ public class AssetCodecTest
 	public void testRejectsAnNpcBoundTwice() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("First", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0),
-			new NpcBinding("Second", new int[]{71, 70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)));
+			TestBinding.of("First", new int[]{70}, new int[]{2944}).build(),
+			TestBinding.of("Second", new int[]{71, 70}, new int[]{2944}).build()));
 
 		assertTrue("the message should name the NPC: " + message, message.contains("NPC 70"));
 	}
@@ -503,8 +506,7 @@ public class AssetCodecTest
 	public void testRejectsUnpairedRecolors() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("Odd", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128,
-				new short[]{1, 2}, new short[]{3}, 0, 0)));
+			TestBinding.of("Odd", new int[]{70}, new int[]{2944}).recolors(new short[]{1, 2}, new short[]{3}).build()));
 
 		assertTrue(message, message.contains("unpaired recolors"));
 	}
@@ -513,7 +515,7 @@ public class AssetCodecTest
 	public void testRejectsANonPositiveScale() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("Flat", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 0, null, null, 0, 0)));
+			TestBinding.of("Flat", new int[]{70}, new int[]{2944}).scale(128, 0).build()));
 
 		assertTrue(message, message.contains("scale 128/0"));
 	}
@@ -522,12 +524,12 @@ public class AssetCodecTest
 	public void testBindingKeepsItsRig() throws IOException
 	{
 		NpcBinding rigged = roundTrip(withBindings(
-			new NpcBinding("Rigged", new int[]{70}, new int[]{2944}, 338, 128, 128, null, null, 0, 0)))
+			TestBinding.of("Rigged", new int[]{70}, new int[]{2944}).rig(338).build()))
 			.getBinding(70);
 		assertEquals(338, rigged.getRigId());
 
 		NpcBinding still = roundTrip(withBindings(
-			new NpcBinding("Still", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)))
+			TestBinding.of("Still", new int[]{70}, new int[]{2944}).build()))
 			.getBinding(70);
 		assertEquals("a model with no rig says so, rather than naming one", NpcBinding.STATIC, still.getRigId());
 	}
@@ -536,7 +538,7 @@ public class AssetCodecTest
 	public void testRejectsABindingToAMissingRig() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("Unrigged", new int[]{70}, new int[]{2944}, 999, 128, 128, null, null, 0, 0)));
+			TestBinding.of("Unrigged", new int[]{70}, new int[]{2944}).rig(999).build()));
 
 		assertTrue(message, message.contains("rig 999"));
 	}
@@ -546,9 +548,8 @@ public class AssetCodecTest
 	public void testRejectsTwoBindingsStartingWithOneMesh() throws IOException
 	{
 		String message = refusalFor(withBindings(
-			new NpcBinding("First", new int[]{70}, new int[]{2944}, NpcBinding.STATIC, 128, 128, null, null, 0, 0),
-			new NpcBinding("Recolored", new int[]{71}, new int[]{2944}, NpcBinding.STATIC, 128, 128,
-				new short[]{1}, new short[]{2}, 0, 0)));
+			TestBinding.of("First", new int[]{70}, new int[]{2944}).build(),
+			TestBinding.of("Recolored", new int[]{71}, new int[]{2944}).recolors(new short[]{1}, new short[]{2}).build()));
 
 		assertTrue(message, message.contains("starts with mesh 2944"));
 	}
@@ -640,9 +641,17 @@ public class AssetCodecTest
 	public void testRejectsAMeshPastTheCeiling() throws IOException
 	{
 		int count = AssetCodec.MAX_VERTICES + 1;
-		Mesh huge = new Mesh(2944, 0, new float[count], new float[count], new float[count],
-			new int[0], new int[0], new int[0], new short[0],
-			null, null, null, null, null, null, null, null, null);
+		Mesh huge = new TestMesh()
+			.id(2944)
+			.vx(new float[count])
+			.vy(new float[count])
+			.vz(new float[count])
+			.i1(new int[0])
+			.i2(new int[0])
+			.i3(new int[0])
+			.colors(new short[0])
+			.groups(null)
+			.build();
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		Map<Integer, Mesh> meshes = new LinkedHashMap<>();
 		meshes.put(2944, huge);
@@ -720,11 +729,19 @@ public class AssetCodecTest
 				i2[f] = f * 3 + 1;
 				i3[f] = f * 3 + 2;
 			}
-			meshes.put(id, new Mesh(id, 0, vx, vy, new float[count], i1, i2, i3, new short[faces],
-				null, null, null, null, null, null, null, null, null));
+			meshes.put(id, new TestMesh()
+				.id(id)
+				.vx(vx)
+				.vy(vy)
+				.vz(new float[count])
+				.i1(i1)
+				.i2(i2)
+				.i3(i3)
+				.colors(new short[faces])
+				.groups(null)
+				.build());
 		}
-		NpcBinding binding = new NpcBinding("Big", new int[]{70}, new int[]{1, 2}, NpcBinding.STATIC,
-			128, 128, null, null, 0, 0);
+		NpcBinding binding = TestBinding.of("Big", new int[]{70}, new int[]{1, 2}).build();
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		AssetCodec.write(new AssetBundle(meshes, Collections.emptyMap(), Collections.emptyList(),
 			Collections.singletonList(binding)), out);

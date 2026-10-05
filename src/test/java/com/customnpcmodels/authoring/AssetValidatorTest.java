@@ -31,6 +31,8 @@ import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.inject.TestBinding;
+import com.customnpcmodels.inject.TestMesh;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -265,8 +267,8 @@ public class AssetValidatorTest
 	public void testRejectsBindingProblems()
 	{
 		List<String> problems = AssetValidator.validate(bundleWith(
-			new NpcBinding("a", new int[]{5}, new int[]{1, 2}, NpcBinding.STATIC, 128, 128, null, null, 0, 0),
-			new NpcBinding("b", new int[]{5}, new int[]{1}, NpcBinding.STATIC, 0, 128, new short[]{1}, null, 0, 0)), id -> -1);
+			TestBinding.of("a", new int[]{5}, new int[]{1, 2}).build(),
+			TestBinding.of("b", new int[]{5}, new int[]{1}).scale(0, 128).recolors(new short[]{1}, null).build()), id -> -1);
 
 		assertEquals(problems.toString(), 4, problems.size());
 		assertTrue(problems.get(0), problems.get(0).contains("mesh 2"));
@@ -279,7 +281,7 @@ public class AssetValidatorTest
 	public void testRejectsABindingToAnUnknownRig()
 	{
 		String problem = only(AssetValidator.validate(bundleWith(
-			new NpcBinding("a", new int[]{5}, new int[]{1}, 999, 128, 128, null, null, 0, 0)), id -> -1));
+			TestBinding.of("a", new int[]{5}, new int[]{1}).rig(999).build()), id -> -1));
 
 		assertTrue(problem, problem.contains("names rig 999"));
 	}
@@ -288,7 +290,7 @@ public class AssetValidatorTest
 	public void testRejectsABlacklistedNpc()
 	{
 		String problem = only(AssetValidator.validate(bundleWith(
-			new NpcBinding("zuk", new int[]{NpcID.INFERNO_TZKALZUK_PLACEHOLDER}, new int[]{1}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)),
+			TestBinding.of("zuk", new int[]{NpcID.INFERNO_TZKALZUK_PLACEHOLDER}, new int[]{1}).build()),
 			id -> -1));
 
 		assertTrue(problem, problem.contains("NPC " + NpcID.INFERNO_TZKALZUK_PLACEHOLDER));
@@ -299,7 +301,7 @@ public class AssetValidatorTest
 	public void testRequireValidThrows()
 	{
 		AssetValidator.requireValid(bundleWith(
-			new NpcBinding("a", new int[]{5}, new int[]{2}, NpcBinding.STATIC, 128, 128, null, null, 0, 0)), id -> -1);
+			TestBinding.of("a", new int[]{5}, new int[]{2}).build()), id -> -1);
 	}
 
 	/** The baseline: real cache geometry that animates correctly in game must pass. */
