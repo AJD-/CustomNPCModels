@@ -24,10 +24,12 @@
  */
 package com.customnpcmodels;
 
+import com.customnpcmodels.chathead.ChatheadOverlay;
 import com.customnpcmodels.inject.NpcBinding;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntFunction;
 import java.util.function.IntUnaryOperator;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -51,6 +53,9 @@ import net.runelite.client.eventbus.Subscribe;
  * at that NPC. It keeps its animation, the emote for the line, since humanoid chatheads share the
  * joints emotes move.
  * <p>
+ * A model with a head of the pack's own blanks the widget instead, and {@link ChatheadOverlay} draws
+ * the head over it.
+ * <p>
  * Checked every frame rather than on a script event, so a page that opens with the NPC's own head is
  * swapped before it is first drawn, and every new page, which sets the head again, is swapped too.
  * Client thread only.
@@ -68,6 +73,9 @@ class ChatheadSwapper
 	@Inject
 	private CustomNpcModelsConfig config;
 
+	@Inject
+	private ChatheadOverlay overlay;
+
 	private BooleanSupplier canSubstitute = () -> false;
 
 	/** The swap the head is showing, or null while it shows what the client gave it. */
@@ -76,14 +84,30 @@ class ChatheadSwapper
 	/** Whether each chathead NPC named so far has a head the client can draw, looked up once. */
 	private final Map<Integer, Boolean> drawable = new HashMap<>();
 
-	/** What the head showed before a swap, and what it was swapped to. */
+	/** What the head is swapped to: a borrowed cache chathead, or {@link #DRAWN}. */
+	@Value
+	static class Target
+	{
+		/** A head the plugin draws itself: the widget is blanked and the overlay draws over it. */
+		static final Target DRAWN = new Target(WidgetModelType.NULL, -1);
+
+		int type;
+		int id;
+
+		boolean isDrawn()
+		{
+			return equals(DRAWN);
+		}
+	}
+
+	/** What the head showed before a swap, whose head it is, and what it was swapped to. */
 	@Value
 	static class Swap
 	{
 		int type;
 		int id;
 		int speaker;
-		int chathead;
+		Target target;
 	}
 
 	/** What the head should show, and the swap that leaves it showing, if any. */
@@ -105,12 +129,13 @@ class ChatheadSwapper
 	void stop()
 	{
 		Widget head = client.getWidget(InterfaceID.ChatLeft.HEAD);
-		if (head != null && shown != null && head.getModelType() == WidgetModelType.NPC_CHATHEAD
-			&& head.getModelId() == shown.getChathead())
+		if (head != null && shown != null && head.getModelType() == shown.getTarget().getType()
+			&& head.getModelId() == shown.getTarget().getId())
 		{
 			head.setModelType(shown.getType());
 			head.setModelId(shown.getId());
 		}
+		overlay.hide();
 		shown = null;
 		drawable.clear();
 		canSubstitute = () -> false;
@@ -123,49 +148,62 @@ class ChatheadSwapper
 		if (head == null || head.isHidden())
 		{
 			shown = null;
+			overlay.hide();
 			return;
 		}
 
 		int type = head.getModelType();
 		int id = head.getModelId();
-		Head next = decide(type, id, shown, this::speakerAt, this::resolve, this::chatheadFor);
+		Swap previous = shown;
+		Head next = decide(type, id, shown, this::speakerAt, this::resolve, this::targetFor);
 		shown = next.getShown();
 		if (next.getType() != type || next.getId() != id)
 		{
 			head.setModelType(next.getType());
 			head.setModelId(next.getId());
 		}
+
+		if (shown == null || !shown.getTarget().isDrawn())
+		{
+			overlay.hide();
+		}
+		else if (shown != previous)
+		{
+			// A new swap, a new page or a new speaker: the drawn head's emote starts over
+			overlay.show(modelCache.headFor(shown.getSpeaker()), client.getGameCycle());
+		}
 	}
 
 	/**
 	 * What a dialogue head showing {@code type} and {@code id} should show instead.
 	 * <p>
-	 * A head still showing the last swap keeps it while the speaker's model still names that chathead,
+	 * A head still showing the last swap keeps it while the speaker's model still names that head,
 	 * and goes back to what it was once it doesn't (the model switched off, the setting turned off,
 	 * a safety setting stepping in). Anything else the head shows was set by the client, so it is
 	 * looked at afresh: an NPC's own head, by id or by the index of the NPC in the scene, is swapped
-	 * when its model names a chathead, and every other kind of head is left alone.
+	 * when its model names a chathead, and every other kind of head is left alone. A head the plugin
+	 * draws itself blanks the widget.
 	 *
-	 * @param speakerAt   the NPC id at a scene index, or -1 when there is none
-	 * @param resolve     the NPC a multi NPC shows as, -1 for none; any other NPC is itself
-	 * @param chatheadFor the chathead to show for an NPC id, or {@link NpcBinding#NO_CHATHEAD}
+	 * @param speakerAt the NPC id at a scene index, or -1 when there is none
+	 * @param resolve   the NPC a multi NPC shows as, -1 for none; any other NPC is itself
+	 * @param targetFor what an NPC id's head is swapped to, or null to keep its own
 	 */
 	static Head decide(int type, int id, Swap shown, IntUnaryOperator speakerAt, IntUnaryOperator resolve,
-		IntUnaryOperator chatheadFor)
+		IntFunction<Target> targetFor)
 	{
-		if (shown != null && type == WidgetModelType.NPC_CHATHEAD && id == shown.getChathead())
+		if (shown != null && type == shown.getTarget().getType() && id == shown.getTarget().getId())
 		{
-			int chathead = chatheadFor.applyAsInt(shown.getSpeaker());
-			if (chathead == shown.getChathead())
+			Target target = targetFor.apply(shown.getSpeaker());
+			if (shown.getTarget().equals(target))
 			{
 				return new Head(type, id, shown);
 			}
-			if (chathead == NpcBinding.NO_CHATHEAD)
+			if (target == null)
 			{
 				return new Head(shown.getType(), shown.getId(), null);
 			}
-			return new Head(WidgetModelType.NPC_CHATHEAD, chathead,
-				new Swap(shown.getType(), shown.getId(), shown.getSpeaker(), chathead));
+			return new Head(target.getType(), target.getId(),
+				new Swap(shown.getType(), shown.getId(), shown.getSpeaker(), target));
 		}
 
 		int speaker = type == WidgetModelType.NPC_CHATHEAD ? id
@@ -176,12 +214,12 @@ class ChatheadSwapper
 		{
 			speaker = resolve.applyAsInt(speaker);
 		}
-		int chathead = speaker < 0 ? NpcBinding.NO_CHATHEAD : chatheadFor.applyAsInt(speaker);
-		if (chathead == NpcBinding.NO_CHATHEAD || (type == WidgetModelType.NPC_CHATHEAD && id == chathead))
+		Target target = speaker < 0 ? null : targetFor.apply(speaker);
+		if (target == null || (type == target.getType() && id == target.getId()))
 		{
 			return new Head(type, id, null);
 		}
-		return new Head(WidgetModelType.NPC_CHATHEAD, chathead, new Swap(type, id, speaker, chathead));
+		return new Head(target.getType(), target.getId(), new Swap(type, id, speaker, target));
 	}
 
 	/** The NPC a multi NPC shows as right now, -1 for none, or the NPC itself when it isn't one. */
@@ -203,18 +241,22 @@ class ChatheadSwapper
 		return npc == null ? -1 : npc.getId();
 	}
 
-	private int chatheadFor(int npcId)
+	private Target targetFor(int npcId)
 	{
 		if (!config.swapChatheads() || !canSubstitute.getAsBoolean())
 		{
-			return NpcBinding.NO_CHATHEAD;
+			return null;
+		}
+		if (modelCache.headFor(npcId) != null)
+		{
+			return Target.DRAWN;
 		}
 		int chathead = modelCache.chatheadFor(npcId);
-		if (chathead == NpcBinding.NO_CHATHEAD)
+		if (chathead == NpcBinding.NO_CHATHEAD || !drawable.computeIfAbsent(chathead, this::hasChathead))
 		{
-			return NpcBinding.NO_CHATHEAD;
+			return null;
 		}
-		return drawable.computeIfAbsent(chathead, this::hasChathead) ? chathead : NpcBinding.NO_CHATHEAD;
+		return new Target(WidgetModelType.NPC_CHATHEAD, chathead);
 	}
 
 	/**

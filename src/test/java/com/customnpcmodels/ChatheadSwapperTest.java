@@ -26,9 +26,11 @@ package com.customnpcmodels;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import com.customnpcmodels.ChatheadSwapper.Head;
 import com.customnpcmodels.ChatheadSwapper.Swap;
-import com.customnpcmodels.inject.NpcBinding;
+import com.customnpcmodels.ChatheadSwapper.Target;
+import java.util.function.IntFunction;
 import java.util.function.IntUnaryOperator;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.api.widgets.WidgetModelType;
@@ -40,13 +42,17 @@ public class ChatheadSwapperTest
 	private static final int VYREWATCH = NpcID.SANG_MYQ3_FEMALE_WALK_VYREWATCH_1;
 	private static final int MAID_INDEX = 42;
 
-	/** The Maid's model names the Vyrewatch's chathead; nothing else names one. */
-	private static final IntUnaryOperator MAID_SWAPPED = npcId -> npcId == MAID ? VYREWATCH : NpcBinding.NO_CHATHEAD;
-	private static final IntUnaryOperator NOTHING_SWAPPED = npcId -> NpcBinding.NO_CHATHEAD;
-	private static final IntUnaryOperator MAID_AT_INDEX = index -> index == MAID_INDEX ? MAID : -1;
+	private static final Target BORROWED = new Target(WidgetModelType.NPC_CHATHEAD, VYREWATCH);
+	private static final Target DRAWN = Target.DRAWN;
 
-	/** No NPC is a multi NPC: every id is its own. */
 	private static final IntUnaryOperator SINGLE = npcId -> npcId;
+	private static final IntUnaryOperator MAID_AT_INDEX = index -> index == MAID_INDEX ? MAID : -1;
+	private static final IntFunction<Target> NOTHING = npcId -> null;
+
+	private static IntFunction<Target> maidWears(Target target)
+	{
+		return npcId -> npcId == MAID ? target : null;
+	}
 
 	private static void assertShows(Head head, int type, int id)
 	{
@@ -55,40 +61,62 @@ public class ChatheadSwapperTest
 	}
 
 	@Test
-	public void testAnNpcsOwnHeadIsSwapped()
+	public void testAnNpcsOwnHeadIsSwappedToABorrowedOne()
 	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, SINGLE, MAID_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, SINGLE, maidWears(BORROWED));
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
-		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, VYREWATCH), head.getShown());
+		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, BORROWED), head.getShown());
+	}
+
+	/** A head the plugin draws itself blanks the widget, so only the drawn head shows. */
+	@Test
+	public void testAnNpcsOwnHeadIsBlankedForADrawnOne()
+	{
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, SINGLE, maidWears(DRAWN));
+
+		assertShows(head, WidgetModelType.NULL, -1);
+		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, DRAWN), head.getShown());
 	}
 
 	@Test
-	public void testAHeadByNpcIndexIsSwappedToTheNpcsChathead()
+	public void testAHeadByNpcIndexIsSwapped()
 	{
 		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX, null, MAID_AT_INDEX, SINGLE,
-			MAID_SWAPPED);
+			maidWears(DRAWN));
 
-		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
-		assertEquals(new Swap(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX, MAID, VYREWATCH), head.getShown());
+		assertShows(head, WidgetModelType.NULL, -1);
+		assertEquals(new Swap(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX, MAID, DRAWN), head.getShown());
 	}
 
 	@Test
-	public void testAnNpcWithoutAChatheadKeepsItsOwn()
+	public void testAMultiNpcIsSwappedAsTheNpcItShows()
 	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, SINGLE, NOTHING_SWAPPED);
+		int butler = NpcID.POH_SERVANT_DEMON;
+		int multi = NpcID.POH_SERVANT_MULTI_DEMON;
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, multi, null, MAID_AT_INDEX,
+			npcId -> npcId == multi ? butler : npcId, npcId -> npcId == butler ? DRAWN : null);
+
+		assertShows(head, WidgetModelType.NULL, -1);
+		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, multi, butler, DRAWN), head.getShown());
+	}
+
+	@Test
+	public void testAMultiNpcShowingNothingIsLeftAlone()
+	{
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, npcId -> -1,
+			maidWears(DRAWN));
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, MAID);
 		assertNull(head.getShown());
 	}
 
 	@Test
-	public void testAnIndexWithNoNpcIsLeftAlone()
+	public void testAnNpcWithoutAChatheadKeepsItsOwn()
 	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX + 1, null, MAID_AT_INDEX, SINGLE,
-			MAID_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX, SINGLE, NOTHING);
 
-		assertShows(head, WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX + 1);
+		assertShows(head, WidgetModelType.NPC_CHATHEAD, MAID);
 		assertNull(head.getShown());
 	}
 
@@ -97,8 +125,7 @@ public class ChatheadSwapperTest
 	{
 		for (int type : new int[]{WidgetModelType.LOCAL_PLAYER_CHATHEAD, WidgetModelType.MODEL, WidgetModelType.ITEM})
 		{
-			// A model or item whose id happens to match a swapped NPC is not that NPC
-			Head head = ChatheadSwapper.decide(type, MAID, null, MAID_AT_INDEX, SINGLE, MAID_SWAPPED);
+			Head head = ChatheadSwapper.decide(type, MAID, null, MAID_AT_INDEX, SINGLE, maidWears(DRAWN));
 
 			assertShows(head, type, MAID);
 			assertNull(head.getShown());
@@ -106,87 +133,72 @@ public class ChatheadSwapperTest
 	}
 
 	@Test
-	public void testASwappedHeadIsKeptWhileItsModelStillNamesIt()
+	public void testADrawnHeadIsKeptWhileItsModelStillNamesIt()
 	{
-		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, VYREWATCH);
+		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, DRAWN);
 
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, swap, MAID_AT_INDEX, SINGLE, MAID_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NULL, -1, swap, MAID_AT_INDEX, SINGLE, maidWears(DRAWN));
 
-		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
-		assertEquals(swap, head.getShown());
+		assertShows(head, WidgetModelType.NULL, -1);
+		assertSame("kept, so the emote clock is not restarted", swap, head.getShown());
 	}
 
 	/** The model switched off, the setting turned off, or a safety setting stepping in. */
 	@Test
-	public void testASwappedHeadGoesBackWhenItsModelNoLongerNamesIt()
+	public void testACustomHeadGoesBackWhenItsModelNoLongerNamesIt()
 	{
-		Swap byIndex = new Swap(WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX, MAID, VYREWATCH);
+		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, DRAWN);
 
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, byIndex, MAID_AT_INDEX, SINGLE,
-			NOTHING_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NULL, -1, swap, MAID_AT_INDEX, SINGLE, NOTHING);
 
-		assertShows(head, WidgetModelType.NPC_INDEX_CHATHEAD, MAID_INDEX);
+		assertShows(head, WidgetModelType.NPC_CHATHEAD, MAID);
 		assertNull(head.getShown());
 	}
 
 	@Test
-	public void testASwappedHeadFollowsItsModelToAnotherChathead()
+	public void testASwapFollowsItsModelToABorrowedHead()
 	{
-		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, VYREWATCH);
-		int demon = NpcID.POH_SERVANT_DEMON;
+		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, DRAWN);
 
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, swap, MAID_AT_INDEX, SINGLE,
-			npcId -> npcId == MAID ? demon : NpcBinding.NO_CHATHEAD);
-
-		assertShows(head, WidgetModelType.NPC_CHATHEAD, demon);
-		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, demon), head.getShown());
-	}
-
-	/** Each new dialogue page sets the NPC's own head again, which is swapped again. */
-	@Test
-	public void testANewPageIsSwappedAgain()
-	{
-		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, VYREWATCH);
-
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, swap, MAID_AT_INDEX, SINGLE, MAID_SWAPPED);
+		Head head = ChatheadSwapper.decide(WidgetModelType.NULL, -1, swap, MAID_AT_INDEX, SINGLE, maidWears(BORROWED));
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
-		assertEquals(swap, head.getShown());
+		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, BORROWED), head.getShown());
 	}
 
-	/** A head set to an NPC's own chathead which is the swap's target is still that NPC's own. */
+	/** Each new page sets the NPC's own head again: a new swap, so the drawn emote starts over. */
+	@Test
+	public void testANewPageIsANewSwap()
+	{
+		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, DRAWN);
+
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, swap, MAID_AT_INDEX, SINGLE, maidWears(DRAWN));
+
+		assertShows(head, WidgetModelType.NULL, -1);
+		assertEquals(swap, head.getShown());
+		assertEquals("a fresh swap", false, swap == head.getShown());
+	}
+
+	/** The dialogue moves on to another speaker without closing: that head is not touched. */
+	@Test
+	public void testAnotherSpeakersHeadIsLeftAlone()
+	{
+		Swap swap = new Swap(WidgetModelType.NPC_CHATHEAD, MAID, MAID, DRAWN);
+		int other = NpcID.POH_SERVANT_DEMON;
+
+		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, other, swap, MAID_AT_INDEX, SINGLE, maidWears(DRAWN));
+
+		assertShows(head, WidgetModelType.NPC_CHATHEAD, other);
+		assertNull(head.getShown());
+	}
+
 	@Test
 	public void testANpcWhoseChatheadIsItsOwnIsLeftAlone()
 	{
 		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, VYREWATCH, null, MAID_AT_INDEX, SINGLE,
-			npcId -> VYREWATCH);
+			npcId -> BORROWED);
 
 		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
-		assertNull(head.getShown());
-	}
-
-	/** The Demon butler speaks as 230, a multi NPC that shows as 229 - the NPC the model is bound to. */
-	@Test
-	public void testAMultiNpcIsSwappedAsTheNpcItShows()
-	{
-		int butler = NpcID.POH_SERVANT_DEMON;
-		int multi = NpcID.POH_SERVANT_MULTI_DEMON;
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, multi, null, MAID_AT_INDEX,
-			npcId -> npcId == multi ? butler : npcId,
-			npcId -> npcId == butler ? VYREWATCH : NpcBinding.NO_CHATHEAD);
-
-		assertShows(head, WidgetModelType.NPC_CHATHEAD, VYREWATCH);
-		assertEquals(new Swap(WidgetModelType.NPC_CHATHEAD, multi, butler, VYREWATCH), head.getShown());
-	}
-
-	/** A multi NPC showing as nothing (-1) has no head to swap. */
-	@Test
-	public void testAMultiNpcShowingNothingIsLeftAlone()
-	{
-		Head head = ChatheadSwapper.decide(WidgetModelType.NPC_CHATHEAD, MAID, null, MAID_AT_INDEX,
-			npcId -> -1, MAID_SWAPPED);
-
-		assertShows(head, WidgetModelType.NPC_CHATHEAD, MAID);
 		assertNull(head.getShown());
 	}
 }

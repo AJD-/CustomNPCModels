@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels;
 
+import com.customnpcmodels.chathead.ChatheadOverlay;
 import com.customnpcmodels.compatibility.InteractHighlightCompat;
 import com.customnpcmodels.compatibility.InteractTargetTracker;
 import com.customnpcmodels.compatibility.ModelSwapProtocol;
@@ -56,6 +57,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
@@ -92,6 +94,12 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	@Inject
 	private ChatheadSwapper chatheadSwapper;
+
+	@Inject
+	private ChatheadOverlay chatheadOverlay;
+
+	@Inject
+	private OverlayManager overlayManager;
 
 	@Inject
 	private RendererAttachment attachment;
@@ -156,6 +164,7 @@ public class CustomNpcModelsPlugin extends Plugin
 
 		// Last, as RuneLite registers the plugin itself: the bus does not dedupe, so registering
 		// before something that can throw would register it twice on the next start
+		overlayManager.add(chatheadOverlay);
 		eventBus.register(targetTracker);
 		eventBus.register(chatheadSwapper);
 	}
@@ -167,6 +176,7 @@ public class CustomNpcModelsPlugin extends Plugin
 		session.stop();
 		eventBus.unregister(targetTracker);
 		eventBus.unregister(chatheadSwapper);
+		overlayManager.remove(chatheadOverlay);
 
 		if (navButton != null)
 		{
