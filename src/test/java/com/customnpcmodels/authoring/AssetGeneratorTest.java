@@ -473,6 +473,27 @@ public class AssetGeneratorTest
 		}
 	}
 
+	/** A head given a body's mesh id would replace the body in the bundle without a word. */
+	@Test
+	public void testAHeadReusingABodysMeshIdIsRefused() throws Exception
+	{
+		writeHead("head.glb");
+		Manifest manifest = chatheadManifest(VYREWATCH);
+		int sharedId = GltfExporter.HEAD_ID_BASE + NpcID.MOLE_GIANT;
+		manifest.models.get(0).meshId = sharedId;
+		manifest.models.get(0).chathead = head("head.glb", sharedId);
+
+		try
+		{
+			AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null);
+			fail("expected the reused mesh id to be refused");
+		}
+		catch (IllegalStateException ex)
+		{
+			assertTrue(ex.getMessage(), ex.getMessage().contains("reuses mesh id " + sharedId));
+		}
+	}
+
 	@Test
 	public void testAPackNeedsAnIdAndName()
 	{

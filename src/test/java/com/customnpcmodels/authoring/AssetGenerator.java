@@ -391,7 +391,11 @@ public class AssetGenerator
 		{
 			System.out.println("  chathead: " + line);
 		}
-		meshes.put(head.meshId, result.mesh);
+		if (meshes.putIfAbsent(head.meshId, result.mesh) != null)
+		{
+			problems.add(name + "'s chathead reuses mesh id " + head.meshId);
+			return NpcBinding.STATIC;
+		}
 		if (result.rig == null)
 		{
 			return NpcBinding.STATIC;
