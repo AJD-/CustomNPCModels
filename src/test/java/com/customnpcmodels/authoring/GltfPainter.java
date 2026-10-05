@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels.authoring;
 
+import com.customnpcmodels.inject.RsColor;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;

@@ -28,6 +28,7 @@ import com.customnpcmodels.cache.CacheFiles;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.inject.RsColor;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

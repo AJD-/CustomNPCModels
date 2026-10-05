@@ -27,6 +27,7 @@ package com.customnpcmodels.authoring;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.inject.RsColor;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
