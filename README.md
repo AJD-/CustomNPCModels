@@ -74,6 +74,13 @@ don't edit it by hand. A hub pack can be removed from its own card even with the
   outlines` option draws that plugin's NPC hover and interact outlines around the custom model
   instead of the original. It does this by turning those two settings off in Interact Highlight
   while active, then restoring them when this plugin stops.
+- **Chatheads:** a model can name a game NPC whose dialogue head it shows in place of its own (the
+  manifest's `chathead`). The dialogue head is drawn from the game cache, so it borrows another NPC's
+  head rather than drawing the pack's geometry. Each frame, before the dialogue is drawn, the plugin
+  points the head at that NPC and leaves its emote alone. It puts the NPC's own head back when the
+  model, the `Swap chatheads` setting or a safety setting takes the swap away, and when it stops.
+  The head is matched by the NPC id the dialogue asks for, which isn't always the id the NPC has in
+  the world: the Demon butler (229) speaks as 230, for example.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
 - Some NPCs are never swapped, whatever a pack says: Jagex's third-party client rules forbid 
   extra visual indicators of boss mechanics, and name wave-based minigames explicitly. 
@@ -96,8 +103,10 @@ don't edit it by hand. A hub pack can be removed from its own card even with the
 `assets/models.json` lists what gets bundled. Each entry names a `.glb` beside it, the synthetic
 mesh and rig ids (keep them at 1,000,000 and up, and stable), the NPC ids that wear it, an optional
 scale (1/128ths, applied after animation, as the game does), recolors and NPC lighting
-adjustments (`ambient`, `contrast`, as in the NPC definition), and a map from each glTF animation
-name to the live sequence it stands in for:
+adjustments (`ambient`, `contrast`, as in the NPC definition), a map from each glTF animation
+name to the live sequence it stands in for, and optionally a `chathead`: a game NPC whose dialogue
+head these NPCs show instead of their own. `generateAssets` refuses one that has no chathead in the
+cache.
 
 ```json
 {
@@ -110,7 +119,8 @@ name to the live sequence it stands in for:
       "npcIds": [5779],
       "scaleXZ": 118,
       "scaleY": 118,
-      "animations": { "3309": 3309, "3313": 3313 }
+      "animations": { "3309": 3309, "3313": 3313 },
+      "chathead": 3709
     }
   ]
 }
