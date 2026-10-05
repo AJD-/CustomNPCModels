@@ -32,14 +32,20 @@ import com.customnpcmodels.CustomNpcModelsPlugin;
 import lombok.Getter;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
+import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.NpcDespawned;
+import net.runelite.api.events.PlayerDespawned;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetUtil;
+import net.runelite.client.eventbus.Subscribe;
 
 /**
  * Tracks which actor the local player is interacting with, so an outline can be drawn around it.
@@ -49,8 +55,8 @@ import net.runelite.api.widgets.WidgetUtil;
  * plugin draws NPC outlines, that plugin is still the one drawing objects, ground items and
  * players, with its own code and its own state.
  * <p>
- * Events are forwarded from {@link CustomNpcModelsPlugin} rather than subscribed to here - the
- * event bus registers the plugin, not the objects it injects.
+ * {@link CustomNpcModelsPlugin} registers this on the event bus while it runs - the bus registers
+ * the plugin itself, not the objects it injects.
  */
 @Singleton
 public class InteractTargetTracker
@@ -70,6 +76,7 @@ public class InteractTargetTracker
 	@Getter
 	private int gameCycle;
 
+	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
 		switch (event.getMenuAction())
@@ -129,7 +136,8 @@ public class InteractTargetTracker
 		}
 	}
 
-	public void onGameTick()
+	@Subscribe
+	public void onGameTick(GameTick event)
 	{
 		if (client.getTickCount() > clickTick && client.getLocalDestinationLocation() == null)
 		{
@@ -138,6 +146,7 @@ public class InteractTargetTracker
 		}
 	}
 
+	@Subscribe
 	public void onInteractingChanged(InteractingChanged event)
 	{
 		if (event.getSource() == client.getLocalPlayer()
@@ -148,18 +157,34 @@ public class InteractTargetTracker
 		}
 	}
 
-	public void onActorDespawned(Actor actor)
+	@Subscribe
+	public void onPlayerDespawned(PlayerDespawned event)
+	{
+		forget(event.getPlayer());
+	}
+
+	@Subscribe
+	public void onNpcDespawned(NpcDespawned event)
+	{
+		forget(event.getNpc());
+	}
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged event)
+	{
+		if (event.getGameState() == GameState.LOGGING_IN || event.getGameState() == GameState.HOPPING)
+		{
+			interactedActor = null;
+			attacked = false;
+		}
+	}
+
+	private void forget(Actor actor)
 	{
 		if (actor == interactedActor)
 		{
 			interactedActor = null;
 		}
-	}
-
-	public void reset()
-	{
-		interactedActor = null;
-		attacked = false;
 	}
 
 	/**

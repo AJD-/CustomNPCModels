@@ -61,61 +61,61 @@ public class RendererHostTest
 	@Test
 	public void testTheGpuPluginIsWrapped()
 	{
-		assertTrue(CustomNpcModelsPlugin.isSupportedHost((DrawCallbacks) gpu, gpu));
+		assertTrue(RendererAttachment.isSupportedHost((DrawCallbacks) gpu, gpu));
 	}
 
 	@Test
 	public void testAGpuPluginNotHoldingTheSlotIsNotEnough()
 	{
-		assertFalse(CustomNpcModelsPlugin.isSupportedHost((DrawCallbacks) gpuPlugin(), gpu));
+		assertFalse(RendererAttachment.isSupportedHost((DrawCallbacks) gpuPlugin(), gpu));
 	}
 
 	@Test
 	public void testAnUnknownRendererIsDeclined()
 	{
-		assertFalse(CustomNpcModelsPlugin.isSupportedHost(mock(DrawCallbacks.class), gpu));
-		assertFalse(CustomNpcModelsPlugin.isSupportedHost(mock(DrawCallbacks.class), null));
+		assertFalse(RendererAttachment.isSupportedHost(mock(DrawCallbacks.class), gpu));
+		assertFalse(RendererAttachment.isSupportedHost(mock(DrawCallbacks.class), null));
 	}
 
 	@Test
 	public void testAnEmptySlotIsDeclined()
 	{
-		assertFalse(CustomNpcModelsPlugin.isSupportedHost(null, gpu));
-		assertFalse(CustomNpcModelsPlugin.isSupportedHost(null, null));
+		assertFalse(RendererAttachment.isSupportedHost(null, gpu));
+		assertFalse(RendererAttachment.isSupportedHost(null, null));
 	}
 
 	@Test
 	public void testTheHdZoneRendererIsRecognised()
 	{
-		assertTrue(CustomNpcModelsPlugin.isHdZoneRenderer("rs117.hd.renderer.zone.ZoneRenderer"));
+		assertTrue(RendererAttachment.isHdZoneRenderer("rs117.hd.renderer.zone.ZoneRenderer"));
 	}
 
 	@Test
 	public void testTheHdLegacyRendererIsDeclined()
 	{
 		// No drawTemp, no ZBUF: wrapping it would swap nothing, so there is nothing to attach to
-		assertFalse(CustomNpcModelsPlugin.isHdZoneRenderer("rs117.hd.renderer.legacy.LegacyRenderer"));
+		assertFalse(RendererAttachment.isHdZoneRenderer("rs117.hd.renderer.legacy.LegacyRenderer"));
 	}
 
 	@Test
 	public void testOtherHdClassesAreDeclined()
 	{
 		// The plugin itself never holds the slot, and a lookalike package must not slip through
-		assertFalse(CustomNpcModelsPlugin.isHdZoneRenderer("rs117.hd.HdPlugin"));
-		assertFalse(CustomNpcModelsPlugin.isHdZoneRenderer("rs117.hd.renderer.zoned.Renderer"));
+		assertFalse(RendererAttachment.isHdZoneRenderer("rs117.hd.HdPlugin"));
+		assertFalse(RendererAttachment.isHdZoneRenderer("rs117.hd.renderer.zoned.Renderer"));
 	}
 
 	@Test
 	public void testTheGpuPluginBeneathAKnownDecoratorIsWrapped()
 	{
-		assertTrue(CustomNpcModelsPlugin.isSupportedHost(decorate((DrawCallbacks) gpu), gpu));
-		assertTrue(CustomNpcModelsPlugin.isSupportedHost(decorate(decorate((DrawCallbacks) gpu)), gpu));
+		assertTrue(RendererAttachment.isSupportedHost(decorate((DrawCallbacks) gpu), gpu));
+		assertTrue(RendererAttachment.isSupportedHost(decorate(decorate((DrawCallbacks) gpu)), gpu));
 	}
 
 	@Test
 	public void testAnUnknownRendererBeneathAKnownDecoratorIsDeclined()
 	{
-		assertFalse(CustomNpcModelsPlugin.isSupportedHost(decorate(mock(DrawCallbacks.class)), gpu));
+		assertFalse(RendererAttachment.isSupportedHost(decorate(mock(DrawCallbacks.class)), gpu));
 	}
 
 	@Test
@@ -125,7 +125,7 @@ public class RendererHostTest
 		DrawCallbacks unknown = mock(DrawCallbacks.class, withSettings().extraInterfaces(Supplier.class));
 		when(((Supplier<?>) unknown).get()).thenReturn(gpu);
 
-		assertFalse(CustomNpcModelsPlugin.isSupportedHost(unknown, gpu));
+		assertFalse(RendererAttachment.isSupportedHost(unknown, gpu));
 		assertSame(unknown, RendererChain.base(unknown));
 	}
 }
