@@ -67,7 +67,8 @@ public final class AssetCodec
 	public static final int MAX_FACES = 8192;
 
 	/** Render types the lighter draws: gouraud, flat, unshaded. Anything else hides the face. */
-	public static final Set<Integer> DRAWN_RENDER_TYPES = Set.of(0, 1, 3);
+	public static final Set<Integer> DRAWN_RENDER_TYPES = Set.of(
+		Lighter.RENDER_TYPE_GOURAUD, Lighter.RENDER_TYPE_FLAT, Lighter.RENDER_TYPE_UNSHADED);
 
 	/**
 	 * The largest bundle file a pack may carry, checked before it is opened. Packs come from disk and
@@ -167,8 +168,8 @@ public final class AssetCodec
 				if (!clipKeys.add(AssetBundle.clipKey(clip.getRigId(), clip.getSequenceId())))
 				{
 					// One would silently shadow the other
-					throw new IOException("Asset clip " + clip.getSequenceId() + " appears twice on rig "
-						+ clip.getRigId() + "; regenerate the bundle");
+					throw malformed("Asset clip " + clip.getSequenceId() + " appears twice on rig "
+						+ clip.getRigId());
 				}
 				clips.add(clip);
 			}
@@ -275,27 +276,27 @@ public final class AssetCodec
 	{
 		if (vx == null || vy == null || vz == null)
 		{
-			throw new IOException("Asset mesh " + id
-				+ " is missing a vertex axis; regenerate the bundle");
+			throw malformed("Asset mesh " + id
+				+ " is missing a vertex axis");
 		}
 
 		if (vx.length != vy.length || vx.length != vz.length)
 		{
-			throw new IOException("Asset mesh " + id + " has " + vx.length + ", "
+			throw malformed("Asset mesh " + id + " has " + vx.length + ", "
 				+ vy.length + " and " + vz.length
-				+ " vertices on its three axes; regenerate the bundle");
+				+ " vertices on its three axes");
 		}
 
 		if (i1 == null || i2 == null || i3 == null)
 		{
-			throw new IOException("Asset mesh " + id
-				+ " is missing a face index column; regenerate the bundle");
+			throw malformed("Asset mesh " + id
+				+ " is missing a face index column");
 		}
 
 		if (i1.length != i2.length || i1.length != i3.length)
 		{
-			throw new IOException("Asset mesh " + id + " names " + i1.length + ", "
-				+ i2.length + " and " + i3.length + " face corners; regenerate the bundle");
+			throw malformed("Asset mesh " + id + " names " + i1.length + ", "
+				+ i2.length + " and " + i3.length + " face corners");
 		}
 
 		int verticesCount = vx.length;
@@ -320,8 +321,8 @@ public final class AssetCodec
 		// every untextured face, and the recolor in ModelCache clones them outright
 		if (colors == null)
 		{
-			throw new IOException("Asset mesh " + id
-				+ " has no face colors; regenerate the bundle");
+			throw malformed("Asset mesh " + id
+				+ " has no face colors");
 		}
 
 		checkFaceColumn(id, "face colors", colors, faceCount);
@@ -336,8 +337,8 @@ public final class AssetCodec
 			{
 				if (!DRAWN_RENDER_TYPES.contains((int) renderTypes[face]))
 				{
-					throw new IOException("Asset mesh " + id + " face " + face + " has render type "
-						+ renderTypes[face] + ", which is never drawn; regenerate the bundle");
+					throw malformed("Asset mesh " + id + " face " + face + " has render type "
+						+ renderTypes[face] + ", which is never drawn");
 				}
 			}
 		}
@@ -368,8 +369,8 @@ public final class AssetCodec
 	{
 		if (vertex < 0 || vertex >= verticesCount)
 		{
-			throw new IOException("Asset mesh " + id + " " + owner + " names vertex "
-				+ vertex + " of " + verticesCount + "; regenerate the bundle");
+			throw malformed("Asset mesh " + id + " " + owner + " names vertex "
+				+ vertex + " of " + verticesCount);
 		}
 	}
 
@@ -402,8 +403,8 @@ public final class AssetCodec
 	{
 		if (length != faceCount)
 		{
-			throw new IOException("Asset mesh " + id + " has " + length + " " + column
-				+ " for " + faceCount + " faces; regenerate the bundle");
+			throw malformed("Asset mesh " + id + " has " + length + " " + column
+				+ " for " + faceCount + " faces");
 		}
 	}
 
@@ -423,16 +424,16 @@ public final class AssetCodec
 		boolean allNull = texIndices1 == null && texIndices2 == null && texIndices3 == null;
 		if (anyNull && !allNull)
 		{
-			throw new IOException("Asset mesh " + id
-				+ " has a partial texture triangle table; regenerate the bundle");
+			throw malformed("Asset mesh " + id
+				+ " has a partial texture triangle table");
 		}
 
 		if (!allNull && (texIndices1.length != texIndices2.length
 			|| texIndices1.length != texIndices3.length))
 		{
-			throw new IOException("Asset mesh " + id + " names "
+			throw malformed("Asset mesh " + id + " names "
 				+ texIndices1.length + ", " + texIndices2.length + " and " + texIndices3.length
-				+ " texture triangle corners; regenerate the bundle");
+				+ " texture triangle corners");
 		}
 
 		if (!allNull)
@@ -454,9 +455,9 @@ public final class AssetCodec
 
 		if (textureCoords.length != faceCount)
 		{
-			throw new IOException("Asset mesh " + id + " maps " + textureCoords.length
+			throw malformed("Asset mesh " + id + " maps " + textureCoords.length
 				+ " faces to texture triangles but has " + faceCount
-				+ " faces; regenerate the bundle");
+				+ " faces");
 		}
 
 		int triangles = allNull ? 0 : texIndices1.length;
@@ -465,8 +466,8 @@ public final class AssetCodec
 			// -1 is the renderer's own face-as-UV projection and names no triangle
 			if (coord != -1 && (coord & 0xFF) >= triangles)
 			{
-				throw new IOException("Asset mesh " + id + " maps a face to texture triangle "
-					+ (coord & 0xFF) + " of " + triangles + "; regenerate the bundle");
+				throw malformed("Asset mesh " + id + " maps a face to texture triangle "
+					+ (coord & 0xFF) + " of " + triangles);
 			}
 		}
 	}
@@ -476,8 +477,8 @@ public final class AssetCodec
 	{
 		if (vertex < 0 || vertex >= verticesCount)
 		{
-			throw new IOException("Asset mesh " + id + " texture triangle " + triangle
-				+ " names vertex " + vertex + " of " + verticesCount + "; regenerate the bundle");
+			throw malformed("Asset mesh " + id + " texture triangle " + triangle
+				+ " names vertex " + vertex + " of " + verticesCount);
 		}
 	}
 
@@ -500,10 +501,10 @@ public final class AssetCodec
 		// the same contract the magic and version guard - a bundle that is wrong must not load.
 		if (types == null || groups == null || types.length != groups.length)
 		{
-			throw new IOException("Asset rig " + id + " names "
+			throw malformed("Asset rig " + id + " names "
 				+ (types == null ? "no" : String.valueOf(types.length)) + " transforms but "
 				+ (groups == null ? "no" : String.valueOf(groups.length))
-				+ " group sets; regenerate the bundle");
+				+ " group sets");
 		}
 
 		return new Rig(id, types, groups);
@@ -550,16 +551,16 @@ public final class AssetCodec
 	{
 		if (transforms == null || dx == null || dy == null || dz == null)
 		{
-			throw new IOException("Asset clip " + sequenceId
-				+ " is missing an op column; regenerate the bundle");
+			throw malformed("Asset clip " + sequenceId
+				+ " is missing an op column");
 		}
 
 		if (transforms.length != dx.length || transforms.length != dy.length
 			|| transforms.length != dz.length)
 		{
-			throw new IOException("Asset clip " + sequenceId + " has " + transforms.length
+			throw malformed("Asset clip " + sequenceId + " has " + transforms.length
 				+ ", " + dx.length + ", " + dy.length + " and " + dz.length
-				+ " frames across its four op columns; regenerate the bundle");
+				+ " frames across its four op columns");
 		}
 
 		for (int frame = 0; frame < transforms.length; frame++)
@@ -567,16 +568,16 @@ public final class AssetCodec
 			if (transforms[frame] == null || dx[frame] == null
 				|| dy[frame] == null || dz[frame] == null)
 			{
-				throw new IOException("Asset clip " + sequenceId + " frame " + frame
-					+ " is missing an op column; regenerate the bundle");
+				throw malformed("Asset clip " + sequenceId + " frame " + frame
+					+ " is missing an op column");
 			}
 
 			int ops = transforms[frame].length;
 			if (dx[frame].length != ops || dy[frame].length != ops || dz[frame].length != ops)
 			{
-				throw new IOException("Asset clip " + sequenceId + " frame " + frame
+				throw malformed("Asset clip " + sequenceId + " frame " + frame
 					+ " has " + ops + ", " + dx[frame].length + ", " + dy[frame].length + " and "
-					+ dz[frame].length + " ops across its four columns; regenerate the bundle");
+					+ dz[frame].length + " ops across its four columns");
 			}
 		}
 	}
@@ -628,12 +629,12 @@ public final class AssetCodec
 		String name = binding.getName();
 		if (binding.getNpcIds() == null || binding.getNpcIds().length == 0)
 		{
-			throw new IOException("Binding '" + name + "' names no NPCs; regenerate the bundle");
+			throw malformed("Binding '" + name + "' names no NPCs");
 		}
 
 		if (binding.getMeshIds() == null || binding.getMeshIds().length == 0)
 		{
-			throw new IOException("Binding '" + name + "' names no meshes; regenerate the bundle");
+			throw malformed("Binding '" + name + "' names no meshes");
 		}
 
 		List<Mesh> parts = new ArrayList<>();
@@ -642,8 +643,8 @@ public final class AssetCodec
 			Mesh mesh = meshes.get(meshId);
 			if (mesh == null)
 			{
-				throw new IOException("Binding '" + name + "' names mesh " + meshId
-					+ ", which the bundle does not carry; regenerate the bundle");
+				throw malformed("Binding '" + name + "' names mesh " + meshId
+					+ ", which the bundle does not carry");
 			}
 			parts.add(mesh);
 		}
@@ -652,8 +653,8 @@ public final class AssetCodec
 		{
 			if (!boundNpcs.add(npcId))
 			{
-				throw new IOException("NPC " + npcId + " is bound more than once, the second time by '"
-					+ name + "'; regenerate the bundle");
+				throw malformed("NPC " + npcId + " is bound more than once, the second time by '"
+					+ name + "'");
 			}
 		}
 
@@ -661,25 +662,25 @@ public final class AssetCodec
 		short[] replace = binding.getRecolorReplace();
 		if ((find == null) != (replace == null) || (find != null && find.length != replace.length))
 		{
-			throw new IOException("Binding '" + name + "' has unpaired recolors; regenerate the bundle");
+			throw malformed("Binding '" + name + "' has unpaired recolors");
 		}
 
 		if (binding.getScaleXZ() <= 0 || binding.getScaleY() <= 0)
 		{
-			throw new IOException("Binding '" + name + "' has scale " + binding.getScaleXZ() + "/"
-				+ binding.getScaleY() + "; regenerate the bundle");
+			throw malformed("Binding '" + name + "' has scale " + binding.getScaleXZ() + "/"
+				+ binding.getScaleY());
 		}
 
 		if (binding.getRigId() != NpcBinding.STATIC && !rigs.containsKey(binding.getRigId()))
 		{
-			throw new IOException("Binding '" + name + "' names rig " + binding.getRigId()
-				+ ", which the bundle does not carry; regenerate the bundle");
+			throw malformed("Binding '" + name + "' names rig " + binding.getRigId()
+				+ ", which the bundle does not carry");
 		}
 
 		if (!firstMeshes.add(binding.getMeshIds()[0]))
 		{
-			throw new IOException("Binding '" + name + "' starts with mesh " + binding.getMeshIds()[0]
-				+ ", as another binding does; regenerate the bundle");
+			throw malformed("Binding '" + name + "' starts with mesh " + binding.getMeshIds()[0]
+				+ ", as another binding does");
 		}
 
 		if (parts.size() > 1)
@@ -859,6 +860,18 @@ public final class AssetCodec
 		}
 	}
 
+	/** A bundle that breaks the format's rules. It was written wrong, so the fix is to write it again. */
+	private static IOException malformed(String problem)
+	{
+		return new IOException(problem + "; regenerate the bundle");
+	}
+
+	/** {@code bytes} in whole MiB, for messages about the size limits. */
+	public static String mebibytes(long bytes)
+	{
+		return bytes / (1024 * 1024) + " MiB";
+	}
+
 	/**
 	 * Refuses to read past {@code limit} bytes. The per-array ceilings bound one allocation, not the
 	 * total, so a small file that inflates enormously is stopped here instead.
@@ -909,7 +922,7 @@ public final class AssetCodec
 			read += n;
 			if (read > limit)
 			{
-				throw new IOException("Custom NPC model bundle inflates past " + limit / (1024 * 1024) + " MiB");
+				throw new IOException("Custom NPC model bundle inflates past " + mebibytes(limit));
 			}
 		}
 	}

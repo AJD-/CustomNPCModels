@@ -51,19 +51,34 @@ final class SequenceTiming
 		return frameLengths.length;
 	}
 
-	/** When frame {@code frame} starts, in seconds from the start of the sequence. */
-	double startTime(int frame)
+	/**
+	 * The cycle frame {@code frame} starts on, counted from the start of the sequence. Each frame is
+	 * held for its length, and at least one cycle.
+	 */
+	long startCycle(int frame)
 	{
 		long cycles = 0;
 		for (int i = 0; i < frame; i++)
 		{
 			cycles += Math.max(frameLengths[i], 1);
 		}
-		return cycles * SECONDS_PER_CYCLE;
+		return cycles;
+	}
+
+	/** How long one pass of the sequence takes, in client cycles. */
+	long cycles()
+	{
+		return startCycle(frameLengths.length);
+	}
+
+	/** When frame {@code frame} starts, in seconds from the start of the sequence. */
+	double startTime(int frame)
+	{
+		return startCycle(frame) * SECONDS_PER_CYCLE;
 	}
 
 	double duration()
 	{
-		return startTime(frameLengths.length);
+		return cycles() * SECONDS_PER_CYCLE;
 	}
 }

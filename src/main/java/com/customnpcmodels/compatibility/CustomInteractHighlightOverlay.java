@@ -28,17 +28,14 @@ package com.customnpcmodels.compatibility;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
-import java.util.Objects;
 import javax.inject.Inject;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
-import net.runelite.api.MenuAction;
 import net.runelite.api.Menu;
+import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.NPC;
 import net.runelite.api.Point;
-import net.runelite.api.gameval.InterfaceID;
-import net.runelite.api.widgets.WidgetUtil;
 import net.runelite.client.plugins.interacthighlight.InteractHighlightConfig;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
@@ -130,9 +127,7 @@ public class CustomInteractHighlightOverlay extends Overlay
 		}
 
 		InteractHighlightConfig appearance = compat.config();
-		Color color = menuAction == MenuAction.NPC_SECOND_OPTION
-			|| menuAction == MenuAction.WIDGET_TARGET_ON_NPC
-				&& WidgetUtil.componentToInterface(Objects.requireNonNull(client.getSelectedWidget()).getId()) == InterfaceID.MAGIC_SPELLBOOK
+		Color color = InteractTargetTracker.isAttack(client, menuAction)
 			? appearance.npcAttackHoverHighlightColor() : appearance.npcHoverHighlightColor();
 		drawOutline(npc, color);
 	}

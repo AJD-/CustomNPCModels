@@ -24,7 +24,6 @@
  */
 package com.customnpcmodels.inject;
 
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.AABB;
 import net.runelite.api.Model;
 import net.runelite.api.Node;
@@ -80,7 +79,6 @@ import net.runelite.api.Node;
  * So the mitigation is upkeep rather than a version range: when {@code Model} changes, this
  * class changes with it. The interface was last read in full against client 1.12.38.
  */
-@Slf4j
 public class InjectedModel implements Model
 {
 	private int verticesCount;
@@ -95,7 +93,7 @@ public class InjectedModel implements Model
 
 	/**
 	 * Lit per-corner colors. {@code faceColors3 == -1} means flat shaded and {@code -2} means a
-	 * hidden face; the renderer depends on both sentinels, so they must survive the copy intact.
+	 * hidden face; the renderer depends on both sentinels, so they must reach it intact.
 	 */
 	private int[] faceColors1 = new int[0];
 	private int[] faceColors2 = new int[0];
@@ -122,9 +120,6 @@ public class InjectedModel implements Model
 	private int modelHeight;
 	private int animationHeightOffset;
 	private int renderMode;
-
-	/** One-shot guard for the bounds comparison; this runs per NPC per frame. */
-	private boolean boundsChecked;
 
 	private int sceneId;
 	private int bufferOffset;
@@ -190,130 +185,6 @@ public class InjectedModel implements Model
 	}
 
 	/**
-	 * Takes a full copy of another model's geometry into this one's own buffers.
-	 *
-	 * <p>Copying rather than aliasing is the point: the client's posed model is shared and is
-	 * invalidated by the next {@code applyTransformations} call, including the client's own, so
-	 * holding a reference to its arrays would be a use-after-free in slow motion.
-	 *
-	 * <p>The vertex, index and color buffers are grown on demand and reused, so a steady state does
-	 * not allocate for those. The per-face columns go through {@code copyOrNull}, which clones
-	 * every time: a null there carries meaning to the renderer, and a reused buffer cannot express
-	 * one.
-	 */
-	public void copyFrom(Model source)
-	{
-		float[] sourceX = source.getVerticesX();
-		float[] sourceY = source.getVerticesY();
-		float[] sourceZ = source.getVerticesZ();
-
-		int[] sourceI1 = source.getFaceIndices1();
-		int[] sourceI2 = source.getFaceIndices2();
-		int[] sourceI3 = source.getFaceIndices3();
-
-		int[] sourceC1 = source.getFaceColors1();
-		int[] sourceC2 = source.getFaceColors2();
-		int[] sourceC3 = source.getFaceColors3();
-
-		// The counts are settled against what actually arrived, before anything is copied, rather
-		// than taken from the source's own getters and trusted. A count that overruns its arrays is
-		// worse than an empty model: every consumer reads these by count, starting with
-		// calculateBoundsCylinder below, and the buffers here are reused between NPCs - so a short
-		// column would not read zeroes, it would read the previous NPC's geometry.
-		//
-		// A client model should never present this way. This class exists to hold geometry the
-		// client never made, so it does not get to assume the shape of what it is handed. Nested
-		// rather than a varargs helper because this runs per NPC per frame.
-		verticesCount = Math.min(source.getVerticesCount(),
-			Math.min(length(sourceX), Math.min(length(sourceY), length(sourceZ))));
-		faceCount = Math.min(source.getFaceCount(), Math.min(
-			Math.min(length(sourceI1), Math.min(length(sourceI2), length(sourceI3))),
-			Math.min(length(sourceC1), Math.min(length(sourceC2), length(sourceC3)))));
-
-		verticesX = copy(sourceX, verticesX, verticesCount);
-		verticesY = copy(sourceY, verticesY, verticesCount);
-		verticesZ = copy(sourceZ, verticesZ, verticesCount);
-
-		faceIndices1 = copy(sourceI1, faceIndices1, faceCount);
-		faceIndices2 = copy(sourceI2, faceIndices2, faceCount);
-		faceIndices3 = copy(sourceI3, faceIndices3, faceCount);
-
-		faceColors1 = copy(sourceC1, faceColors1, faceCount);
-		faceColors2 = copy(sourceC2, faceColors2, faceCount);
-		faceColors3 = copy(sourceC3, faceColors3, faceCount);
-
-		// These are legitimately null on most models, and null carries meaning to the renderer -
-		// a null transparency array is what puts a model on the opaque path - so do not
-		// substitute empty arrays for them
-		faceRenderPriorities = copyOrNull(source.getFaceRenderPriorities());
-		faceTransparencies = copyOrNull(source.getFaceTransparencies());
-		faceBias = copyOrNull(source.getFaceBias());
-		faceTextures = copyOrNull(source.getFaceTextures());
-		textureFaces = copyOrNull(source.getTextureFaces());
-		texIndices1 = copyOrNull(source.getTexIndices1());
-		texIndices2 = copyOrNull(source.getTexIndices2());
-		texIndices3 = copyOrNull(source.getTexIndices3());
-
-		transparency = source.getTransparency();
-		overrideAmount = source.getOverrideAmount();
-		overrideHue = source.getOverrideHue();
-		overrideSaturation = source.getOverrideSaturation();
-		overrideLuminance = source.getOverrideLuminance();
-
-		// modelHeight is deliberately not copied - calculateBoundsCylinder derives it below, the
-		// same way the client does
-		animationHeightOffset = source.getAnimationHeightOffset();
-		renderMode = source.getRenderMode();
-
-		// Bounds are derived rather than copied, so this class is already correct once it holds
-		// geometry the client never saw
-		calculateBoundsCylinder();
-
-		compareBoundsAgainst(source);
-	}
-
-	/**
-	 * While the geometry is still a copy of a client model, that model's own bounds are ground
-	 * truth for ours - so check them against each other rather than waiting to find out from a
-	 * renderer assertion.
-	 *
-	 * <p>Logged once, because a mismatch is a property of the formula rather than of any one
-	 * frame, and this runs per NPC per frame.
-	 */
-	private void compareBoundsAgainst(Model source)
-	{
-		// A debug line is the whole output, and this runs per NPC per frame, so it does not run at
-		// all unless someone is reading - it also forces a bounds recompute on the client's model
-		// below. Tested before the one-shot flag so enabling debug mid-session still gets a check.
-		if (!log.isDebugEnabled() || boundsChecked)
-		{
-			return;
-		}
-		boundsChecked = true;
-
-		// The client caches its bounds behind a flag, so a model that has been through the renderer
-		// before will hand back last frame's numbers - for a shared posed model, possibly another
-		// NPC's. Ask it to compute them for the geometry it is holding now, or the comparison is
-		// against noise.
-		source.calculateBoundsCylinder();
-
-		int sourceRadius = source.getRadius();
-		int sourceDiameter = source.getDiameter();
-		int sourceBottomY = source.getBottomY();
-
-		if (sourceRadius == radius && sourceDiameter == diameter && sourceBottomY == bottomY)
-		{
-			log.debug("Injected model bounds match the client's exactly (radius={} diameter={} bottomY={})",
-				radius, diameter, bottomY);
-			return;
-		}
-
-		log.debug("Injected model bounds differ from the client's - "
-				+ "radius {} vs {}, diameter {} vs {}, bottomY {} vs {}",
-			radius, sourceRadius, diameter, sourceDiameter, bottomY, sourceBottomY);
-	}
-
-	/**
 	 * Recomputes the bounding cylinder the renderer reads through {@link #getRadius()} and
 	 * {@link #getDiameter()} for culling and sorting.
 	 *
@@ -371,56 +242,6 @@ public class InjectedModel implements Model
 			(double) xzRadius * xzRadius + (double) modelHeight * modelHeight));
 		diameter = radius + (int) Math.ceil(Math.sqrt(
 			(double) xzRadius * xzRadius + (double) bottomY * bottomY));
-	}
-
-	/** A null column is length zero rather than an error; the counts above are clamped to it. */
-	private static int length(float[] values)
-	{
-		return values == null ? 0 : values.length;
-	}
-
-	private static int length(int[] values)
-	{
-		return values == null ? 0 : values.length;
-	}
-
-	private static float[] copy(float[] source, float[] into, int length)
-	{
-		if (source == null)
-		{
-			return new float[0];
-		}
-
-		float[] target = into.length >= length ? into : new float[length];
-		System.arraycopy(source, 0, target, 0, Math.min(length, source.length));
-		return target;
-	}
-
-	private static int[] copy(int[] source, int[] into, int length)
-	{
-		if (source == null)
-		{
-			return new int[0];
-		}
-
-		int[] target = into.length >= length ? into : new int[length];
-		System.arraycopy(source, 0, target, 0, Math.min(length, source.length));
-		return target;
-	}
-
-	private static byte[] copyOrNull(byte[] source)
-	{
-		return source == null ? null : source.clone();
-	}
-
-	private static short[] copyOrNull(short[] source)
-	{
-		return source == null ? null : source.clone();
-	}
-
-	private static int[] copyOrNull(int[] source)
-	{
-		return source == null ? null : source.clone();
 	}
 
 	// --- Mesh: the geometry the uploader reads -------------------------------------------------

@@ -27,9 +27,9 @@ package com.customnpcmodels;
 import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.InjectedModel;
-import com.customnpcmodels.inject.Lighter;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.MeshMerger;
+import com.customnpcmodels.inject.NpcAppearance;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.Skinner;
@@ -63,16 +63,6 @@ import net.runelite.api.NPC;
 @Slf4j
 public class ModelCache
 {
-	/** The client's NPC lighting constants: base ambient and contrast, and the light direction. */
-	private static final int NPC_AMBIENT = 64;
-	private static final int NPC_CONTRAST = 850;
-	private static final int NPC_LIGHT_X = -30;
-	private static final int NPC_LIGHT_Y = -50;
-	private static final int NPC_LIGHT_Z = -30;
-
-	/** The definition stores contrast in steps the decoder multiplies by 5. */
-	private static final int NPC_CONTRAST_STEP = 5;
-
 	/** NPC ids whose models could not be built, so spawns stop retrying them. */
 	private final Set<Integer> unbuildable = new HashSet<>();
 
@@ -108,11 +98,6 @@ public class ModelCache
 	public void clearSubstituted(int npcId)
 	{
 		substituted.remove(npcId);
-	}
-
-	public boolean isSubstituted(int npcId)
-	{
-		return substituted.contains(npcId);
 	}
 
 	/**
@@ -253,68 +238,24 @@ public class ModelCache
 			return null;
 		}
 
-		Mesh mesh = MeshMerger.merge(meshIds[0], parts);
+		Mesh merged = MeshMerger.merge(meshIds[0], parts);
 
-		// Recolor before lighting, not after: lit colors are baked once and never recomputed, so a
-		// recolor applied afterward would have nothing left to bite on
-		short[] colors = mesh.getFaceColors().clone();
-		if (binding.hasRecolors())
-		{
-			short[] find = binding.getRecolorFind();
-			short[] replace = binding.getRecolorReplace();
-			for (int face = 0; face < colors.length; face++)
-			{
-				for (int pair = 0; pair < find.length; pair++)
-				{
-					if (colors[face] == find[pair])
-					{
-						colors[face] = replace[pair];
-						break;
-					}
-				}
-			}
-		}
-
-		mesh = recolored(mesh, colors);
+		// Only the colors differ per NPC; faces, rigging and vertices stay shared with the bundle,
+		// which never sees this copy
+		Mesh mesh = merged.withFaceColors(NpcAppearance.recolor(merged.getFaceColors(),
+			binding.getRecolorFind(), binding.getRecolorReplace()));
 
 		int faceCount = mesh.getFaceCount();
 		int[] colors1 = new int[faceCount];
 		int[] colors2 = new int[faceCount];
 		int[] colors3 = new int[faceCount];
-
-		// Lit at rest and unscaled, with the NPC lighting formula rather than ModelData.light()'s
-		// defaults, which are the item and scenery constants. Read out of the client's NPCComposition:
-		// light(64 + ambient, 850 + contrast, -30, -50, -30), where the decoder has already
-		// multiplied the definition's contrast byte by 5. The light comes from above, where the
-		// defaults' comes mostly from the side, so using them darkens every upward-facing surface.
-		Lighter.light(
-			mesh.getVerticesCount(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
-			faceCount, mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(),
-			mesh.getFaceColors(), mesh.getFaceRenderTypes(), mesh.getFaceTextures(),
-			NPC_AMBIENT + binding.getAmbient(), NPC_CONTRAST + binding.getContrast() * NPC_CONTRAST_STEP,
-			NPC_LIGHT_X, NPC_LIGHT_Y, NPC_LIGHT_Z,
+		NpcAppearance.light(mesh, mesh.getFaceColors(), binding.getAmbient(), binding.getContrast(),
 			colors1, colors2, colors3);
 
-		BuiltModel built = new BuiltModel(resolved, mesh, binding.getScaleXZ() / 128f, binding.getScaleY() / 128f);
+		BuiltModel built = new BuiltModel(resolved, mesh,
+			NpcAppearance.scale(binding.getScaleXZ()), NpcAppearance.scale(binding.getScaleY()));
 		built.model.bind(mesh, colors1, colors2, colors3);
 		return built;
-	}
-
-	/**
-	 * Returns the mesh with the recolored palette.
-	 * <p>
-	 * Faces, texture mapping, rigging and vertices are shared with the bundle mesh - only the
-	 * colors differ per NPC, and neither the bundle nor any other NPC sees this copy.
-	 */
-	private static Mesh recolored(Mesh mesh, short[] colors)
-	{
-		return new Mesh(mesh.getId(), mesh.getPriority(),
-			mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
-			mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(),
-			colors, mesh.getFaceRenderTypes(), mesh.getFaceTransparencies(),
-			mesh.getFaceRenderPriorities(), mesh.getFaceTextures(),
-			mesh.getTextureCoords(), mesh.getTexIndices1(), mesh.getTexIndices2(),
-			mesh.getTexIndices3(), mesh.getVertexGroups());
 	}
 
 	/**
@@ -358,20 +299,7 @@ public class ModelCache
 		float[] y = model.getVerticesY();
 		float[] z = model.getVerticesZ();
 		skinner.pose(mesh, rig, clip, frame, x, y, z);
-
-		// The resize comes after the pose, as the client orders it. A clip's translations and pivot
-		// offsets are absolute units authored against the unscaled mesh, so resizing the rest pose
-		// first and posing it afterward moves every translated part by the full unscaled amount -
-		// the limbs drift off the body they are attached to.
-		if (built.scaleXZ != 1f || built.scaleY != 1f)
-		{
-			for (int v = 0; v < mesh.getVerticesCount(); v++)
-			{
-				x[v] *= built.scaleXZ;
-				y[v] *= built.scaleY;
-				z[v] *= built.scaleXZ;
-			}
-		}
+		NpcAppearance.resize(x, y, z, mesh.getVerticesCount(), built.scaleXZ, built.scaleY);
 		model.calculateBoundsCylinder();
 
 		return model;

@@ -25,12 +25,11 @@
 package com.customnpcmodels.packs;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.util.Filepath;
 
 /**
@@ -42,6 +41,7 @@ import net.runelite.client.util.Filepath;
  * executor only; that it is one thread is also what keeps an install and a removal of the same pack
  * from running at once.
  */
+@Slf4j
 public final class HubInstaller
 {
 	static final String ICON_FILE = "icon.png";
@@ -67,7 +67,7 @@ public final class HubInstaller
 		try
 		{
 			staged.joinSegment(DirectoryPackSource.BUNDLE_FILE).write(bundle);
-			staged.joinSegment(DirectoryPackSource.INFO_FILE).write(gson.toJson(info(entry)));
+			staged.joinSegment(DirectoryPackSource.INFO_FILE).write(gson.toJson(PackJson.of(entry)));
 			if (icon != null)
 			{
 				staged.joinSegment(ICON_FILE).write(icon);
@@ -106,7 +106,16 @@ public final class HubInstaller
 			}
 			if (replacing)
 			{
-				old.deleteRecursively();
+				// The new copy is in place, so the install has succeeded whatever happens here; a copy
+				// that won't delete is left for clearLeftovers rather than reported as a failed install
+				try
+				{
+					old.deleteRecursively();
+				}
+				catch (IOException ex)
+				{
+					log.debug("Could not delete the replaced copy of hub pack {}", entry.getId(), ex);
+				}
 			}
 		}
 		finally
@@ -162,22 +171,5 @@ public final class HubInstaller
 			}
 			leftover.deleteRecursively();
 		}
-	}
-
-	/** The installed pack's {@code pack.json}: what the panel shows, and the commit updates are told by. */
-	private static JsonObject info(HubEntry entry)
-	{
-		JsonObject json = new JsonObject();
-		json.addProperty("id", entry.getId());
-		json.addProperty("name", entry.getName());
-		json.addProperty("author", entry.getAuthor());
-		json.addProperty("description", entry.getDescription());
-		json.addProperty("version", entry.getVersion());
-		json.addProperty("license", entry.getLicense());
-		JsonArray tags = new JsonArray();
-		entry.getTags().forEach(tags::add);
-		json.add("tags", tags);
-		json.addProperty("commit", entry.getCommit());
-		return json;
 	}
 }

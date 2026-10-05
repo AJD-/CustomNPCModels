@@ -25,14 +25,44 @@
 package com.customnpcmodels.packs;
 
 import com.customnpcmodels.inject.AssetBundle;
+import com.customnpcmodels.inject.AssetCodec;
+import com.customnpcmodels.inject.Mesh;
+import com.customnpcmodels.inject.NpcBinding;
+import com.customnpcmodels.inject.TestBinding;
+import com.customnpcmodels.inject.TestMesh;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import net.runelite.api.gameval.NpcID;
 
 /** Packs built from bundles in memory, for tests that need a catalog rather than disk. */
 public final class TestPacks
 {
 	private TestPacks()
 	{
+	}
+
+	/** A valid bundle file: one triangle, drawn for the Giant Mole. */
+	public static byte[] bundleBytes() throws IOException
+	{
+		Mesh triangle = new TestMesh()
+			.id(1_005_779)
+			.vx(new float[]{0, 10, 0})
+			.vy(new float[]{0, 0, 10})
+			.vz(new float[]{0, 0, 0})
+			.i1(new int[]{0})
+			.i2(new int[]{1})
+			.i3(new int[]{2})
+			.colors(new short[]{(short) 0x3A05})
+			.groups(null)
+			.build();
+		NpcBinding binding = TestBinding.of("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779}).build();
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		AssetCodec.write(new AssetBundle(Collections.singletonMap(1_005_779, triangle), Collections.emptyMap(),
+			Collections.emptyList(), Collections.singletonList(binding)), out);
+		return out.toByteArray();
 	}
 
 	/** A local pack called {@code folder}, as if read from disk. */

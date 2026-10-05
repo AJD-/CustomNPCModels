@@ -24,10 +24,10 @@
  */
 package com.customnpcmodels.compatibility;
 
+import com.customnpcmodels.CustomNpcModelsConfig;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import com.customnpcmodels.CustomNpcModelsConfig;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;

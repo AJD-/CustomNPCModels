@@ -126,22 +126,33 @@ public final class CacheFiles
 			.load(sequenceId, data);
 	}
 
+	/** A model, or null when it is missing or will not decode - for tools that skip what they cannot read. */
 	public static ModelDefinition decodeModel(Store store, int modelId)
 	{
 		try
 		{
-			Archive archive = store.getIndex(IndexType.MODELS).getArchive(modelId);
-			if (archive == null)
-			{
-				return null;
-			}
-			byte[] data = archive.decompress(store.getStorage().loadArchive(archive));
-			return data == null ? null : new ModelLoader().load(modelId, data);
+			return loadModel(store, modelId);
 		}
 		catch (IOException | RuntimeException e)
 		{
 			return null;
 		}
+	}
+
+	/**
+	 * A model, or null when the cache has none with this id.
+	 *
+	 * @throws IOException or a runtime exception when it is there but will not decode
+	 */
+	public static ModelDefinition loadModel(Store store, int modelId) throws IOException
+	{
+		Archive archive = store.getIndex(IndexType.MODELS).getArchive(modelId);
+		if (archive == null)
+		{
+			return null;
+		}
+		byte[] data = archive.decompress(store.getStorage().loadArchive(archive));
+		return data == null ? null : new ModelLoader().load(modelId, data);
 	}
 
 	/**

@@ -24,14 +24,13 @@
  */
 package com.customnpcmodels.inject;
 
-import lombok.Getter;
-
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.Getter;
 
 /**
  * Everything needed to draw and animate custom NPC models: meshes, the rigs they are bound to, the

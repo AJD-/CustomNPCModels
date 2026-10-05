@@ -32,6 +32,8 @@ import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.GridLayout;
+import java.awt.Insets;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
@@ -72,7 +74,8 @@ import net.runelite.client.util.SwingUtil;
  *
  * <p>It only ever shows the last {@link PackView} snapshot it was handed and reports what the user
  * does through {@link Actions}, which writes config. The plugin reacts to that write and hands a new
- * snapshot back, so the panel holds no state of its own beyond what is expanded and searched. EDT
+ * snapshot back, so the panel keeps no pack state of its own. What it does keep is presentation:
+ * what is expanded and searched, the hub's last answer and icons, and which buttons are busy. EDT
  * only, like all Swing.
  */
 public class PacksPanel extends PluginPanel
@@ -101,7 +104,8 @@ public class PacksPanel extends PluginPanel
 
 		/**
 		 * Fetches the hub's list of packs, answering with {@link #setHubEntries} or {@link #setHubError}.
-		 * Only asked while the hub is switched on.
+		 * Only asked while the hub is switched on. If it is switched off before the answer arrives, no
+		 * answer comes; {@link #setHubEnabled}{@code (false)} clears the wait instead.
 		 */
 		void loadHub();
 
@@ -194,7 +198,7 @@ public class PacksPanel extends PluginPanel
 		});
 		header.add(search);
 
-		JPanel buttons = new JPanel(new java.awt.GridLayout(1, 2, 6, 0));
+		JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
 		buttons.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		JButton importButton = new JButton("Import pack...");
 		importButton.setToolTipText("Copy a pack folder - one holding a bundle.dat - into your local packs");
@@ -446,23 +450,23 @@ public class PacksPanel extends PluginPanel
 		{
 			JButton page = new JButton("?");
 			page.setToolTipText("Open this pack's page on GitHub");
-			page.setMargin(new java.awt.Insets(0, 4, 0, 4));
+			page.setMargin(new Insets(0, 4, 0, 4));
 			page.addActionListener(e -> LinkBrowser.browse(repo));
 			top.add(page, BorderLayout.EAST);
 		}
 		item.add(top);
 
 		StringBuilder about = new StringBuilder("Hub");
-		if (entry.getAuthor() != null && !entry.getAuthor().trim().isEmpty())
+		if (entry.getAuthor() != null && !entry.getAuthor().isBlank())
 		{
 			about.append(" · by ").append(entry.getAuthor().trim());
 		}
-		if (entry.getVersion() != null && !entry.getVersion().trim().isEmpty())
+		if (entry.getVersion() != null && !entry.getVersion().isBlank())
 		{
 			about.append(" · v").append(entry.getVersion().trim());
 		}
 		item.add(detail(about.toString(), ColorScheme.LIGHT_GRAY_COLOR));
-		if (entry.getDescription() != null && !entry.getDescription().trim().isEmpty())
+		if (entry.getDescription() != null && !entry.getDescription().isBlank())
 		{
 			item.add(detail(entry.getDescription(), ColorScheme.LIGHT_GRAY_COLOR));
 		}
@@ -484,7 +488,7 @@ public class PacksPanel extends PluginPanel
 				+ "Updating the plugin may fix this.", ColorScheme.PROGRESS_ERROR_COLOR));
 		}
 
-		JPanel buttons = new JPanel(new java.awt.GridLayout(1, 2, 6, 0));
+		JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
 		buttons.setOpaque(false);
 		boolean working = busy.contains(entry.getId());
 		if (installed == null || update)
@@ -560,7 +564,7 @@ public class PacksPanel extends PluginPanel
 		top.add(name, BorderLayout.CENTER);
 
 		int index = packs.indexOf(pack);
-		JPanel order = new JPanel(new java.awt.GridLayout(1, 2, 2, 0));
+		JPanel order = new JPanel(new GridLayout(1, 2, 2, 0));
 		order.setOpaque(false);
 		order.add(orderButton("▲", "Take priority over the pack above", index > 0, () -> movePack(index, -1)));
 		order.add(orderButton("▼", "Give priority to the pack below", index < packs.size() - 1,
@@ -569,7 +573,7 @@ public class PacksPanel extends PluginPanel
 		item.add(top);
 
 		item.add(detail(describe(pack), ColorScheme.LIGHT_GRAY_COLOR));
-		if (pack.getDescription() != null && !pack.getDescription().trim().isEmpty())
+		if (pack.getDescription() != null && !pack.getDescription().isBlank())
 		{
 			item.add(detail(pack.getDescription(), ColorScheme.LIGHT_GRAY_COLOR));
 		}
@@ -673,7 +677,7 @@ public class PacksPanel extends PluginPanel
 		button.setToolTipText(tooltip);
 		button.setEnabled(enabled);
 		button.setFont(button.getFont().deriveFont(Font.PLAIN, 10f));
-		button.setMargin(new java.awt.Insets(0, 2, 0, 2));
+		button.setMargin(new Insets(0, 2, 0, 2));
 		SwingUtil.removeButtonDecorations(button);
 		button.addActionListener(e -> onClick.run());
 		return button;
@@ -690,11 +694,11 @@ public class PacksPanel extends PluginPanel
 	private static String describe(PackView pack)
 	{
 		StringBuilder text = new StringBuilder(pack.getKind().getLabel());
-		if (pack.getAuthor() != null && !pack.getAuthor().trim().isEmpty())
+		if (pack.getAuthor() != null && !pack.getAuthor().isBlank())
 		{
 			text.append(" · by ").append(pack.getAuthor().trim());
 		}
-		if (pack.getVersion() != null && !pack.getVersion().trim().isEmpty())
+		if (pack.getVersion() != null && !pack.getVersion().isBlank())
 		{
 			text.append(" · v").append(pack.getVersion().trim());
 		}

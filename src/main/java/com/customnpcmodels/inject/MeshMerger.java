@@ -75,8 +75,9 @@ public final class MeshMerger
 	 * that logging still names something recognizable.
 	 * <p>
 	 * A single part is returned as-is rather than copied, exactly as the client uses a lone model
-	 * without merging it. {@link Mesh} is immutable and every consumer that needs to change one
-	 * builds a derived copy first, so sharing the instance is safe.
+	 * without merging it. It keeps its own id, so {@code id} only names a merged result.
+	 * {@link Mesh} is immutable and every consumer that needs to change one builds a derived copy
+	 * first, so sharing the instance is safe.
 	 */
 	public static Mesh merge(int id, List<Mesh> parts)
 	{
@@ -85,7 +86,7 @@ public final class MeshMerger
 			return parts.get(0);
 		}
 
-		int totalCorners = 0;
+		int totalVertices = 0;
 		int totalFaces = 0;
 		int groupCount = 0;
 		boolean anyRenderTypes = false;
@@ -96,7 +97,7 @@ public final class MeshMerger
 
 		for (Mesh part : parts)
 		{
-			totalCorners += part.getVerticesCount();
+			totalVertices += part.getVerticesCount();
 			totalFaces += part.getFaceCount();
 			int[][] groups = part.getVertexGroups();
 			if (groups != null)
@@ -110,7 +111,7 @@ public final class MeshMerger
 			totalTriangles += part.getTextureTriangleCount();
 		}
 
-		Welder welder = new Welder(totalCorners);
+		Welder welder = new Welder(totalVertices);
 		int[] i1 = new int[totalFaces];
 		int[] i2 = new int[totalFaces];
 		int[] i3 = new int[totalFaces];

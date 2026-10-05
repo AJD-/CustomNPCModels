@@ -30,23 +30,22 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.AssetCodec;
-import com.customnpcmodels.inject.Mesh;
-import com.customnpcmodels.inject.NpcBinding;
 import com.google.gson.Gson;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
-import net.runelite.api.gameval.NpcID;
+import okhttp3.Dispatcher;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Protocol;
@@ -60,20 +59,6 @@ public class HubClientTest
 	private static final String BASE = "https://hub.test/";
 	private static final String COMMIT = "0123456789abcdef0123456789abcdef01234567";
 	private static final Gson GSON = new Gson();
-
-	static byte[] bundleBytes() throws IOException
-	{
-		Mesh triangle = new Mesh(1_005_779, 0,
-			new float[]{0, 10, 0}, new float[]{0, 0, 10}, new float[]{0, 0, 0},
-			new int[]{0}, new int[]{1}, new int[]{2}, new short[]{(short) 0x3A05},
-			null, null, null, null, null, null, null, null, null);
-		NpcBinding binding = new NpcBinding("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779},
-			NpcBinding.STATIC, 128, 128, null, null, 0, 0);
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		AssetCodec.write(new AssetBundle(Collections.singletonMap(1_005_779, triangle), Collections.emptyMap(),
-			Collections.emptyList(), Collections.singletonList(binding)), out);
-		return out.toByteArray();
-	}
 
 	static String entryJson(String id, byte[] bundle)
 	{
@@ -91,7 +76,18 @@ public class HubClientTest
 	/** A client whose every request is answered from {@code files}, by path under the base URL. */
 	private static HubClient client(Map<String, byte[]> files)
 	{
-		OkHttpClient http = new OkHttpClient.Builder().addInterceptor(chain ->
+		return client(files, new OkHttpClient.Builder());
+	}
+
+	/** As {@link #client(Map)}, with every call run on {@code calls}. */
+	private static HubClient client(Map<String, byte[]> files, ExecutorService calls)
+	{
+		return client(files, new OkHttpClient.Builder().dispatcher(new Dispatcher(calls)));
+	}
+
+	private static HubClient client(Map<String, byte[]> files, OkHttpClient.Builder builder)
+	{
+		OkHttpClient http = builder.addInterceptor(chain ->
 		{
 			String path = chain.request().url().toString().substring(BASE.length());
 			byte[] body = files.get(path);
@@ -109,7 +105,7 @@ public class HubClientTest
 	@Test
 	public void testTheManifestListsItsValidPacks() throws Exception
 	{
-		byte[] bundle = bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		Map<String, byte[]> files = new HashMap<>();
 		files.put(HubClient.MANIFEST_PATH, ("[" + entryJson("goblins", bundle) + ", " + entryJson("Bad Id", bundle) + ", "
 			+ entryJson("goblins", bundle) + ", {\"id\": \"no-commit\", \"name\": \"x\"}]").getBytes());
@@ -127,6 +123,32 @@ public class HubClientTest
 	}
 
 	@Test
+	public void testACallerThatThrowsIsNotBlamedOnTheHub() throws Exception
+	{
+		Map<String, byte[]> files = new HashMap<>();
+		files.put(HubClient.MANIFEST_PATH, ("[" + entryJson("goblins", TestPacks.bundleBytes()) + "]").getBytes());
+		ExecutorService calls = Executors.newSingleThreadExecutor();
+		try
+		{
+			List<String> failures = new CopyOnWriteArrayList<>();
+			client(files, calls).fetchManifest(entries ->
+			{
+				throw new IllegalStateException("the caller's own bug");
+			}, failures::add);
+
+			// Every call runs on the one thread, so once a later task has run there the callback is done
+			calls.submit(() ->
+			{
+			}).get(5, TimeUnit.SECONDS);
+			assertTrue("the manifest was read fine, whatever the caller did with it: " + failures, failures.isEmpty());
+		}
+		finally
+		{
+			calls.shutdownNow();
+		}
+	}
+
+	@Test
 	public void testAnUnreachableHubSaysSo() throws Exception
 	{
 		CompletableFuture<String> failure = new CompletableFuture<>();
@@ -138,7 +160,7 @@ public class HubClientTest
 	@Test
 	public void testADownloadIsCheckedBeforeItIsHandedOver() throws Exception
 	{
-		byte[] bundle = bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		HubEntry entry = entry("goblins", bundle);
 		Map<String, byte[]> files = new HashMap<>();
 		files.put(COMMIT + "/bundle.dat", bundle);
@@ -159,7 +181,7 @@ public class HubClientTest
 	@Test
 	public void testVerifyRefusesTheWrongSizeAndAnUnreadablePack() throws IOException
 	{
-		byte[] bundle = bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		HubEntry entry = entry("goblins", bundle);
 
 		assertNull(HubClient.verify(entry, bundle));
@@ -202,7 +224,7 @@ public class HubClientTest
 	@Test
 	public void testAPackForAnotherFormatIsListedButNotCompatible() throws IOException
 	{
-		byte[] bundle = bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		HubEntry entry = HubClient.parseManifest(GSON, "[" + entryJson("future", bundle)
 			.replace("\"formatVersion\": " + AssetCodec.VERSION, "\"formatVersion\": " + (AssetCodec.VERSION + 1)) + "]").get(0);
 
@@ -212,12 +234,12 @@ public class HubClientTest
 	@Test
 	public void testOnlyGithubPagesAreOpened() throws IOException
 	{
-		HubEntry entry = HubClient.parseManifest(GSON, "[" + entryJson("elsewhere", bundleBytes())
+		HubEntry entry = HubClient.parseManifest(GSON, "[" + entryJson("elsewhere", TestPacks.bundleBytes())
 			.replace("https://github.com/", "file:///") + "]").get(0);
 		assertNull(entry.getSafeRepo());
 
 		// Right prefix, but opening it would throw
-		HubEntry malformed = HubClient.parseManifest(GSON, "[" + entryJson("malformed", bundleBytes())
+		HubEntry malformed = HubClient.parseManifest(GSON, "[" + entryJson("malformed", TestPacks.bundleBytes())
 			.replace("https://github.com/AJD-", "https://github.com/a b") + "]").get(0);
 		assertNull(malformed.getSafeRepo());
 	}
@@ -229,7 +251,7 @@ public class HubClientTest
 	@Test
 	public void testIdsThatCantBeFoldersAreSkipped() throws IOException
 	{
-		byte[] bundle = bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		List<HubEntry> entries = HubClient.parseManifest(GSON, "[" + entryJson("dl-goblins", bundle) + ", "
 			+ entryJson("con", bundle) + ", " + entryJson("goblins", bundle) + "]");
 
@@ -241,7 +263,7 @@ public class HubClientTest
 	@Test
 	public void testNullModelsAreLeftOut() throws IOException
 	{
-		HubEntry entry = HubClient.parseManifest(GSON, "[" + entryJson("goblins", bundleBytes())
+		HubEntry entry = HubClient.parseManifest(GSON, "[" + entryJson("goblins", TestPacks.bundleBytes())
 			.replace("\"models\": [", "\"models\": [null, {\"key\": 1}, ") + "]").get(0);
 
 		assertEquals(1, entry.getModels().size());

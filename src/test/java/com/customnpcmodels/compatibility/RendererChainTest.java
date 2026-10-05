@@ -24,13 +24,13 @@
  */
 package com.customnpcmodels.compatibility;
 
-import com.customnpcmodels.CustomDrawCallbacks;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.withSettings;
+import com.customnpcmodels.CustomDrawCallbacks;
 import java.util.function.Supplier;
 import net.runelite.api.hooks.DrawCallbacks;
 import org.junit.Test;
@@ -51,7 +51,7 @@ public class RendererChainTest
 
 	private static CustomDrawCallbacks decorate(DrawCallbacks delegate)
 	{
-		return new CustomDrawCallbacks(delegate, (npc, vanilla) -> null);
+		return new CustomDrawCallbacks(delegate, npc -> null);
 	}
 
 	@Test

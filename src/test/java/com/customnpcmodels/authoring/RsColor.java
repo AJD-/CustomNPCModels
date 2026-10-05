@@ -39,6 +39,8 @@ package com.customnpcmodels.authoring;
  */
 final class RsColor
 {
+	static final int MAX_HUE = 63;
+	static final int MAX_SATURATION = 7;
 	static final int MIN_LUMINANCE = 1;
 	static final int MAX_LUMINANCE = 126;
 
@@ -49,9 +51,9 @@ final class RsColor
 	/** Packed HSL to 0xRRGGBB, in the display (sRGB) space the client draws in. */
 	static int hslToRgb(int hsl)
 	{
-		double hue = (hsl >> 10 & 63) / 64.0 + 0.0078125;
-		double saturation = (hsl >> 7 & 7) / 8.0 + 0.0625;
-		double luminance = (hsl & 127) / 128.0;
+		double hue = hue(hsl) / 64.0 + 0.0078125;
+		double saturation = saturation(hsl) / 8.0 + 0.0625;
+		double luminance = luminance(hsl) / 128.0;
 
 		double q = luminance < 0.5
 			? luminance * (1 + saturation)
@@ -134,6 +136,13 @@ final class RsColor
 		return (short) best;
 	}
 
+	/** Packed HSL to the linear red, green and blue glTF's COLOR_0 carries, each 0..1. */
+	static double[] hslToLinear(int hsl)
+	{
+		int rgb = hslToRgb(hsl);
+		return new double[]{srgbToLinear(rgb >> 16 & 255), srgbToLinear(rgb >> 8 & 255), srgbToLinear(rgb & 255)};
+	}
+
 	/** Display (sRGB) channel 0..255 to the linear 0..1 value glTF's COLOR_0 carries. */
 	static double srgbToLinear(int channel)
 	{
@@ -149,9 +158,25 @@ final class RsColor
 		return clamp((int) Math.round(s * 255), 0, 255);
 	}
 
-	private static int pack(int hue, int saturation, int luminance)
+	static int pack(int hue, int saturation, int luminance)
 	{
 		return hue << 10 | saturation << 7 | luminance;
+	}
+
+	static int hue(int hsl)
+	{
+		return hsl >> 10 & 63;
+	}
+
+	static int saturation(int hsl)
+	{
+		return hsl >> 7 & 7;
+	}
+
+	/** The full 7 bits, 0..127 - not clamped to the range an author is given. */
+	static int luminance(int hsl)
+	{
+		return hsl & 127;
 	}
 
 	private static long distance(int a, int b)

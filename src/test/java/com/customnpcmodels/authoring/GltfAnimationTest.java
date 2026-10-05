@@ -34,8 +34,8 @@ import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.Skinner;
 import java.io.ByteArrayOutputStream;
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -409,11 +409,11 @@ public class GltfAnimationTest
 		Map<Integer, Set<Integer>> subtreeOf = new LinkedHashMap<>();
 		for (int t = 0; t + 3 < rebuilt.getTransformCount(); t += GltfToMeshConverter.TRANSFORMS_PER_JOINT)
 		{
-			assertEquals(1, rebuilt.getType(t));
-			assertEquals(0, rebuilt.getType(t + 1));
-			assertEquals(2, rebuilt.getType(t + 2));
+			assertEquals(Rig.TYPE_TRANSLATE, rebuilt.getType(t));
+			assertEquals(Rig.TYPE_PIVOT, rebuilt.getType(t + 1));
+			assertEquals(Rig.TYPE_ROTATE, rebuilt.getType(t + 2));
 			assertEquals(1, rebuilt.getGroups(t + 1).length);
-			assertEquals(3, rebuilt.getType(t + 3));
+			assertEquals(Rig.TYPE_SCALE, rebuilt.getType(t + 3));
 			assertArrayEquals(rebuilt.getGroups(t), rebuilt.getGroups(t + 2));
 			assertArrayEquals(rebuilt.getGroups(t), rebuilt.getGroups(t + 3));
 			subtreeOf.put(rebuilt.getGroups(t + 1)[0], toSet(rebuilt.getGroups(t + 2)));
@@ -433,11 +433,11 @@ public class GltfAnimationTest
 		int compared = 0;
 		for (int t = 0; t < original.getTransformCount(); t++)
 		{
-			if (original.getType(t) == 0)
+			if (original.getType(t) == Rig.TYPE_PIVOT)
 			{
 				lastPivot = original.getGroups(t);
 			}
-			else if (original.getType(t) == 2 && lastPivot != null)
+			else if (original.getType(t) == Rig.TYPE_ROTATE && lastPivot != null)
 			{
 				Set<Integer> pivot = toSet(lastPivot);
 				pivot.retainAll(used);

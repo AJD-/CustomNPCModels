@@ -39,6 +39,17 @@ import lombok.Getter;
  */
 public final class Rig
 {
+	/** Sets the pivot that the rotate and scale transforms after it turn and size about. */
+	public static final int TYPE_PIVOT = 0;
+	public static final int TYPE_TRANSLATE = 1;
+	public static final int TYPE_ROTATE = 2;
+	public static final int TYPE_SCALE = 3;
+	/** Changes the groups' transparency; the skinner does not apply it. */
+	public static final int TYPE_ALPHA = 5;
+
+	/** A scale transform is in 128ths, so this is unscaled - and what an unset scale axis reads as. */
+	public static final int SCALE_UNIT = 128;
+
 	@Getter
 	private final int id;
 	private final int[] types;
@@ -52,7 +63,7 @@ public final class Rig
 	}
 
 	/**
-	 * Transform type per entry: 0 pivot, 1 translate, 2 rotate, 3 scale, 5 alpha.
+	 * Transform type per entry: one of the {@code TYPE_} constants.
 	 */
 	public int getType(int transform)
 	{

@@ -24,8 +24,8 @@
  */
 package com.customnpcmodels.authoring;
 
-import com.customnpcmodels.inject.Lighter;
 import com.customnpcmodels.inject.Mesh;
+import com.customnpcmodels.inject.NpcAppearance;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -60,13 +60,15 @@ import javax.swing.JComponent;
  */
 abstract class ModelViewport extends JComponent
 {
-	// The NPC lighting ModelCache uses: light(64 + ambient, 850 + contrast * 5, -30, -50, -30)
-	private static final int NPC_AMBIENT = 64;
-	private static final int NPC_CONTRAST = 850;
-	private static final int NPC_CONTRAST_STEP = 5;
-	private static final int NPC_LIGHT_X = -30;
-	private static final int NPC_LIGHT_Y = -50;
-	private static final int NPC_LIGHT_Z = -30;
+	/** The size a view asks for, and so the size its window opens at. */
+	static final int PREFERRED_WIDTH = 900;
+	static final int PREFERRED_HEIGHT = 720;
+
+	/** Radians the view turns per pixel dragged. */
+	private static final double ORBIT_PER_PIXEL = 0.01;
+
+	/** How far one notch of the mouse wheel zooms. */
+	private static final double ZOOM_PER_NOTCH = 1.1;
 
 	/** Lighter's faceColors3 sentinels. */
 	private static final int FLAT_SHADED = -1;
@@ -129,7 +131,7 @@ abstract class ModelViewport extends JComponent
 		lit1 = new int[faces];
 		lit2 = new int[faces];
 		lit3 = new int[faces];
-		setPreferredSize(new Dimension(900, 720));
+		setPreferredSize(new Dimension(PREFERRED_WIDTH, PREFERRED_HEIGHT));
 	}
 
 	/** A face's unlit packed HSL color. */
@@ -144,13 +146,7 @@ abstract class ModelViewport extends JComponent
 		{
 			colors[face] = faceColor(face);
 		}
-		Lighter.light(
-			mesh.getVerticesCount(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
-			faces, mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(),
-			colors, mesh.getFaceRenderTypes(), null,
-			NPC_AMBIENT + ambient, NPC_CONTRAST + contrast * NPC_CONTRAST_STEP,
-			NPC_LIGHT_X, NPC_LIGHT_Y, NPC_LIGHT_Z,
-			lit1, lit2, lit3);
+		NpcAppearance.light(mesh, colors, ambient, contrast, lit1, lit2, lit3);
 		repaint();
 	}
 
@@ -245,6 +241,28 @@ abstract class ModelViewport extends JComponent
 		yaw += dYaw;
 		pitch = Math.max(-1.5, Math.min(1.5, pitch + dPitch));
 		repaint();
+	}
+
+	/**
+	 * Moves the camera for a mouse drag of {@code dx}, {@code dy} pixels: pans when {@code pan}, as
+	 * Shift does in Blender, and orbits otherwise.
+	 */
+	void drag(int dx, int dy, boolean pan)
+	{
+		if (pan)
+		{
+			pan(dx, dy);
+		}
+		else
+		{
+			orbit(dx * ORBIT_PER_PIXEL, dy * ORBIT_PER_PIXEL);
+		}
+	}
+
+	/** Zooms for a turn of the mouse wheel, in notches; positive zooms out. */
+	void wheel(double notches)
+	{
+		zoom(Math.pow(ZOOM_PER_NOTCH, notches));
 	}
 
 	void zoom(double factor)

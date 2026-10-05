@@ -24,12 +24,11 @@
  */
 package com.customnpcmodels.compatibility;
 
+import com.customnpcmodels.CustomDrawCallbacks;
+import com.customnpcmodels.ModelCache;
 import java.awt.Color;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-
-import com.customnpcmodels.CustomDrawCallbacks;
-import com.customnpcmodels.ModelCache;
 import net.runelite.api.Client;
 import net.runelite.api.Model;
 import net.runelite.api.NPC;
@@ -109,7 +108,7 @@ public class CustomNpcOutliner
 			- npc.getAnimationHeightOffset());
 		carrier.setOrientation(npc.getCurrentOrientation());
 
-		// Projects and rasterize the model before returning, which is what makes handing it the
+		// Projects and rasterizes the model before returning, which is what makes handing it the
 		// shared transform buffer from pose() safe
 		modelOutlineRenderer.drawOutline(carrier, outlineWidth, color, feather);
 		return true;

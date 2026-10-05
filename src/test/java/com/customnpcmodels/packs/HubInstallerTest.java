@@ -64,7 +64,7 @@ public class HubInstallerTest
 	public void testAnInstalledPackLoadsWithItsCommit() throws IOException
 	{
 		Filepath hub = hub();
-		byte[] bundle = HubClientTest.bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		HubEntry entry = HubClientTest.entry("goblins", bundle);
 
 		HubInstaller.install(hub, entry, bundle, new byte[]{1}, GSON);
@@ -85,7 +85,7 @@ public class HubInstallerTest
 	public void testAnUpdateReplacesTheInstalledCopy() throws IOException
 	{
 		Filepath hub = hub();
-		byte[] bundle = HubClientTest.bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		HubInstaller.install(hub, HubClientTest.entry("goblins", bundle), bundle, null, GSON);
 		HubEntry newer = HubClient.parseManifest(GSON, "[" + HubClientTest.entryJson("goblins", bundle)
 			.replace("0123456789abcdef0123456789abcdef01234567", "fedcba9876543210fedcba9876543210fedcba98") + "]").get(0);
@@ -102,7 +102,7 @@ public class HubInstallerTest
 	public void testARemovedPackIsGone() throws IOException
 	{
 		Filepath hub = hub();
-		byte[] bundle = HubClientTest.bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		HubInstaller.install(hub, HubClientTest.entry("goblins", bundle), bundle, null, GSON);
 
 		HubInstaller.remove(hub, "goblins");
@@ -116,7 +116,7 @@ public class HubInstallerTest
 	public void testLeftoversOfAnInterruptedInstallAreCleared() throws IOException
 	{
 		Filepath hub = hub();
-		byte[] bundle = HubClientTest.bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		HubInstaller.install(hub, HubClientTest.entry("goblins", bundle), bundle, null, GSON);
 		Path root = folder.getRoot().toPath().resolve("hub");
 		Files.createDirectories(root.resolve("dl-12345"));
@@ -138,7 +138,7 @@ public class HubInstallerTest
 	public void testTheOnlyCopyLeftByAnInterruptedUpdateIsRestored() throws IOException
 	{
 		Filepath hub = hub();
-		byte[] bundle = HubClientTest.bundleBytes();
+		byte[] bundle = TestPacks.bundleBytes();
 		HubInstaller.install(hub, HubClientTest.entry("goblins", bundle), bundle, null, GSON);
 		Path root = folder.getRoot().toPath().resolve("hub");
 		Files.move(root.resolve("goblins"), root.resolve("goblins.old"));

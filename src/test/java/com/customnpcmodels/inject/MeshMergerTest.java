@@ -24,15 +24,13 @@
  */
 package com.customnpcmodels.inject;
 
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import java.util.Arrays;
 import java.util.Collections;
 import org.junit.Test;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
 
 /**
  * Covers the merge that lets the bundle store one part per model id.
@@ -46,14 +44,18 @@ public class MeshMergerTest
 	/** Two vertices, one face, one vertex group, no optional arrays. */
 	private static Mesh part(int id, int priority, float x, int group)
 	{
-		return new Mesh(id, priority,
-			new float[]{x, x + 1f},
-			new float[]{0f, 1f},
-			new float[]{0f, 2f},
-			new int[]{0}, new int[]{1}, new int[]{0},
-			new short[]{(short) id}, null, null, null, null,
-			null, null, null, null,
-			group < 0 ? null : groups(group));
+		return new TestMesh()
+			.id(id)
+			.priority(priority)
+			.vx(new float[]{x, x + 1f})
+			.vy(new float[]{0f, 1f})
+			.vz(new float[]{0f, 2f})
+			.i1(new int[]{0})
+			.i2(new int[]{1})
+			.i3(new int[]{0})
+			.colors(new short[]{(short) id})
+			.groups(group < 0 ? null : groups(group))
+			.build();
 	}
 
 	private static int[][] groups(int group)
@@ -133,12 +135,18 @@ public class MeshMergerTest
 	@Test
 	public void testAPartWithoutPrioritiesIsFilledWithItsModelPriority()
 	{
-		Mesh withPriorities = new Mesh(2870, 0,
-			new float[]{0f, 1f}, new float[]{0f, 0f}, new float[]{0f, 0f},
-			new int[]{0}, new int[]{1}, new int[]{0},
-			new short[]{0}, null, null, new byte[]{7}, null,
-			null, null, null, null,
-			groups(0));
+		Mesh withPriorities = new TestMesh()
+			.id(2870)
+			.vx(new float[]{0f, 1f})
+			.vy(new float[]{0f, 0f})
+			.vz(new float[]{0f, 0f})
+			.i1(new int[]{0})
+			.i2(new int[]{1})
+			.i3(new int[]{0})
+			.colors(new short[]{0})
+			.priorities(new byte[]{7})
+			.groups(groups(0))
+			.build();
 
 		// This part carries no per-face array, so the merge has to fall back to its model-level
 		// priority - which is what the client's own mergeModels does. Filling zero here would
@@ -216,8 +224,17 @@ public class MeshMergerTest
 			groups[g] = new int[0];
 		}
 		groups[group] = new int[]{0, 1, 2};
-		return new Mesh(id, 0, x, y, z, new int[]{0}, new int[]{1}, new int[]{2},
-			new short[]{(short) id}, null, null, null, null, null, null, null, null, groups);
+		return new TestMesh()
+			.id(id)
+			.vx(x)
+			.vy(y)
+			.vz(z)
+			.i1(new int[]{0})
+			.i2(new int[]{1})
+			.i3(new int[]{2})
+			.colors(new short[]{(short) id})
+			.groups(groups)
+			.build();
 	}
 
 	/**
@@ -246,11 +263,17 @@ public class MeshMergerTest
 	@Test
 	public void testDuplicatesWithinAPartWeldAndUnusedVerticesAreDropped()
 	{
-		Mesh a = new Mesh(1, 0,
-			new float[]{0, 10, 0, 0, 99}, new float[]{0, 0, -10, 0, 99}, new float[]{0, 0, 0, 0, 99},
-			new int[]{0}, new int[]{1}, new int[]{3},
-			new short[]{1}, null, null, null, null, null, null, null, null,
-			new int[][]{{0, 1, 2, 3, 4}});
+		Mesh a = new TestMesh()
+			.id(1)
+			.vx(new float[]{0, 10, 0, 0, 99})
+			.vy(new float[]{0, 0, -10, 0, 99})
+			.vz(new float[]{0, 0, 0, 0, 99})
+			.i1(new int[]{0})
+			.i2(new int[]{1})
+			.i3(new int[]{3})
+			.colors(new short[]{1})
+			.groups(new int[][]{{0, 1, 2, 3, 4}})
+			.build();
 		Mesh b = part(2, 0, 50f, 0);
 
 		Mesh merged = MeshMerger.merge(1, Arrays.asList(a, b));

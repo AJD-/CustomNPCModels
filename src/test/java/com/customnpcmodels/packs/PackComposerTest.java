@@ -30,6 +30,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.NpcBinding;
+import com.customnpcmodels.inject.TestBinding;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -44,8 +45,7 @@ public class PackComposerTest
 	/** A bundle binding one model, on mesh {@code meshId}, to {@code npcIds}. The composer reads no geometry. */
 	private static AssetBundle bundle(int meshId, int... npcIds)
 	{
-		NpcBinding binding = new NpcBinding("model " + meshId, npcIds, new int[]{meshId}, NpcBinding.STATIC,
-			128, 128, null, null, 0, 0);
+		NpcBinding binding = TestBinding.of("model " + meshId, npcIds, new int[]{meshId}).build();
 		return new AssetBundle(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyList(),
 			Collections.singletonList(binding));
 	}

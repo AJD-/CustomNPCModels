@@ -50,7 +50,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
-
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.definitions.SequenceDefinition;
 import net.runelite.cache.fs.Store;
@@ -99,8 +98,8 @@ public class AssetGenerator
 		String packOut = System.getProperty(PACK_OUT_PROPERTY);
 
 		Manifest manifest = Manifest.read(assetsDir);
-        log.info("Manifest {}: {} model(s)",
-				assetsDir.resolve(Manifest.FILE_NAME).toAbsolutePath(), manifest.models.size());
+		log.info("Manifest {}: {} model(s)",
+			assetsDir.resolve(Manifest.FILE_NAME).toAbsolutePath(), manifest.models.size());
 
 		// Before the cache is opened, so a manifest that can never build says so without needing one
 		List<String> problems = checkManifest(manifest, assetsDir);
@@ -113,22 +112,27 @@ public class AssetGenerator
 		boolean needsCache = manifest.models.stream().anyMatch(m -> m.animations != null && !m.animations.isEmpty());
 		Store store = needsCache ? CacheFiles.openLiveCache() : null;
 
-        try (store) {
-            if (needsCache && store == null) {
-                System.err.println("Animated models are sampled against live sequences, but there is no live cache; "
-                        + "pass one with -PcacheDir=<path>");
-                System.exit(1);
-                return;
-            }
-            AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId));
-            if (packOut != null) {
-                Path dir = packOut.isEmpty() ? PACKS.resolve(manifest.pack.id) : Paths.get(packOut);
-                write(bundle, dir.resolve(DirectoryPackSource.BUNDLE_FILE));
-                writePackInfo(manifest.pack, bundle, dir.resolve(DirectoryPackSource.INFO_FILE));
-            } else {
-                write(bundle, dev ? DEV : SHIPPED);
-            }
-        }
+		try (store)
+		{
+			if (needsCache && store == null)
+			{
+				System.err.println("Animated models are sampled against live sequences, but there is no live cache; "
+					+ "pass one with -PcacheDir=<path>");
+				System.exit(1);
+				return;
+			}
+			AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId));
+			if (packOut != null)
+			{
+				Path dir = packOut.isEmpty() ? PACKS.resolve(manifest.pack.id) : Paths.get(packOut);
+				write(bundle, dir.resolve(DirectoryPackSource.BUNDLE_FILE));
+				writePackInfo(manifest.pack, bundle, dir.resolve(DirectoryPackSource.INFO_FILE));
+			}
+			else
+			{
+				write(bundle, dev ? DEV : SHIPPED);
+			}
+		}
 	}
 
 	static SequenceTiming timing(Store store, int sequenceId) throws IOException
@@ -201,14 +205,19 @@ public class AssetGenerator
 			{
 				System.out.println("  " + line);
 			}
-            log.info("  mesh {}  verts={} faces={} rigged={}",
-					model.meshId, result.mesh.getVerticesCount(), result.mesh.getFaceCount(), result.mesh.isRigged());
+			log.info("  mesh {}  verts={} faces={} rigged={}",
+				model.meshId, result.mesh.getVerticesCount(), result.mesh.getFaceCount(), result.mesh.isRigged());
 
 			if (meshes.putIfAbsent(model.meshId, result.mesh) != null)
 			{
 				problems.add(name + " reuses mesh id " + model.meshId);
 			}
-			if (result.rig != null && rigs.putIfAbsent(model.rigId, result.rig) != null)
+			if (result.rig != null && model.rigId < GltfExporter.ID_BASE)
+			{
+				problems.add(name + " is rigged but has no rig id; set \"rigId\" to one at or above "
+					+ GltfExporter.ID_BASE);
+			}
+			else if (result.rig != null && rigs.putIfAbsent(model.rigId, result.rig) != null)
 			{
 				problems.add(name + " reuses rig id " + model.rigId);
 			}
@@ -287,6 +296,12 @@ public class AssetGenerator
 				problems.add(name + " has mesh id " + model.meshId + "; synthetic ids start at " + GltfExporter.ID_BASE
 					+ ", so set \"meshId\" to one at or above it");
 			}
+			// A static model may leave its rig id out, but one that is set has to be synthetic too
+			if (model.rigId != 0 && model.rigId < GltfExporter.ID_BASE)
+			{
+				problems.add(name + " has rig id " + model.rigId + "; synthetic ids start at " + GltfExporter.ID_BASE
+					+ ", so set \"rigId\" to one at or above it");
+			}
 
 			if (model.glb == null)
 			{
@@ -319,7 +334,7 @@ public class AssetGenerator
 				problems.add("The pack id '" + manifest.pack.id + "' may only use lowercase letters, digits and "
 					+ "hyphens, up to 64 of them");
 			}
-			if (manifest.pack.name == null || manifest.pack.name.trim().isEmpty())
+			if (manifest.pack.name == null || manifest.pack.name.isBlank())
 			{
 				problems.add("The pack has no \"name\"");
 			}
@@ -369,13 +384,13 @@ public class AssetGenerator
 		AssetCodec.read(new ByteArrayInputStream(bytes.toByteArray()));
 		if (bytes.size() > AssetCodec.MAX_FILE_BYTES)
 		{
-			throw new IllegalStateException("Not writing the bundle; it is " + bytes.size() / (1024 * 1024)
-				+ " MiB, and the plugin refuses a pack past " + AssetCodec.MAX_FILE_BYTES / (1024 * 1024) + " MiB");
+			throw new IllegalStateException("Not writing the bundle; it is " + AssetCodec.mebibytes(bytes.size())
+				+ ", and the plugin refuses a pack past " + AssetCodec.mebibytes(AssetCodec.MAX_FILE_BYTES));
 		}
 
 		Files.createDirectories(output.getParent());
 		Files.write(output, bytes.toByteArray());
 		System.out.println();
-        log.info("Wrote {}  ({} KB, {})", output.toAbsolutePath(), Files.size(output) / 1024, bundle);
+		log.info("Wrote {}  ({} KB, {})", output.toAbsolutePath(), Files.size(output) / 1024, bundle);
 	}
 }

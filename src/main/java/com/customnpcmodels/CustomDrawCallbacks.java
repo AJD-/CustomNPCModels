@@ -26,7 +26,6 @@ package com.customnpcmodels;
 
 import java.util.Set;
 import java.util.function.Supplier;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
 import net.runelite.api.Model;
@@ -75,17 +74,22 @@ public class CustomDrawCallbacks implements DrawCallbacks, Supplier<DrawCallback
 {
 	/**
 	 * Supplies replacement geometry for an NPC, or {@code null} to leave it alone.
+	 * <p>
+	 * Runs per NPC per frame, so it should be a lookup and a skin only: eligibility is decided and
+	 * the geometry built ahead of time, by the plugin and {@link ModelCache}.
 	 */
 	@FunctionalInterface
 	public interface ModelSubstitutor
 	{
-		Model substitute(NPC npc, Model vanilla);
+		Model substitute(NPC npc);
 	}
 
-	@Getter
 	private final DrawCallbacks delegate;
 
 	private final ModelSubstitutor substitutor;
+
+	/** Whether a substitution failure has been logged yet, while this decorator is attached. */
+	private volatile boolean failureReported;
 
 	public CustomDrawCallbacks(DrawCallbacks delegate, ModelSubstitutor substitutor)
 	{
@@ -104,12 +108,19 @@ public class CustomDrawCallbacks implements DrawCallbacks, Supplier<DrawCallback
 			// Never allow a substitution failure to take the renderer down with it
 			try
 			{
-				substitute = substitutor.substitute((NPC) renderable, m);
+				substitute = substitutor.substitute((NPC) renderable);
 			}
 			catch (Exception ex)
 			{
 				substitute = null;
-				log.debug("Custom model substitution failed, drawing the vanilla model", ex);
+				// This runs for every NPC every frame, so a failure that keeps happening is only logged
+				// once instead of thousands of times a minute
+				if (!failureReported)
+				{
+					failureReported = true;
+					log.warn("Custom model substitution failed for NPC {}, drawing the vanilla model. "
+						+ "Later failures are not logged.", ((NPC) renderable).getId(), ex);
+				}
 			}
 		}
 

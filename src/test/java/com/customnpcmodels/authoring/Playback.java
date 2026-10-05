@@ -38,30 +38,13 @@ final class Playback
 	{
 	}
 
-	/** How long one pass of the sequence takes, in client cycles. */
-	static long cycles(SequenceTiming timing)
-	{
-		return startCycle(timing, timing.frameCount());
-	}
-
-	/** The cycle frame {@code frame} starts on, counted from the start of the sequence. */
-	static long startCycle(SequenceTiming timing, int frame)
-	{
-		long cycles = 0;
-		for (int i = 0; i < frame; i++)
-		{
-			cycles += Math.max(timing.frameLengths[i], 1);
-		}
-		return cycles;
-	}
-
 	/**
 	 * @param elapsedCycles client cycles since the sequence started, 0 or more
 	 * @param loop          wrap back to frame 0 after the last frame, rather than hold it
 	 */
 	static int frameAt(SequenceTiming timing, long elapsedCycles, boolean loop)
 	{
-		long total = cycles(timing);
+		long total = timing.cycles();
 		long cycle = loop ? elapsedCycles % total : Math.min(elapsedCycles, total - 1);
 		for (int frame = 0; frame < timing.frameCount(); frame++)
 		{

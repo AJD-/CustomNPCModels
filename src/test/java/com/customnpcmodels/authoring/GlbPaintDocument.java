@@ -556,19 +556,12 @@ final class GlbPaintDocument
 
 	private static double[] linear(short hsl)
 	{
-		int rgb = RsColor.hslToRgb(hsl & 0xFFFF);
-		return new double[]{RsColor.srgbToLinear(rgb >> 16 & 255), RsColor.srgbToLinear(rgb >> 8 & 255),
-			RsColor.srgbToLinear(rgb & 255)};
+		return RsColor.hslToLinear(hsl & 0xFFFF);
 	}
 
 	private static byte[] floats(double[] values)
 	{
-		ByteBuffer buffer = ByteBuffer.allocate(values.length * 4).order(ByteOrder.LITTLE_ENDIAN);
-		for (double value : values)
-		{
-			buffer.putFloat((float) value);
-		}
-		return buffer.array();
+		return Glb.floatBytes(values);
 	}
 
 	private static JsonObject floatAccessor(int count, String type)
@@ -632,10 +625,7 @@ final class GlbPaintDocument
 			int length = view.get("byteLength").getAsInt();
 
 			// Same position modulo 4 as before, which keeps every accessor inside it aligned
-			while (bin.size() % 4 != offset % 4)
-			{
-				bin.write(0);
-			}
+			Glb.align(bin, offset % 4);
 			view.addProperty("byteOffset", bin.size());
 			bin.write(source, offset, length);
 			viewMap.put(v, views.size());
@@ -644,10 +634,7 @@ final class GlbPaintDocument
 
 		for (Map.Entry<Integer, byte[]> entry : newData.entrySet())
 		{
-			while (bin.size() % 4 != 0)
-			{
-				bin.write(0);
-			}
+			Glb.align(bin, 0);
 			JsonObject view = new JsonObject();
 			view.addProperty("buffer", 0);
 			view.addProperty("byteOffset", bin.size());
@@ -658,10 +645,7 @@ final class GlbPaintDocument
 			accessors.get(entry.getKey()).getAsJsonObject().addProperty("bufferView", views.size());
 			views.add(view);
 		}
-		while (bin.size() % 4 != 0)
-		{
-			bin.write(0);
-		}
+		Glb.align(bin, 0);
 
 		for (int a = 0; a < accessors.size(); a++)
 		{

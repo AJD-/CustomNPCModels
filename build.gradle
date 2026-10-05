@@ -25,17 +25,17 @@ def pluginMainClass = 'com.customnpcmodels.CustomNpcModelsPluginTest'
 dependencies {
 	compileOnly "net.runelite:client:$runeLiteVersion"
 
-    compileOnly 'org.projectlombok:lombok:1.18.30'
+	compileOnly 'org.projectlombok:lombok:1.18.30'
 	annotationProcessor 'org.projectlombok:lombok:1.18.30'
 	testCompileOnly 'org.projectlombok:lombok:1.18.30'
 	testAnnotationProcessor 'org.projectlombok:lombok:1.18.30'
 
 	testImplementation 'junit:junit:4.12'
-	// Test-only. RendererHostTest needs stand-in renderers, which only a mock can supply
+	// Test-only. Stand-in renderers and client objects, which only a mock can supply
 	testImplementation 'org.mockito:mockito-core:4.11.0'
 	testImplementation "net.runelite:client:$runeLiteVersion"
-    testImplementation "net.runelite:jshell:$runeLiteVersion"
-    // Dev tooling only - decodes the live OSRS cache for the glTF exporter and for the sequence
+	testImplementation "net.runelite:jshell:$runeLiteVersion"
+	// Dev tooling only - decodes the live OSRS cache for the glTF exporter and for the sequence
 	// metadata the generator samples clips against. Not in the Hub jar, which is built from the
 	// main sourceSet and does not reference it.
 	testImplementation("net.runelite:cache:$runeLiteVersion") {
@@ -71,20 +71,34 @@ tasks.register('run', JavaExec) {
 	}
 }
 
+// The authoring tools. Each runs a main class from the test source set in the project folder,
+// passing the -P options it names on as customnpcmodels.* system properties; ./gradlew tasks
+// --group authoring lists them.
+def authoringTool = { String name, String mainClassName, String text, List<String> options ->
+	tasks.register(name, JavaExec) {
+		group = 'authoring'
+		description = text
+		classpath = sourceSets.test.runtimeClasspath
+		mainClass = mainClassName
+		workingDir = rootDir
+
+		options.each { option ->
+			if (project.hasProperty(option)) {
+				systemProperty "customnpcmodels.$option", project.property(option)
+			}
+		}
+	}
+}
+
 // Prints NPC definitions from the live OSRS cache - model ids, recolors, scale and the sequences
 // an authored model has to be keyed to, eg:
 //   ./gradlew dumpNpcDefinitions -Pnpc=5779
 //   ./gradlew dumpNpcDefinitions -Pnpc="giant mole" -PcacheDir=/path/to/LIVE
-tasks.register('dumpNpcDefinitions', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.cache.ModernNpcDumper'
-	workingDir = rootDir
-
+authoringTool('dumpNpcDefinitions', 'com.customnpcmodels.cache.ModernNpcDumper',
+	'Prints NPC definitions from the live cache.', ['cacheDir']).configure {
+	// The NPCs are arguments rather than a property, as several can be given
 	if (project.hasProperty('npc')) {
 		args project.property('npc').toString().split(',')
-	}
-	if (project.hasProperty('cacheDir')) {
-		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
 	}
 	if (project.hasProperty('max')) {
 		systemProperty 'customnpcmodels.maxMatches', project.property('max')
@@ -96,60 +110,21 @@ tasks.register('dumpNpcDefinitions', JavaExec) {
 // sequence on the NPC's rig (only the definition's own on a widely shared rig such as the humanoid's), eg:
 //   ./gradlew exportGltf -Pnpc=5779
 //   ./gradlew exportGltf -Pnpc=5779 -Pseqs=3309,3313 -Pout=assets-dev
-tasks.register('exportGltf', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.authoring.GltfExporter'
-	workingDir = rootDir
-
-	if (project.hasProperty('npc')) {
-		systemProperty 'customnpcmodels.npc', project.property('npc')
-	}
-	if (project.hasProperty('seqs')) {
-		systemProperty 'customnpcmodels.seqs', project.property('seqs')
-	}
-	if (project.hasProperty('out')) {
-		systemProperty 'customnpcmodels.out', project.property('out')
-	}
-	if (project.hasProperty('cacheDir')) {
-		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
-	}
-}
+authoringTool('exportGltf', 'com.customnpcmodels.authoring.GltfExporter',
+	'Exports an NPC from the live cache as a .glb and a manifest stub.', ['npc', 'seqs', 'out', 'cacheDir'])
 
 // Reports how far a .glb - typically one re-exported from Blender - has moved from the NPC it came
 // from: converter warnings, moved vertex groups, recolored faces and per-sequence pose error, eg:
 //   ./gradlew compareGltf -Pnpc=5779 -Pglb=assets-dev/giant-mole.glb
 //   ./gradlew compareGltf -Pnpc=5779 -Pglb=assets-dev/giant-mole.glb -Pseqs=3309,3313
-tasks.register('compareGltf', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.authoring.GltfComparer'
-	workingDir = rootDir
-
-	if (project.hasProperty('npc')) {
-		systemProperty 'customnpcmodels.npc', project.property('npc')
-	}
-	if (project.hasProperty('glb')) {
-		systemProperty 'customnpcmodels.glb', project.property('glb')
-	}
-	if (project.hasProperty('seqs')) {
-		systemProperty 'customnpcmodels.seqs', project.property('seqs')
-	}
-	if (project.hasProperty('cacheDir')) {
-		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
-	}
-}
+authoringTool('compareGltf', 'com.customnpcmodels.authoring.GltfComparer',
+	'Reports how far a .glb has moved from the NPC it was exported from.', ['npc', 'glb', 'seqs', 'cacheDir'])
 
 // Opens a .glb in a window for painting face colors, then saves it back in place - keeping the
 // original as <file>.bak - with nothing but the colors changed. Without -Pglb it asks for a file, eg:
 //   ./gradlew paintGltf -Pglb=assets-dev/giant-mole.glb
-tasks.register('paintGltf', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.authoring.GltfPainter'
-	workingDir = rootDir
-
-	if (project.hasProperty('glb')) {
-		systemProperty 'customnpcmodels.glb', project.property('glb')
-	}
-}
+authoringTool('paintGltf', 'com.customnpcmodels.authoring.GltfPainter',
+	'Opens a .glb for painting face colors.', ['glb'])
 
 // Plays a .glb's animations as the game will draw them: each sampled at its live sequence's frames
 // and posed by the plugin's skinner, lit at rest and scaled and recolored as models.json says. Reads
@@ -158,41 +133,15 @@ tasks.register('paintGltf', JavaExec) {
 // more files, eg:
 //   ./gradlew viewAnimations -Pglb=assets-dev/giant-mole.glb
 //   ./gradlew viewAnimations -Pglb=assets-dev
-tasks.register('viewAnimations', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.authoring.GltfAnimationViewer'
-	workingDir = rootDir
-
-	if (project.hasProperty('glb')) {
-		systemProperty 'customnpcmodels.glb', project.property('glb')
-	}
-	if (project.hasProperty('cacheDir')) {
-		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
-	}
-}
+authoringTool('viewAnimations', 'com.customnpcmodels.authoring.GltfAnimationViewer',
+	"Plays a .glb's animations as the game will draw them.", ['glb', 'cacheDir'])
 
 // Puts a .glb's animations on another NPC's sequences: each output animation copies the source
 // the mapping names, renamed after its target sequence and spread over that sequence's live length
 // (looped first when the mapping says so). Reads sequence timings from the live cache, eg:
 //   ./gradlew retargetGltf -Pglb=crab.glb -Pmap=spider-map.json -Pout=crab-as-spider.glb
-tasks.register('retargetGltf', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.authoring.GltfRetargeter'
-	workingDir = rootDir
-
-	if (project.hasProperty('glb')) {
-		systemProperty 'customnpcmodels.glb', project.property('glb')
-	}
-	if (project.hasProperty('map')) {
-		systemProperty 'customnpcmodels.map', project.property('map')
-	}
-	if (project.hasProperty('out')) {
-		systemProperty 'customnpcmodels.out', project.property('out')
-	}
-	if (project.hasProperty('cacheDir')) {
-		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
-	}
-}
+authoringTool('retargetGltf', 'com.customnpcmodels.authoring.GltfRetargeter',
+	"Puts a .glb's animations on another NPC's sequences.", ['glb', 'map', 'out', 'cacheDir'])
 
 // Builds the asset bundle from the authoring manifest (models.json) and the .glb files beside it.
 // Reads no geometry from any cache - only the live sequences' frame counts and lengths, which the
@@ -202,45 +151,24 @@ tasks.register('retargetGltf', JavaExec) {
 //   ./gradlew generateAssets
 //   ./gradlew generateAssets -PassetsDir=assets-dev -Pdev
 //   ./gradlew generateAssets -PassetsDir=my-pack -PpackOut
-tasks.register('generateAssets', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.authoring.AssetGenerator'
-	workingDir = rootDir
-
-	if (project.hasProperty('assetsDir')) {
-		systemProperty 'customnpcmodels.assetsDir', project.property('assetsDir')
-	}
+authoringTool('generateAssets', 'com.customnpcmodels.authoring.AssetGenerator',
+	'Builds the asset bundle, or a pack, from models.json.', ['assetsDir', 'packOut', 'cacheDir']).configure {
+	// A switch: -Pdev carries no value
 	if (project.hasProperty('dev')) {
 		systemProperty 'customnpcmodels.dev', 'true'
 	}
-	if (project.hasProperty('packOut')) {
-		systemProperty 'customnpcmodels.packOut', project.property('packOut')
-	}
-	if (project.hasProperty('cacheDir')) {
-		systemProperty 'customnpcmodels.cacheDir', project.property('cacheDir')
-	}
 }
 
-// Writes build/fixtures/blacklisted-pack: the dev bundle's models, also bound to TzKal-Zuk, for
+// Writes build/fixtures/blacklisted-pack: the dev bundle's first model, also bound to TzKal-Zuk, for
 // checking in game that the plugin refuses a blacklisted NPC - which generateAssets never builds
-tasks.register('writeBlacklistFixture', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.packs.BlacklistFixture'
-	workingDir = rootDir
-}
+authoringTool('writeBlacklistFixture', 'com.customnpcmodels.packs.BlacklistFixture',
+	'Writes a pack bound to a blacklisted NPC, for checking the plugin refuses it.', [])
 
 // Serves a test Custom Model Hub on localhost:8765, built from the dev bundle, for trying the hub
 // client in game before the real hub exists; pair with ./gradlew run -PhubUrl=http://localhost:8765/.
 // -Prevision=2 gives its pack a new commit, so an installed copy shows an update.
-tasks.register('serveHubFixture', JavaExec) {
-	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.customnpcmodels.packs.HubFixture'
-	workingDir = rootDir
-
-	if (project.hasProperty('revision')) {
-		systemProperty 'customnpcmodels.revision', project.property('revision')
-	}
-}
+authoringTool('serveHubFixture', 'com.customnpcmodels.packs.HubFixture',
+	'Serves a test Custom Model Hub on localhost:8765.', ['revision'])
 
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath

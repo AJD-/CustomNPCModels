@@ -89,6 +89,10 @@ final class GltfToMeshConverter
 		Mesh mesh;
 		Rig rig;
 		final List<Clip> clips = new ArrayList<>();
+		/** The same clips, by the animation each was made from, in the map's order. */
+		final Map<String, Clip> clipsByAnimation = new LinkedHashMap<>();
+		/** Animations in the file that the map leaves out, so were not converted; each is in the report too. */
+		final List<String> unmapped = new ArrayList<>();
 		final List<String> report = new ArrayList<>();
 		/** Whether vertices were welded by {@code _RS_VERTEX}, so they keep the exported mesh's numbering. */
 		boolean keptVertexNumbering;
@@ -662,8 +666,8 @@ final class GltfToMeshConverter
 		{
 			double[] p = geometry.positions.get(split);
 			List<Object> key = Arrays.asList(p[0], p[1], p[2], geometry.groups.get(split));
-            Integer vertex = keys.computeIfAbsent(key, k -> keys.size());
-            welded[split] = vertex;
+			Integer vertex = keys.computeIfAbsent(key, k -> keys.size());
+			welded[split] = vertex;
 		}
 		return welded;
 	}
@@ -678,10 +682,10 @@ final class GltfToMeshConverter
 			double[] rgba = geometry.colors.get(corner);
 			if (hintHolds && rgba != null)
 			{
-				int rgb = RsColor.hslToRgb(hint);
-				hintHolds = Math.abs(rgba[0] - RsColor.srgbToLinear(rgb >> 16 & 255)) <= COLOR_TOLERANCE
-					&& Math.abs(rgba[1] - RsColor.srgbToLinear(rgb >> 8 & 255)) <= COLOR_TOLERANCE
-					&& Math.abs(rgba[2] - RsColor.srgbToLinear(rgb & 255)) <= COLOR_TOLERANCE;
+				double[] hinted = RsColor.hslToLinear(hint);
+				hintHolds = Math.abs(rgba[0] - hinted[0]) <= COLOR_TOLERANCE
+					&& Math.abs(rgba[1] - hinted[1]) <= COLOR_TOLERANCE
+					&& Math.abs(rgba[2] - hinted[2]) <= COLOR_TOLERANCE;
 			}
 		}
 		if (hintHolds)
@@ -830,13 +834,13 @@ final class GltfToMeshConverter
 			int[] subtreeGroups = subtree.stream().mapToInt(Integer::intValue).toArray();
 
 			int base = k * TRANSFORMS_PER_JOINT;
-			types[base] = 1;
+			types[base] = Rig.TYPE_TRANSLATE;
 			rigGroups[base] = subtreeGroups;
-			types[base + 1] = 0;
+			types[base + 1] = Rig.TYPE_PIVOT;
 			rigGroups[base + 1] = new int[]{groupOfSlot[slot]};
-			types[base + 2] = 2;
+			types[base + 2] = Rig.TYPE_ROTATE;
 			rigGroups[base + 2] = subtreeGroups.clone();
-			types[base + 3] = 3;
+			types[base + 3] = Rig.TYPE_SCALE;
 			rigGroups[base + 3] = subtreeGroups.clone();
 		}
 		result.rig = new Rig(rigId, types, rigGroups);
@@ -853,7 +857,8 @@ final class GltfToMeshConverter
 		{
 			if (!animations.containsKey(name))
 			{
-				result.report.add("Animation '" + name + "' is not mapped to a live sequence and was ignored");
+				result.unmapped.add(name);
+				result.report.add(unmappedMessage(name));
 			}
 		}
 
@@ -865,9 +870,17 @@ final class GltfToMeshConverter
 				throw new GltfException("The manifest maps animation '" + entry.getKey() + "', which the file does not have "
 					+ "(it has " + byName.keySet() + ")");
 			}
-			result.clips.add(buildClip(rigId, entry.getValue(), animation, skin, order, parentSlot, inverseBinds,
-				restJoints, centroids, types));
+			Clip clip = buildClip(rigId, entry.getValue(), animation, skin, order, parentSlot, inverseBinds,
+				restJoints, centroids, types);
+			result.clips.add(clip);
+			result.clipsByAnimation.put(entry.getKey(), clip);
 		}
+	}
+
+	/** The report's line for an animation the map leaves out. */
+	static String unmappedMessage(String animation)
+	{
+		return "Animation '" + animation + "' is not mapped to a live sequence and was ignored";
 	}
 
 	private static void addSubtree(List<Integer> order, int slot, int[] parentSlot)
@@ -1014,11 +1027,11 @@ final class GltfToMeshConverter
 				int ax = Mat4.quantizeAngle(euler[0]);
 				int ay = Mat4.quantizeAngle(euler[1]);
 				int az = Mat4.quantizeAngle(euler[2]);
-				int sx = rint(scale[0] * 128);
-				int sy = rint(scale[1] * 128);
-				int sz = rint(scale[2] * 128);
+				int sx = rint(scale[0] * Rig.SCALE_UNIT);
+				int sy = rint(scale[1] * Rig.SCALE_UNIT);
+				int sz = rint(scale[2] * Rig.SCALE_UNIT);
 				boolean rotates = ax != 0 || ay != 0 || az != 0;
-				boolean scales = sx != 128 || sy != 128 || sz != 128;
+				boolean scales = sx != Rig.SCALE_UNIT || sy != Rig.SCALE_UNIT || sz != Rig.SCALE_UNIT;
 
 				// The pivot the engine will compute is the centroid of the joint's own group plus the
 				// op's delta, so the delta is whatever closes the gap to the joint - or, for a joint
@@ -1036,7 +1049,7 @@ final class GltfToMeshConverter
 				// What the engine will actually do, rounding and quantisation included - the next joint
 				// down is solved against this, so errors never compound along a limb
 				double[] linear = Mat4.multiply(
-					Mat4.scale(sx / 128.0, sy / 128.0, sz / 128.0),
+					Mat4.scale(sx / (double) Rig.SCALE_UNIT, sy / (double) Rig.SCALE_UNIT, sz / (double) Rig.SCALE_UNIT),
 					Mat4.rsRotation(ax, ay, az));
 				realized[slot] = rotates || scales
 					? Mat4.multiply(
@@ -1050,7 +1063,7 @@ final class GltfToMeshConverter
 				masks[base] = mask(t[0], t[1], t[2], 0, values);
 				masks[base + 1] = rotates || scales ? mask(delta[0], delta[1], delta[2], 0, values) : 0;
 				masks[base + 2] = rotates ? mask(ax, ay, az, 0, values) : 0;
-				masks[base + 3] = scales ? mask(sx, sy, sz, 128, values) : 0;
+				masks[base + 3] = scales ? mask(sx, sy, sz, Rig.SCALE_UNIT, values) : 0;
 			}
 
 			int[][] ops = FrameOps.build(types, masks, values.stream().mapToInt(Integer::intValue).toArray());

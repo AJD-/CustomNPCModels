@@ -27,7 +27,9 @@ package com.customnpcmodels;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -37,6 +39,8 @@ import com.customnpcmodels.inject.Lighter;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcBinding;
 import com.customnpcmodels.inject.Rig;
+import com.customnpcmodels.inject.TestBinding;
+import com.customnpcmodels.inject.TestMesh;
 import com.customnpcmodels.packs.ModelCatalog;
 import com.customnpcmodels.packs.ResolvedModel;
 import com.customnpcmodels.packs.TestPacks;
@@ -69,17 +73,18 @@ public class ModelCacheTest
 	/** The same, with the body - group 0, which no clip moves - shifted along X by {@code shift}. */
 	private static Mesh mesh(float shift)
 	{
-		return new Mesh(1, 0,
-			new float[]{shift, 128 + shift, shift, shift, 200, 328, 200, 200},
-			new float[]{0, 0, -128, 0, 0, 0, -128, 0},
-			new float[]{0, 0, 0, 128, 0, 0, 0, 128},
-			new int[]{0, 0, 0, 1, 4, 4, 4, 5},
-			new int[]{2, 1, 3, 2, 6, 5, 7, 6},
-			new int[]{1, 3, 2, 3, 5, 7, 6, 7},
-			new short[]{(short) 0x3A40, (short) 0x3A40, (short) 0x1240, (short) 0x1240,
-				(short) 0x3A40, (short) 0x3A40, (short) 0x1240, (short) 0x1240},
-			null, null, null, null, null, null, null, null,
-			new int[][]{{0, 1, 2, 3}, {4, 5, 6, 7}});
+		return new TestMesh()
+			.id(1)
+			.vx(new float[]{shift, 128 + shift, shift, shift, 200, 328, 200, 200})
+			.vy(new float[]{0, 0, -128, 0, 0, 0, -128, 0})
+			.vz(new float[]{0, 0, 0, 128, 0, 0, 0, 128})
+			.i1(new int[]{0, 0, 0, 1, 4, 4, 4, 5})
+			.i2(new int[]{2, 1, 3, 2, 6, 5, 7, 6})
+			.i3(new int[]{1, 3, 2, 3, 5, 7, 6, 7})
+			.colors(new short[]{(short) 0x3A40, (short) 0x3A40, (short) 0x1240, (short) 0x1240,
+				(short) 0x3A40, (short) 0x3A40, (short) 0x1240, (short) 0x1240})
+			.groups(new int[][]{{0, 1, 2, 3}, {4, 5, 6, 7}})
+			.build();
 	}
 
 	/** Translate group 1 along X by a tile, then turn it a quarter about its own centroid. */
@@ -110,7 +115,7 @@ public class ModelCacheTest
 
 	private static NpcBinding binding(String name, int npcId)
 	{
-		return new NpcBinding(name, new int[]{npcId}, new int[]{1}, 7, 128, 128, null, null, 0, 0);
+		return TestBinding.of(name, new int[]{npcId}, new int[]{1}).rig(7).build();
 	}
 
 	private static NPC npc(int npcId)
@@ -140,8 +145,8 @@ public class ModelCacheTest
 	@Test
 	public void testTheResizeIsAppliedAfterThePose()
 	{
-		NpcBinding unscaled = new NpcBinding("unscaled", new int[]{NPC_ID}, new int[]{1}, 7, 128, 128, null, null, 0, 0);
-		NpcBinding scaled = new NpcBinding("scaled", new int[]{NPC_ID}, new int[]{1}, 7, 64, 96, null, null, 0, 0);
+		NpcBinding unscaled = TestBinding.of("unscaled", new int[]{NPC_ID}, new int[]{1}).rig(7).build();
+		NpcBinding scaled = TestBinding.of("scaled", new int[]{NPC_ID}, new int[]{1}).rig(7).scale(64, 96).build();
 
 		Model reference = pose(unscaled);
 		float[] rx = reference.getVerticesX().clone();
@@ -190,8 +195,8 @@ public class ModelCacheTest
 	public void testABindingKeepsItsAllowedNpcs()
 	{
 		ModelCache cache = new ModelCache();
-		cache.setCatalog(TestPacks.catalogOf(bundle(new NpcBinding("mixed", new int[]{NpcID.INFERNO_JAD, NPC_ID},
-			new int[]{1}, 7, 128, 128, null, null, 0, 0))));
+		NpcBinding mixed = TestBinding.of("mixed", new int[]{NpcID.INFERNO_JAD, NPC_ID}, new int[]{1}).rig(7).build();
+		cache.setCatalog(TestPacks.catalogOf(bundle(mixed)));
 
 		assertFalse(cache.ensureBuilt(NpcID.INFERNO_JAD));
 		assertTrue(cache.ensureBuilt(NPC_ID));
@@ -244,10 +249,10 @@ public class ModelCacheTest
 
 		cache.setCatalog(TestPacks.catalogOf(kept, bundle(binding("reread", NpcID.MOLE_BABY_01))));
 
-		assertTrue("an unchanged model is kept as built", keptModel == cache.pose(npc(NPC_ID)));
+		assertSame("an unchanged model is kept as built", keptModel, cache.pose(npc(NPC_ID)));
 		assertNull("a changed one waits to be built again", cache.pose(npc(NpcID.MOLE_BABY_01)));
 		assertTrue(cache.ensureBuilt(NpcID.MOLE_BABY_01));
-		assertFalse(rereadModel == cache.pose(npc(NpcID.MOLE_BABY_01)));
+		assertNotSame(rereadModel, cache.pose(npc(NpcID.MOLE_BABY_01)));
 	}
 
 	/**
@@ -258,7 +263,11 @@ public class ModelCacheTest
 	@Test
 	public void testLightingUsesTheNpcFormula()
 	{
-		NpcBinding binding = new NpcBinding("lit", new int[]{NPC_ID}, new int[]{1}, 7, 118, 118, null, null, 10, -3);
+		NpcBinding binding = TestBinding.of("lit", new int[]{NPC_ID}, new int[]{1})
+			.rig(7)
+			.scale(118, 118)
+			.lighting(10, -3)
+			.build();
 		Model model = pose(binding);
 
 		Mesh mesh = mesh();

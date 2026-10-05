@@ -29,7 +29,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.cache.NpcManager;
 import net.runelite.cache.definitions.ModelDefinition;
@@ -71,7 +70,7 @@ public class ModernNpcDumper
 			NpcManager npcManager = new NpcManager(store);
 			npcManager.load();
 
-            log.info("NPC definitions: {}", npcManager.getNpcs().size());
+			log.info("NPC definitions: {}", npcManager.getNpcs().size());
 			System.out.println();
 
 			if (args.length == 0)
@@ -125,7 +124,7 @@ public class ModernNpcDumper
 			NpcDefinition def = npcManager.get(Integer.parseInt(query));
 			if (def == null)
 			{
-                log.info("No NPC with id {}", query);
+				log.info("No NPC with id {}", query);
 				return;
 			}
 			matches.add(def);
@@ -143,7 +142,7 @@ public class ModernNpcDumper
 
 			if (matches.isEmpty())
 			{
-                log.info("No NPC name contains '{}'", query);
+				log.info("No NPC name contains '{}'", query);
 				return;
 			}
 		}
@@ -156,37 +155,37 @@ public class ModernNpcDumper
 
 		if (matches.size() > shown)
 		{
-            log.info("... and {} more matches for '{}'", matches.size() - shown, query);
+			log.info("... and {} more matches for '{}'", matches.size() - shown, query);
 		}
 	}
 
 	private static void print(Store store, NpcDefinition def) throws IOException
 	{
-        log.info("{} (id {})", def.name, def.id);
-        log.info("  models        {}", Arrays.toString(def.models));
-        log.info("  widthScale    {}", def.widthScale);
-        log.info("  heightScale   {}", def.heightScale);
-        log.info("  ambient       {}", def.ambient);
-        log.info("  contrast      {}", def.contrast);
-        log.info("  size          {}", def.size);
-        log.info("  combatLevel   {}", def.combatLevel);
-        log.info("  standingAnim  {}", sequence(store, def.standingAnimation));
-        log.info("  walkingAnim   {}", sequence(store, def.walkingAnimation));
+		log.info("{} (id {})", def.name, def.id);
+		log.info("  models        {}", Arrays.toString(def.models));
+		log.info("  widthScale    {}", def.widthScale);
+		log.info("  heightScale   {}", def.heightScale);
+		log.info("  ambient       {}", def.ambient);
+		log.info("  contrast      {}", def.contrast);
+		log.info("  size          {}", def.size);
+		log.info("  combatLevel   {}", def.combatLevel);
+		log.info("  standingAnim  {}", sequence(store, def.standingAnimation));
+		log.info("  walkingAnim   {}", sequence(store, def.walkingAnimation));
 		if (def.recolorToFind != null)
 		{
-            log.info("  recolor       {} -> {}",
-					Arrays.toString(def.recolorToFind), Arrays.toString(def.recolorToReplace));
+			log.info("  recolor       {} -> {}",
+				Arrays.toString(def.recolorToFind), Arrays.toString(def.recolorToReplace));
 		}
 		if (def.configs != null)
 		{
-            log.info("  transforms    {}", Arrays.toString(def.configs));
+			log.info("  transforms    {}", Arrays.toString(def.configs));
 		}
 
 		if (def.models != null)
 		{
 			for (int modelId : def.models)
 			{
-                log.info("  model {}   {}\n", modelId, describeModel(store, modelId));
+				log.info("  model {}   {}\n", modelId, describeModel(store, modelId));
 			}
 		}
 	}

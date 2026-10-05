@@ -25,6 +25,7 @@
 package com.customnpcmodels.packs;
 
 import com.customnpcmodels.inject.AssetCodec;
+import com.google.gson.annotations.SerializedName;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collections;
@@ -69,7 +70,9 @@ public final class HubEntry
 	private long size;
 	private String sha256;
 
-	private boolean hasIcon;
+	/** Whether the pack ships an {@code icon.png}. */
+	@SerializedName("hasIcon")
+	private boolean iconAvailable;
 
 	/** The pack's page on GitHub. */
 	private String repo;
@@ -98,7 +101,7 @@ public final class HubEntry
 		{
 			return "its id '" + id + "' can't be a pack folder";
 		}
-		if (name == null || name.trim().isEmpty())
+		if (name == null || name.isBlank())
 		{
 			return "it has no name";
 		}
@@ -112,7 +115,7 @@ public final class HubEntry
 		}
 		if (size <= 0 || size > AssetCodec.MAX_FILE_BYTES)
 		{
-			return "its size " + size + " is outside 1 byte to " + AssetCodec.MAX_FILE_BYTES / (1024 * 1024) + " MiB";
+			return "its size " + size + " is outside 1 byte to " + AssetCodec.mebibytes(AssetCodec.MAX_FILE_BYTES);
 		}
 		return null;
 	}

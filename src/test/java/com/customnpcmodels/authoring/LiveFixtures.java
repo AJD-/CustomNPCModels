@@ -24,6 +24,8 @@
  */
 package com.customnpcmodels.authoring;
 
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 import com.customnpcmodels.cache.CacheFiles;
 import com.customnpcmodels.cache.MeshFactory;
@@ -91,7 +93,10 @@ final class LiveFixtures
 	{
 	}
 
-	/** The live cache, or a skipped test when there is none. */
+	/**
+	 * The live cache, or a skipped test when there is none. Only a missing cache skips: anything the
+	 * cache holds that will not decode fails the test, so a decoding bug can't pass as a skip.
+	 */
 	static synchronized Store store() throws IOException
 	{
 		if (store == null)
@@ -107,8 +112,8 @@ final class LiveFixtures
 		Mesh mesh = meshes.get(modelId);
 		if (mesh == null)
 		{
-			ModelDefinition model = CacheFiles.decodeModel(store(), modelId);
-			assumeTrue("model " + modelId + " does not decode", model != null);
+			ModelDefinition model = CacheFiles.loadModel(store(), modelId);
+			assertNotNull("the live cache has no model " + modelId, model);
 			mesh = MeshFactory.toMesh(modelId, model);
 			meshes.put(modelId, mesh);
 		}
@@ -134,7 +139,7 @@ final class LiveFixtures
 			npcs = manager;
 		}
 		NpcDefinition npc = npcs.get(npcId);
-		assumeTrue("npc " + npcId + " has no models", npc != null && npc.models != null);
+		assertTrue("the live cache has no NPC " + npcId + " with models", npc != null && npc.models != null);
 		return npc;
 	}
 
@@ -144,7 +149,7 @@ final class LiveFixtures
 		if (clip == null)
 		{
 			clip = CacheFiles.buildClip(store(), sequenceId, rigs);
-			assumeTrue("sequence " + sequenceId + " does not decode", clip != null);
+			assertNotNull("sequence " + sequenceId + " does not decode", clip);
 			clips.put(sequenceId, clip);
 		}
 		return clip;

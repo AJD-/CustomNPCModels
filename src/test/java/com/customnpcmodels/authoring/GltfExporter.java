@@ -43,14 +43,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-
+import javax.annotation.Nonnull;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.cache.NpcManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.NpcDefinition;
 import net.runelite.cache.fs.Store;
-
-import javax.annotation.Nonnull;
 
 /**
  * Exports an NPC from the live cache as a {@code .glb}, plus a manifest entry that binds it back to
@@ -82,44 +79,16 @@ public class GltfExporter
 
 	public static void main(String[] args) throws IOException
 	{
-		String npcArg = System.getProperty("customnpcmodels.npc");
-		if (npcArg == null || npcArg.isEmpty())
+		String npcArg = ToolCli.required("npc", "./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]");
+		String outArg = ToolCli.option("out");
+		Path out = Paths.get(outArg == null ? "build/gltf" : outArg);
+
+		try (Store store = ToolCli.liveCache("Could not find an OSRS cache"))
 		{
-			System.err.println("Usage: ./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]");
-			System.exit(1);
-			return;
-		}
-		Path out = Paths.get(System.getProperty("customnpcmodels.out", "build/gltf"));
+			NpcDefinition npc = ToolCli.npc(store, npcArg);
 
-		try (Store store = CacheFiles.openLiveCache())
-		{
-			if (store == null)
-			{
-				System.err.println("Could not find an OSRS cache; pass one with -PcacheDir=<path>");
-				System.exit(1);
-				return;
-			}
-
-			NpcManager npcs = new NpcManager(store);
-			npcs.load();
-			NpcDefinition npc = npcs.get(Integer.parseInt(npcArg.trim()));
-			if (npc == null || npc.models == null)
-			{
-				System.err.println("No NPC with id " + npcArg + ", or it has no models");
-				System.exit(1);
-				return;
-			}
-
-			Set<Integer> sequences = new LinkedHashSet<>();
-			String seqArg = System.getProperty("customnpcmodels.seqs");
-			if (seqArg != null && !seqArg.isEmpty())
-			{
-				for (String seq : seqArg.split(","))
-				{
-					sequences.add(Integer.parseInt(seq.trim()));
-				}
-			}
-			else
+			Set<Integer> sequences = ToolCli.sequenceIds(ToolCli.option("seqs"));
+			if (sequences.isEmpty())
 			{
 				sequences.addAll(defaultSequences(store, npc, System.out::println));
 			}
@@ -171,7 +140,8 @@ public class GltfExporter
 	}
 
 	@Nonnull
-	private static Set<Integer> createOwnSequences(NpcDefinition npc) {
+	private static Set<Integer> createOwnSequences(NpcDefinition npc)
+	{
 		Set<Integer> ownSequences = new LinkedHashSet<>();
 		for (int sequence : new int[]{
 			npc.standingAnimation, npc.walkingAnimation,
@@ -223,7 +193,7 @@ public class GltfExporter
 			SequenceTiming timing = AssetGenerator.timing(store, sequenceId);
 			if (clip == null || timing == null)
 			{
-                log.info("  sequence {} skipped: not a frame-based live sequence", sequenceId);
+				log.info("  sequence {} skipped: not a frame-based live sequence", sequenceId);
 				continue;
 			}
 			clips.add(clip);
@@ -271,7 +241,7 @@ public class GltfExporter
 			manifest.write(out);
 		}
 
-        log.info("  wrote {} ({} KB, {} verts, {} faces, {} clips)", out.resolve(file).toAbsolutePath()
+		log.info("  wrote {} ({} KB, {} verts, {} faces, {} clips)", out.resolve(file).toAbsolutePath()
 				, glb.length / 1024, mesh.getVerticesCount(), mesh.getFaceCount(), clips.size());
 		if (!blocked)
 		{
@@ -327,11 +297,7 @@ public class GltfExporter
 	static Mesh merge(NpcDefinition npc, List<Mesh> parts)
 	{
 		int id = ID_BASE + npc.id;
-		Mesh mesh = MeshMerger.merge(id, parts);
-		return new Mesh(id, mesh.getPriority(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
-			mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(), mesh.getFaceColors(),
-			mesh.getFaceRenderTypes(), mesh.getFaceTransparencies(), mesh.getFaceRenderPriorities(),
-			mesh.getFaceTextures(), mesh.getTextureCoords(), mesh.getTexIndices1(), mesh.getTexIndices2(),
-			mesh.getTexIndices3(), mesh.getVertexGroups());
+		// A lone part comes back from the merge under its own id
+		return MeshMerger.merge(id, parts).withId(id);
 	}
 }

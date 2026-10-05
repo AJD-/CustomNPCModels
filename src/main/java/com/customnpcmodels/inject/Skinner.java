@@ -40,23 +40,15 @@ import net.runelite.api.Perspective;
  */
 public final class Skinner
 {
-	private static final int TYPE_PIVOT = 0;
-	private static final int TYPE_TRANSLATE = 1;
-	private static final int TYPE_ROTATE = 2;
-	private static final int TYPE_SCALE = 3;
-
 	/**
 	 * Rotations are stored in 8 bits and scaled into the 2048-entry trig table, so the smallest
 	 * step an animation can express is 1/256 of a turn. Anything authored against this rig has to
 	 * be quantized to that.
 	 */
-	private static final int ROTATION_SHIFT = 8;
+	private static final int ROTATION_SCALE = 8;
 
 	/** {@link Perspective#SINE} and {@code COSINE} are fixed point with 16 fractional bits. */
 	private static final float TRIG_SCALE = 65536f;
-
-	/** Scale ops are expressed in 128ths, matching the rest of the engine's fixed-point sizing. */
-	private static final float SCALE_UNIT = 128f;
 
 	/** Pivot for rotate and scale ops, set by type 0 and carried across the ops that follow it. */
 	private float pivotX;
@@ -89,25 +81,6 @@ public final class Skinner
 		return true;
 	}
 
-	/**
-	 * Applies a second frame on top of an already-posed buffer.
-	 *
-	 * <p>The client plays a movement pose and an action at the same time, so a walking NPC that is
-	 * also attacking needs both. Layering them in order is a simplification of what the client does
-	 * with a sequence's interleave mask, which selects per transform which of the two clips wins;
-	 * without that, the later clip overwrites shared transforms wholesale.
-	 */
-	public void overlay(Mesh mesh, Rig rig, Clip clip, int frame,
-		float[] outX, float[] outY, float[] outZ)
-	{
-		if (rig == null || clip == null || !clip.hasFrame(frame) || !mesh.isRigged())
-		{
-			return;
-		}
-
-		apply(mesh, rig, clip, frame, outX, outY, outZ);
-	}
-
 	private void apply(Mesh mesh, Rig rig, Clip clip, int frame,
 		float[] outX, float[] outY, float[] outZ)
 	{
@@ -137,16 +110,16 @@ public final class Skinner
 
 			switch (type)
 			{
-				case TYPE_PIVOT:
+				case Rig.TYPE_PIVOT:
 					setPivot(mesh, groups, dx, dy, dz, outX, outY, outZ);
 					break;
-				case TYPE_TRANSLATE:
+				case Rig.TYPE_TRANSLATE:
 					translate(mesh, groups, dx, dy, dz, outX, outY, outZ);
 					break;
-				case TYPE_ROTATE:
+				case Rig.TYPE_ROTATE:
 					rotate(mesh, groups, dx, dy, dz, outX, outY, outZ);
 					break;
-				case TYPE_SCALE:
+				case Rig.TYPE_SCALE:
 					scale(mesh, groups, dx, dy, dz, outX, outY, outZ);
 					break;
 				default:
@@ -215,9 +188,9 @@ public final class Skinner
 	private void rotate(Mesh mesh, int[] groups, int dx, int dy, int dz,
 		float[] outX, float[] outY, float[] outZ)
 	{
-		int angleX = (dx & 0xFF) * ROTATION_SHIFT;
-		int angleY = (dy & 0xFF) * ROTATION_SHIFT;
-		int angleZ = (dz & 0xFF) * ROTATION_SHIFT;
+		int angleX = (dx & 0xFF) * ROTATION_SCALE;
+		int angleY = (dy & 0xFF) * ROTATION_SCALE;
+		int angleZ = (dz & 0xFF) * ROTATION_SCALE;
 
 		for (int group : groups)
 		{
@@ -270,9 +243,9 @@ public final class Skinner
 		{
 			for (int vertex : mesh.getVertexGroup(group))
 			{
-				outX[vertex] = (outX[vertex] - pivotX) * dx / SCALE_UNIT + pivotX;
-				outY[vertex] = (outY[vertex] - pivotY) * dy / SCALE_UNIT + pivotY;
-				outZ[vertex] = (outZ[vertex] - pivotZ) * dz / SCALE_UNIT + pivotZ;
+				outX[vertex] = (outX[vertex] - pivotX) * dx / Rig.SCALE_UNIT + pivotX;
+				outY[vertex] = (outY[vertex] - pivotY) * dy / Rig.SCALE_UNIT + pivotY;
+				outZ[vertex] = (outZ[vertex] - pivotZ) * dz / Rig.SCALE_UNIT + pivotZ;
 			}
 		}
 	}

@@ -37,6 +37,8 @@ import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.AssetCodec;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcBinding;
+import com.customnpcmodels.inject.TestBinding;
+import com.customnpcmodels.inject.TestMesh;
 import com.customnpcmodels.packs.TestPacks;
 import com.google.gson.JsonObject;
 import java.io.ByteArrayInputStream;
@@ -102,8 +104,8 @@ public class AssetGeneratorTest
 	{
 		Manifest manifest = new Manifest();
 		manifest.models.add(model);
-        assertEquals("the entry should differ from a valid one only by the change under test",
-				1, AssetGenerator.checkManifest(manifest, folder.getRoot().toPath()).size());
+		assertEquals("the entry should differ from a valid one only by the change under test",
+			1, AssetGenerator.checkManifest(manifest, folder.getRoot().toPath()).size());
 		try
 		{
 			AssetGenerator.build(manifest, folder.getRoot().toPath(), id -> null);
@@ -145,6 +147,14 @@ public class AssetGeneratorTest
 		Manifest.Model model = entry();
 		model.meshId = 0;
 		assertManifestRefused(model, "has mesh id 0");
+	}
+
+	@Test
+	public void testARigIdBelowTheSyntheticRangeIsRefused() throws Exception
+	{
+		Manifest.Model model = entry();
+		model.rigId = 5;
+		assertManifestRefused(model, "has rig id 5");
 	}
 
 	@Test
@@ -308,8 +318,7 @@ public class AssetGeneratorTest
 		pack.id = "my-pack";
 		pack.name = "My pack";
 		pack.author = "Someone";
-		NpcBinding binding = new NpcBinding("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779},
-			NpcBinding.STATIC, 128, 128, null, null, 0, 0);
+		NpcBinding binding = TestBinding.of("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779}).build();
 		AssetBundle bundle = new AssetBundle(Collections.emptyMap(), Collections.emptyMap(),
 			Collections.emptyList(), Collections.singletonList(binding));
 

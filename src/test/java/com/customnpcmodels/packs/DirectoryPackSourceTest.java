@@ -28,12 +28,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.AssetCodec;
-import com.customnpcmodels.inject.Mesh;
-import com.customnpcmodels.inject.NpcBinding;
 import com.google.gson.Gson;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
@@ -56,23 +52,6 @@ public class DirectoryPackSourceTest
 	@Rule
 	public TemporaryFolder folder = new TemporaryFolder();
 
-	private static byte[] bundleBytes() throws IOException
-	{
-		Mesh triangle = new Mesh(1_005_779, 0,
-			new float[]{0, 10, 0}, new float[]{0, 0, 10}, new float[]{0, 0, 0},
-			new int[]{0}, new int[]{1}, new int[]{2},
-			new short[]{(short) 0x3A05},
-			null, null, null, null, null, null, null, null, null);
-		NpcBinding binding = new NpcBinding("Mole", new int[]{NpcID.MOLE_GIANT}, new int[]{1_005_779},
-			NpcBinding.STATIC, 128, 128, null, null, 0, 0);
-		AssetBundle bundle = new AssetBundle(Collections.singletonMap(1_005_779, triangle), Collections.emptyMap(),
-			Collections.emptyList(), Collections.singletonList(binding));
-
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		AssetCodec.write(bundle, out);
-		return out.toByteArray();
-	}
-
 	private Path pack(String name) throws IOException
 	{
 		Path dir = folder.getRoot().toPath().resolve(name);
@@ -89,14 +68,14 @@ public class DirectoryPackSourceTest
 	@Test
 	public void testEveryPackFolderIsRead() throws IOException
 	{
-		Files.write(pack("alpha").resolve("bundle.dat"), bundleBytes());
+		Files.write(pack("alpha").resolve("bundle.dat"), TestPacks.bundleBytes());
 		Files.write(pack("alpha").resolve("pack.json"),
 			"{\"id\": \"ignored\", \"name\": \"Alpha pack\", \"author\": \"Someone\", \"tags\": [\"moles\"]}"
 				.getBytes(StandardCharsets.UTF_8));
-		Files.write(pack("beta").resolve("bundle.dat"), bundleBytes());
+		Files.write(pack("beta").resolve("bundle.dat"), TestPacks.bundleBytes());
 		// Neither a loose file nor a hidden folder is a pack
 		Files.write(folder.getRoot().toPath().resolve("notes.txt"), new byte[]{1});
-		Files.write(pack(".hidden").resolve("bundle.dat"), bundleBytes());
+		Files.write(pack(".hidden").resolve("bundle.dat"), TestPacks.bundleBytes());
 
 		List<LoadedPack> packs = load();
 
@@ -122,10 +101,10 @@ public class DirectoryPackSourceTest
 		// Truncated: the exception it throws has no message of its own
 		Files.write(pack("zero").resolve("bundle.dat"), new byte[0]);
 		pack("empty");
-		Files.write(pack("badjson").resolve("bundle.dat"), bundleBytes());
+		Files.write(pack("badjson").resolve("bundle.dat"), TestPacks.bundleBytes());
 		Files.write(pack("badjson").resolve("pack.json"), "{not json".getBytes(StandardCharsets.UTF_8));
-		Files.write(pack("bad,name").resolve("bundle.dat"), bundleBytes());
-		Files.write(pack("good").resolve("bundle.dat"), bundleBytes());
+		Files.write(pack("bad,name").resolve("bundle.dat"), TestPacks.bundleBytes());
+		Files.write(pack("good").resolve("bundle.dat"), TestPacks.bundleBytes());
 
 		List<LoadedPack> packs = load();
 
@@ -169,9 +148,9 @@ public class DirectoryPackSourceTest
 	@Test
 	public void testHubStagingFoldersAreNotPacks() throws IOException
 	{
-		Files.write(pack("goblins").resolve("bundle.dat"), bundleBytes());
-		Files.write(pack("dl-12345").resolve("bundle.dat"), bundleBytes());
-		Files.write(pack("goblins.old").resolve("bundle.dat"), bundleBytes());
+		Files.write(pack("goblins").resolve("bundle.dat"), TestPacks.bundleBytes());
+		Files.write(pack("dl-12345").resolve("bundle.dat"), TestPacks.bundleBytes());
+		Files.write(pack("goblins.old").resolve("bundle.dat"), TestPacks.bundleBytes());
 
 		List<LoadedPack> packs = new DirectoryPackSource(Filepath.Unchecked.getRooted(folder.getRoot().toPath()),
 			PackKind.HUB, new Gson()).load();

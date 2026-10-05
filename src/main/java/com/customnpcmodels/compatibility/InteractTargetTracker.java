@@ -25,20 +25,26 @@
  */
 package com.customnpcmodels.compatibility;
 
+import com.customnpcmodels.CustomNpcModelsPlugin;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-
-import com.customnpcmodels.CustomNpcModelsPlugin;
 import lombok.Getter;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
+import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.NpcDespawned;
+import net.runelite.api.events.PlayerDespawned;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetUtil;
+import net.runelite.client.eventbus.Subscribe;
 
 /**
  * Tracks which actor the local player is interacting with, so an outline can be drawn around it.
@@ -48,8 +54,8 @@ import net.runelite.api.widgets.WidgetUtil;
  * plugin draws NPC outlines, that plugin is still the one drawing objects, ground items and
  * players, with its own code and its own state.
  * <p>
- * Events are forwarded from {@link CustomNpcModelsPlugin} rather than subscribed to here - the
- * event bus registers the plugin, not the objects it injects.
+ * {@link CustomNpcModelsPlugin} registers this on the event bus while it runs, since the bus only
+ * registers the plugin itself and none of the objects it injects.
  */
 @Singleton
 public class InteractTargetTracker
@@ -69,6 +75,7 @@ public class InteractTargetTracker
 	@Getter
 	private int gameCycle;
 
+	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
 		switch (event.getMenuAction())
@@ -81,10 +88,7 @@ public class InteractTargetTracker
 			case NPC_FIFTH_OPTION:
 			{
 				interactedActor = event.getMenuEntry().getNpc();
-				attacked = event.getMenuAction() == MenuAction.NPC_SECOND_OPTION
-					|| event.getMenuAction() == MenuAction.WIDGET_TARGET_ON_NPC
-						&& client.getSelectedWidget() != null
-						&& WidgetUtil.componentToInterface(client.getSelectedWidget().getId()) == InterfaceID.MAGIC_SPELLBOOK;
+				attacked = isAttack(client, event.getMenuAction());
 				clickTick = client.getTickCount();
 				gameCycle = client.getGameCycle();
 				break;
@@ -131,7 +135,8 @@ public class InteractTargetTracker
 		}
 	}
 
-	public void onGameTick()
+	@Subscribe
+	public void onGameTick(GameTick event)
 	{
 		if (client.getTickCount() > clickTick && client.getLocalDestinationLocation() == null)
 		{
@@ -140,6 +145,7 @@ public class InteractTargetTracker
 		}
 	}
 
+	@Subscribe
 	public void onInteractingChanged(InteractingChanged event)
 	{
 		if (event.getSource() == client.getLocalPlayer()
@@ -150,18 +156,34 @@ public class InteractTargetTracker
 		}
 	}
 
-	public void onActorDespawned(Actor actor)
+	@Subscribe
+	public void onPlayerDespawned(PlayerDespawned event)
+	{
+		forget(event.getPlayer());
+	}
+
+	@Subscribe
+	public void onNpcDespawned(NpcDespawned event)
+	{
+		forget(event.getNpc());
+	}
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged event)
+	{
+		if (event.getGameState() == GameState.LOGGING_IN || event.getGameState() == GameState.HOPPING)
+		{
+			interactedActor = null;
+			attacked = false;
+		}
+	}
+
+	private void forget(Actor actor)
 	{
 		if (actor == interactedActor)
 		{
 			interactedActor = null;
 		}
-	}
-
-	public void reset()
-	{
-		interactedActor = null;
-		attacked = false;
 	}
 
 	/**
@@ -176,5 +198,20 @@ public class InteractTargetTracker
 
 		Player local = client.getLocalPlayer();
 		return local != null ? local.getInteracting() : null;
+	}
+
+	/**
+	 * Whether {@code action} on an NPC is an attack, as Interact Highlight colors it: the attack
+	 * option, or a spell from the spellbook cast on it.
+	 */
+	static boolean isAttack(Client client, MenuAction action)
+	{
+		if (action == MenuAction.NPC_SECOND_OPTION)
+		{
+			return true;
+		}
+		Widget selected = client.getSelectedWidget();
+		return action == MenuAction.WIDGET_TARGET_ON_NPC && selected != null
+			&& WidgetUtil.componentToInterface(selected.getId()) == InterfaceID.MAGIC_SPELLBOOK;
 	}
 }

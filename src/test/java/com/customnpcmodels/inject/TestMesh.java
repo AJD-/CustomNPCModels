@@ -22,15 +22,13 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.customnpcmodels.authoring;
-
-import com.customnpcmodels.inject.Mesh;
+package com.customnpcmodels.inject;
 
 /**
  * Builds small meshes for tests, starting from a valid two-face quad at RS scale so each test
  * changes only the one column it is about.
  */
-final class TestMesh
+public final class TestMesh
 {
 	private int id = 1;
 	private int priority;
@@ -46,101 +44,112 @@ final class TestMesh
 	private byte[] priorities;
 	private short[] textures;
 	private byte[] textureCoords;
+	private int[] texIndices1;
+	private int[] texIndices2;
+	private int[] texIndices3;
 	private int[][] groups = {{0, 1}, {2, 3}};
 
-	TestMesh id(int id)
+	public TestMesh id(int id)
 	{
 		this.id = id;
 		return this;
 	}
 
-	TestMesh priority(int priority)
+	public TestMesh priority(int priority)
 	{
 		this.priority = priority;
 		return this;
 	}
 
-	TestMesh vx(float[] vx)
+	public TestMesh vx(float[] vx)
 	{
 		this.vx = vx;
 		return this;
 	}
 
-	TestMesh vy(float[] vy)
+	public TestMesh vy(float[] vy)
 	{
 		this.vy = vy;
 		return this;
 	}
 
-	TestMesh vz(float[] vz)
+	public TestMesh vz(float[] vz)
 	{
 		this.vz = vz;
 		return this;
 	}
 
-	TestMesh i1(int[] i1)
+	public TestMesh i1(int[] i1)
 	{
 		this.i1 = i1;
 		return this;
 	}
 
-	TestMesh i2(int[] i2)
+	public TestMesh i2(int[] i2)
 	{
 		this.i2 = i2;
 		return this;
 	}
 
-	TestMesh i3(int[] i3)
+	public TestMesh i3(int[] i3)
 	{
 		this.i3 = i3;
 		return this;
 	}
 
-	TestMesh colors(short[] colors)
+	public TestMesh colors(short[] colors)
 	{
 		this.colors = colors;
 		return this;
 	}
 
-	TestMesh renderTypes(byte[] renderTypes)
+	public TestMesh renderTypes(byte[] renderTypes)
 	{
 		this.renderTypes = renderTypes;
 		return this;
 	}
 
-	TestMesh transparencies(byte[] transparencies)
+	public TestMesh transparencies(byte[] transparencies)
 	{
 		this.transparencies = transparencies;
 		return this;
 	}
 
-	TestMesh priorities(byte[] priorities)
+	public TestMesh priorities(byte[] priorities)
 	{
 		this.priorities = priorities;
 		return this;
 	}
 
-	TestMesh textures(short[] textures)
+	public TestMesh textures(short[] textures)
 	{
 		this.textures = textures;
 		return this;
 	}
 
-	TestMesh textureCoords(byte[] textureCoords)
+	public TestMesh textureCoords(byte[] textureCoords)
 	{
 		this.textureCoords = textureCoords;
 		return this;
 	}
 
-	TestMesh groups(int[][] groups)
+	public TestMesh texIndices(int[] texIndices1, int[] texIndices2, int[] texIndices3)
+	{
+		this.texIndices1 = texIndices1;
+		this.texIndices2 = texIndices2;
+		this.texIndices3 = texIndices3;
+		return this;
+	}
+
+	public TestMesh groups(int[][] groups)
 	{
 		this.groups = groups;
 		return this;
 	}
 
-	Mesh build()
+	public Mesh build()
 	{
 		return new Mesh(id, priority, vx, vy, vz, i1, i2, i3, colors, renderTypes, transparencies,
-			priorities, textures, textureCoords, null, null, null, groups);
+			priorities, textures, textureCoords, texIndices1, texIndices2, texIndices3, groups);
 	}
 }

@@ -65,14 +65,14 @@ public class PlaybackTest
 		assertEquals(1, Playback.frameAt(timing, 1, true));
 		assertEquals(1, Playback.frameAt(timing, 2, true));
 		assertEquals(0, Playback.frameAt(timing, 3, true));
-		assertEquals(3, Playback.cycles(timing));
+		assertEquals(3, timing.cycles());
 	}
 
 	@Test
 	public void startCycleIsWhereAFrameBegins()
 	{
-		assertEquals(0, Playback.startCycle(TIMING, 0));
-		assertEquals(3, Playback.startCycle(TIMING, 1));
-		assertEquals(4, Playback.startCycle(TIMING, 2));
+		assertEquals(0, TIMING.startCycle(0));
+		assertEquals(3, TIMING.startCycle(1));
+		assertEquals(4, TIMING.startCycle(2));
 	}
 }

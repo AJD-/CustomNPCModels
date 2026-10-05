@@ -34,11 +34,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import net.runelite.cache.NpcManager;
 import net.runelite.cache.definitions.NpcDefinition;
 import net.runelite.cache.fs.Store;
 
@@ -63,50 +61,24 @@ public class GltfComparer
 
 	public static void main(String[] args) throws IOException
 	{
-		String npcArg = System.getProperty("customnpcmodels.npc");
-		String glbArg = System.getProperty("customnpcmodels.glb");
-		if (npcArg == null || npcArg.isEmpty() || glbArg == null || glbArg.isEmpty())
-		{
-			System.err.println("Usage: ./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]");
-			System.exit(1);
-			return;
-		}
-		Path glbPath = Paths.get(glbArg);
+		String usage = "./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]";
+		String npcArg = ToolCli.required("npc", usage);
+		Path glbPath = Paths.get(ToolCli.required("glb", usage));
 		byte[] glb = Files.readAllBytes(glbPath);
 
-		try (Store store = CacheFiles.openLiveCache())
+		try (Store store = ToolCli.liveCache("Could not find an OSRS cache"))
 		{
-			if (store == null)
-			{
-				System.err.println("Could not find an OSRS cache; pass one with -PcacheDir=<path>");
-				System.exit(1);
-				return;
-			}
-
-			NpcManager npcs = new NpcManager(store);
-			npcs.load();
-			NpcDefinition npc = npcs.get(Integer.parseInt(npcArg.trim()));
-			if (npc == null || npc.models == null)
-			{
-				System.err.println("No NPC with id " + npcArg + ", or it has no models");
-				System.exit(1);
-				return;
-			}
-
-			compare(store, npc, glb, sequences(glb, System.getProperty("customnpcmodels.seqs")),
-				glbPath.toAbsolutePath().toString());
+			NpcDefinition npc = ToolCli.npc(store, npcArg);
+			compare(store, npc, glb, sequences(glb, ToolCli.option("seqs")), glbPath.toAbsolutePath().toString());
 		}
 	}
 
+	/** The sequences named, or else every animation in the file named after one. */
 	private static Set<Integer> sequences(byte[] glb, String seqArg)
 	{
-		Set<Integer> sequences = new LinkedHashSet<>();
-		if (seqArg != null && !seqArg.isEmpty())
+		Set<Integer> sequences = ToolCli.sequenceIds(seqArg);
+		if (!sequences.isEmpty())
 		{
-			for (String seq : seqArg.split(","))
-			{
-				sequences.add(Integer.parseInt(seq.trim()));
-			}
 			return sequences;
 		}
 

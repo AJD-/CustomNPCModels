@@ -27,7 +27,6 @@ package com.customnpcmodels.inject;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import net.runelite.api.gameval.NpcID;
 
 /**
@@ -163,11 +162,5 @@ public final class SwapBlacklist
 	public static String contentOf(int npcId)
 	{
 		return CONTENT.get(npcId);
-	}
-
-	/** Every blocked NPC id. */
-	public static Set<Integer> ids()
-	{
-		return CONTENT.keySet();
 	}
 }

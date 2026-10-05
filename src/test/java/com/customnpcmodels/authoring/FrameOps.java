@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels.authoring;
 
+import com.customnpcmodels.inject.Rig;
 import java.util.Arrays;
 
 /**
@@ -87,7 +88,7 @@ final class FrameOps
 			}
 
 			transforms[index] = i;
-			int unset = types[i] == 3 ? 128 : 0;
+			int unset = types[i] == Rig.TYPE_SCALE ? Rig.SCALE_UNIT : 0;
 			dx[index] = (mask & 1) != 0 ? values[cursor++] : unset;
 			dy[index] = (mask & 2) != 0 ? values[cursor++] : unset;
 			dz[index] = (mask & 4) != 0 ? values[cursor++] : unset;

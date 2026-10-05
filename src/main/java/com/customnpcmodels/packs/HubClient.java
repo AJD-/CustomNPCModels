@@ -92,14 +92,18 @@ public class HubClient
 	{
 		get(MANIFEST_PATH, MAX_MANIFEST_BYTES, bytes ->
 		{
+			List<HubEntry> entries;
 			try
 			{
-				done.accept(parseManifest(gson, new String(bytes, StandardCharsets.UTF_8)));
+				entries = parseManifest(gson, new String(bytes, StandardCharsets.UTF_8));
 			}
 			catch (JsonParseException | IllegalStateException ex)
 			{
 				failed.accept("The Custom Model Hub's list of packs couldn't be read: " + LoadedPack.describe(ex));
+				return;
 			}
+			// Outside the try, so a failure in the caller's handling isn't blamed on the manifest
+			done.accept(entries);
 		}, failed);
 	}
 
@@ -121,10 +125,13 @@ public class HubClient
 		}, failed);
 	}
 
-	/** A pack's icon, as both the file and the image. Nothing when it has none or it fails. */
+	/**
+	 * A pack's icon file, once it is known to decode as a PNG no larger than {@link #MAX_ICON_SIDE}.
+	 * Nothing when it has none or it fails.
+	 */
 	public void fetchIcon(HubEntry entry, Consumer<byte[]> done)
 	{
-		if (!entry.isHasIcon())
+		if (!entry.isIconAvailable())
 		{
 			return;
 		}
@@ -145,7 +152,7 @@ public class HubClient
 			@Override
 			public void onFailure(Call call, IOException ex)
 			{
-				failed.accept("Couldn't reach the Custom Model Hub: " + LoadedPack.describe(ex));
+				deliver(path, () -> failed.accept("Couldn't reach the Custom Model Hub: " + LoadedPack.describe(ex)));
 			}
 
 			@Override
@@ -156,19 +163,36 @@ public class HubClient
 				{
 					if (!response.isSuccessful() || body == null)
 					{
-						failed.accept("The Custom Model Hub answered " + response.code() + " for " + path);
+						deliver(path, () -> failed.accept("The Custom Model Hub answered " + response.code() + " for " + path));
 						return;
 					}
 					bytes = readCapped(body.byteStream(), maxBytes);
 				}
 				catch (IOException ex)
 				{
-					failed.accept("Couldn't download from the Custom Model Hub: " + LoadedPack.describe(ex));
+					deliver(path, () -> failed.accept("Couldn't download from the Custom Model Hub: "
+						+ LoadedPack.describe(ex)));
 					return;
 				}
-				done.accept(bytes);
+				deliver(path, () -> done.accept(bytes));
 			}
 		});
+	}
+
+	/**
+	 * Runs a caller's callback. A callback that throws is a bug in the caller rather than the hub, so
+	 * it's logged here instead of escaping onto OkHttp's shared dispatcher thread.
+	 */
+	private static void deliver(String path, Runnable callback)
+	{
+		try
+		{
+			callback.run();
+		}
+		catch (RuntimeException ex)
+		{
+			log.warn("Handling the Custom Model Hub's answer for {} failed", path, ex);
+		}
 	}
 
 	/**
