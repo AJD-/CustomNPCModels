@@ -880,6 +880,7 @@ public class CustomNpcModelsPlugin extends Plugin
 				shown.setBusy(entry.getId(), true);
 			}
 			int queuedUnder = generation.get();
+			int hubQueuedUnder = hubGeneration.get();
 			hubClient.download(entry, bundle ->
 				// Downloaded and verified on the OkHttp thread; written to disk on the executor, where
 				// every other change to the pack folders happens
@@ -924,7 +925,11 @@ public class CustomNpcModelsPlugin extends Plugin
 				{
 					return;
 				}
-				showStatus(error, true);
+				// Said only while the hub is still on, as with the list; the button is freed either way
+				if (isCurrentHub(queuedUnder, hubQueuedUnder))
+				{
+					showStatus(error, true);
+				}
 				onPanel(done -> done.setBusy(entry.getId(), false));
 			});
 		}

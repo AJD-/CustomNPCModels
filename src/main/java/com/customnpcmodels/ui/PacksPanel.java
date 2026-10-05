@@ -101,7 +101,8 @@ public class PacksPanel extends PluginPanel
 
 		/**
 		 * Fetches the hub's list of packs, answering with {@link #setHubEntries} or {@link #setHubError}.
-		 * Only asked while the hub is switched on.
+		 * Only asked while the hub is switched on. If it is switched off before the answer arrives, no
+		 * answer comes; {@link #setHubEnabled}{@code (false)} clears the wait instead.
 		 */
 		void loadHub();
 

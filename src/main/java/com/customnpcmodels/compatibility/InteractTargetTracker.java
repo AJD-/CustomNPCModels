@@ -38,6 +38,7 @@ import net.runelite.api.Player;
 import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetUtil;
 
 /**
@@ -81,10 +82,7 @@ public class InteractTargetTracker
 			case NPC_FIFTH_OPTION:
 			{
 				interactedActor = event.getMenuEntry().getNpc();
-				attacked = event.getMenuAction() == MenuAction.NPC_SECOND_OPTION
-					|| event.getMenuAction() == MenuAction.WIDGET_TARGET_ON_NPC
-						&& client.getSelectedWidget() != null
-						&& WidgetUtil.componentToInterface(client.getSelectedWidget().getId()) == InterfaceID.MAGIC_SPELLBOOK;
+				attacked = isAttack(client, event.getMenuAction());
 				clickTick = client.getTickCount();
 				gameCycle = client.getGameCycle();
 				break;
@@ -176,5 +174,20 @@ public class InteractTargetTracker
 
 		Player local = client.getLocalPlayer();
 		return local != null ? local.getInteracting() : null;
+	}
+
+	/**
+	 * Whether {@code action} on an NPC is an attack, as Interact Highlight colours it: the attack
+	 * option, or a spell from the spellbook cast on it.
+	 */
+	static boolean isAttack(Client client, MenuAction action)
+	{
+		if (action == MenuAction.NPC_SECOND_OPTION)
+		{
+			return true;
+		}
+		Widget selected = client.getSelectedWidget();
+		return action == MenuAction.WIDGET_TARGET_ON_NPC && selected != null
+			&& WidgetUtil.componentToInterface(selected.getId()) == InterfaceID.MAGIC_SPELLBOOK;
 	}
 }

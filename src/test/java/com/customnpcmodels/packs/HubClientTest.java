@@ -44,9 +44,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
 import net.runelite.api.gameval.NpcID;
+import okhttp3.Dispatcher;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Protocol;
@@ -91,7 +95,18 @@ public class HubClientTest
 	/** A client whose every request is answered from {@code files}, by path under the base URL. */
 	private static HubClient client(Map<String, byte[]> files)
 	{
-		OkHttpClient http = new OkHttpClient.Builder().addInterceptor(chain ->
+		return client(files, new OkHttpClient.Builder());
+	}
+
+	/** As {@link #client(Map)}, with every call run on {@code calls}. */
+	private static HubClient client(Map<String, byte[]> files, ExecutorService calls)
+	{
+		return client(files, new OkHttpClient.Builder().dispatcher(new Dispatcher(calls)));
+	}
+
+	private static HubClient client(Map<String, byte[]> files, OkHttpClient.Builder builder)
+	{
+		OkHttpClient http = builder.addInterceptor(chain ->
 		{
 			String path = chain.request().url().toString().substring(BASE.length());
 			byte[] body = files.get(path);
@@ -124,6 +139,32 @@ public class HubClientTest
 		assertTrue(goblins.isCompatible());
 		assertEquals("Mole", goblins.getModels().get(0).getName());
 		assertNotNull(goblins.getSafeRepo());
+	}
+
+	@Test
+	public void testACallerThatThrowsIsNotBlamedOnTheHub() throws Exception
+	{
+		Map<String, byte[]> files = new HashMap<>();
+		files.put(HubClient.MANIFEST_PATH, ("[" + entryJson("goblins", bundleBytes()) + "]").getBytes());
+		ExecutorService calls = Executors.newSingleThreadExecutor();
+		try
+		{
+			List<String> failures = new CopyOnWriteArrayList<>();
+			client(files, calls).fetchManifest(entries ->
+			{
+				throw new IllegalStateException("the caller's own bug");
+			}, failures::add);
+
+			// Every call runs on the one thread, so once a later task has run there the callback is done
+			calls.submit(() ->
+			{
+			}).get(5, TimeUnit.SECONDS);
+			assertTrue("the manifest was read fine, whatever the caller did with it: " + failures, failures.isEmpty());
+		}
+		finally
+		{
+			calls.shutdownNow();
+		}
 	}
 
 	@Test

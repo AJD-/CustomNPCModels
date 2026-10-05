@@ -87,6 +87,9 @@ public class CustomDrawCallbacks implements DrawCallbacks, Supplier<DrawCallback
 
 	private final ModelSubstitutor substitutor;
 
+	/** Whether a substitution failure has been logged yet, while this decorator is attached. */
+	private volatile boolean failureReported;
+
 	public CustomDrawCallbacks(DrawCallbacks delegate, ModelSubstitutor substitutor)
 	{
 		this.delegate = delegate;
@@ -109,7 +112,14 @@ public class CustomDrawCallbacks implements DrawCallbacks, Supplier<DrawCallback
 			catch (Exception ex)
 			{
 				substitute = null;
-				log.debug("Custom model substitution failed, drawing the vanilla model", ex);
+				// This runs for every NPC every frame, so a failure that persists is said once, not
+				// thousands of times a minute
+				if (!failureReported)
+				{
+					failureReported = true;
+					log.warn("Custom model substitution failed for NPC {}, drawing the vanilla model. "
+						+ "Later failures are not logged.", ((NPC) renderable).getId(), ex);
+				}
 			}
 		}
 
