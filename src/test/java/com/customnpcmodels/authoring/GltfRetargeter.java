@@ -24,14 +24,11 @@
  */
 package com.customnpcmodels.authoring;
 
-import com.customnpcmodels.cache.CacheFiles;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -100,30 +97,15 @@ public final class GltfRetargeter
 
 	public static void main(String[] args) throws IOException
 	{
-		String glbArg = System.getProperty("customnpcmodels.glb");
-		String mapArg = System.getProperty("customnpcmodels.map");
-		String outArg = System.getProperty("customnpcmodels.out");
-		if (glbArg == null || glbArg.isEmpty() || mapArg == null || mapArg.isEmpty()
-			|| outArg == null || outArg.isEmpty())
-		{
-			System.err.println("Usage: ./gradlew retargetGltf -Pglb=<file> -Pmap=<mapping.json> -Pout=<file>");
-			System.exit(1);
-			return;
-		}
+		String usage = "./gradlew retargetGltf -Pglb=<file> -Pmap=<mapping.json> -Pout=<file>";
+		Path in = Paths.get(ToolCli.required("glb", usage));
+		Path map = Paths.get(ToolCli.required("map", usage));
+		Path out = Paths.get(ToolCli.required("out", usage));
+		Map<Integer, Target> targets = readMapping(new String(Files.readAllBytes(map), StandardCharsets.UTF_8));
 
-		Path in = Paths.get(glbArg);
-		Path out = Paths.get(outArg);
-		Map<Integer, Target> targets = readMapping(new String(Files.readAllBytes(Paths.get(mapArg)), StandardCharsets.UTF_8));
-
-		try (Store store = CacheFiles.openLiveCache())
+		try (Store store = ToolCli.liveCache(
+			"Retargeting reads the target sequences' lengths from the live cache, but there is none"))
 		{
-			if (store == null)
-			{
-				System.err.println("Retargeting reads the target sequences' lengths from the live cache, but there "
-					+ "is none; pass one with -PcacheDir=<path>");
-				System.exit(1);
-				return;
-			}
 
 			List<String> report = new ArrayList<>();
 			byte[] result = retarget(Files.readAllBytes(in), targets, sequenceId -> AssetGenerator.timing(store, sequenceId),
@@ -393,15 +375,8 @@ public final class GltfRetargeter
 
 		int floats(double[] values, String type, boolean bounds)
 		{
-			while (bin.size() % 4 != 0)
-			{
-				bin.write(0);
-			}
-			ByteBuffer buffer = ByteBuffer.allocate(values.length * 4).order(ByteOrder.LITTLE_ENDIAN);
-			for (double value : values)
-			{
-				buffer.putFloat((float) value);
-			}
+			Glb.align(bin, 0);
+			byte[] data = Glb.floatBytes(values);
 
 			JsonArray views = json.getAsJsonArray("bufferViews");
 			JsonObject view = new JsonObject();
@@ -409,7 +384,7 @@ public final class GltfRetargeter
 			view.addProperty("byteOffset", bin.size());
 			view.addProperty("byteLength", values.length * 4);
 			views.add(view);
-			bin.write(buffer.array(), 0, values.length * 4);
+			bin.write(data, 0, data.length);
 
 			int components = Gltf.components(type);
 			JsonObject accessor = new JsonObject();
@@ -419,20 +394,13 @@ public final class GltfRetargeter
 			accessor.addProperty("type", type);
 			if (bounds)
 			{
+				double[][] minMax = Glb.floatBounds(values, components);
 				JsonArray min = new JsonArray();
 				JsonArray max = new JsonArray();
 				for (int c = 0; c < components; c++)
 				{
-					double lo = Double.POSITIVE_INFINITY;
-					double hi = Double.NEGATIVE_INFINITY;
-					for (int i = c; i < values.length; i += components)
-					{
-						// Bounds of the float actually stored, not the double it came from
-						lo = Math.min(lo, (float) values[i]);
-						hi = Math.max(hi, (float) values[i]);
-					}
-					min.add(lo);
-					max.add(hi);
+					min.add(minMax[0][c]);
+					max.add(minMax[1][c]);
 				}
 				accessor.add("min", min);
 				accessor.add("max", max);
@@ -444,10 +412,7 @@ public final class GltfRetargeter
 
 		byte[] finish()
 		{
-			while (bin.size() % 4 != 0)
-			{
-				bin.write(0);
-			}
+			Glb.align(bin, 0);
 			json.getAsJsonArray("buffers").get(0).getAsJsonObject().addProperty("byteLength", bin.size());
 			return bin.toByteArray();
 		}

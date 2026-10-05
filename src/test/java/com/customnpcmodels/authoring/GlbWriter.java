@@ -277,10 +277,7 @@ final class GlbWriter
 				mesh.getVerticesX()[vertex], mesh.getVerticesY()[vertex], mesh.getVerticesZ()[vertex]);
 			System.arraycopy(p, 0, positions, split * 3, 3);
 
-			int rgb = RsColor.hslToRgb(hsl);
-			colors[split * 4] = RsColor.srgbToLinear(rgb >> 16 & 255);
-			colors[split * 4 + 1] = RsColor.srgbToLinear(rgb >> 8 & 255);
-			colors[split * 4 + 2] = RsColor.srgbToLinear(rgb & 255);
+			System.arraycopy(RsColor.hslToLinear(hsl), 0, colors, split * 4, 3);
 			colors[split * 4 + 3] = 1 - transparency / 255.0;
 
 			rsVertex[split] = vertex;

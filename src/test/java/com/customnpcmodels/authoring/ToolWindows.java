@@ -24,36 +24,50 @@
  */
 package com.customnpcmodels.authoring;
 
-/**
- * Which frame of a live sequence the client shows after a number of client cycles.
- * <p>
- * The plugin only ever receives a frame index, so a clip plays in steps: frame {@code i} is held
- * for {@code frameLengths[i]} cycles - at least one - with nothing in between. A loop restarts at
- * frame 0. What the client does after the last frame of an action (its {@code frameStep} and
- * {@code maxLoops}) decides whether it repeats, not what the frames look like, so it is not modeled.
- */
-final class Playback
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import javax.swing.AbstractAction;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.KeyStroke;
+
+/** Swing pieces the authoring tools' windows share. EDT only, like all Swing. */
+final class ToolWindows
 {
-	private Playback()
+	/** Text that warns rather than fails: amber, readable on the default light background. */
+	static final Color WARNING = new Color(0xB36B00);
+
+	private ToolWindows()
 	{
 	}
 
-	/**
-	 * @param elapsedCycles client cycles since the sequence started, 0 or more
-	 * @param loop          wrap back to frame 0 after the last frame, rather than hold it
-	 */
-	static int frameAt(SequenceTiming timing, long elapsedCycles, boolean loop)
+	static JButton button(String label, ActionListener action)
 	{
-		long total = timing.cycles();
-		long cycle = loop ? elapsedCycles % total : Math.min(elapsedCycles, total - 1);
-		for (int frame = 0; frame < timing.frameCount(); frame++)
+		JButton button = new JButton(label);
+		button.addActionListener(action);
+		return button;
+	}
+
+	/** Lines {@code component} up on the left of a vertical box. */
+	static <T extends JComponent> T left(T component)
+	{
+		component.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return component;
+	}
+
+	/** Runs {@code action} for {@code key} anywhere in the window {@code root} is in. */
+	static void bind(JComponent root, String key, String name, Runnable action)
+	{
+		root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(key), name);
+		root.getActionMap().put(name, new AbstractAction()
 		{
-			cycle -= Math.max(timing.frameLengths[frame], 1);
-			if (cycle < 0)
+			@Override
+			public void actionPerformed(ActionEvent e)
 			{
-				return frame;
+				action.run();
 			}
-		}
-		return timing.frameCount() - 1;
+		});
 	}
 }

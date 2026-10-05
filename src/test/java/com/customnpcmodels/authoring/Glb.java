@@ -323,6 +323,45 @@ final class Glb
 	/**
 	 * Accumulates the BIN chunk while a document is written, one buffer view and accessor per call.
 	 */
+	/** Little-endian 32-bit floats, as glTF stores FLOAT components. */
+	static byte[] floatBytes(double[] values)
+	{
+		ByteBuffer buffer = ByteBuffer.allocate(values.length * 4).order(ByteOrder.LITTLE_ENDIAN);
+		for (double value : values)
+		{
+			buffer.putFloat((float) value);
+		}
+		return buffer.array();
+	}
+
+	/**
+	 * Per component, the {@code min} and {@code max} glTF wants on an accessor - of the floats
+	 * actually stored, not the doubles they came from.
+	 */
+	static double[][] floatBounds(double[] values, int components)
+	{
+		double[] min = new double[components];
+		double[] max = new double[components];
+		Arrays.fill(min, Double.POSITIVE_INFINITY);
+		Arrays.fill(max, Double.NEGATIVE_INFINITY);
+		for (int i = 0; i < values.length; i++)
+		{
+			double stored = (float) values[i];
+			min[i % components] = Math.min(min[i % components], stored);
+			max[i % components] = Math.max(max[i % components], stored);
+		}
+		return new double[][]{min, max};
+	}
+
+	/** Pads {@code out} with zeros until its length is {@code remainder} modulo 4. */
+	static void align(ByteArrayOutputStream out, int remainder)
+	{
+		while (out.size() % 4 != remainder)
+		{
+			out.write(0);
+		}
+	}
+
 	static final class BinBuilder
 	{
 		private final Gltf gltf;
@@ -335,27 +374,12 @@ final class Glb
 
 		int floats(double[] values, String type, Integer target, boolean bounds)
 		{
-			ByteBuffer buffer = ByteBuffer.allocate(values.length * 4).order(ByteOrder.LITTLE_ENDIAN);
-			for (double value : values)
-			{
-				buffer.putFloat((float) value);
-			}
-
-			Gltf.Accessor accessor = accessor(buffer.array(), Gltf.FLOAT, values.length, type, target);
+			Gltf.Accessor accessor = accessor(floatBytes(values), Gltf.FLOAT, values.length, type, target);
 			if (bounds)
 			{
-				int components = Gltf.components(type);
-				accessor.min = new double[components];
-				accessor.max = new double[components];
-				Arrays.fill(accessor.min, Double.POSITIVE_INFINITY);
-				Arrays.fill(accessor.max, Double.NEGATIVE_INFINITY);
-				for (int i = 0; i < values.length; i++)
-				{
-					// Bounds of the float actually stored, not the double it came from
-					double stored = (float) values[i];
-					accessor.min[i % components] = Math.min(accessor.min[i % components], stored);
-					accessor.max[i % components] = Math.max(accessor.max[i % components], stored);
-				}
+				double[][] minMax = floatBounds(values, Gltf.components(type));
+				accessor.min = minMax[0];
+				accessor.max = minMax[1];
 			}
 			return gltf.accessors.size() - 1;
 		}
@@ -389,10 +413,7 @@ final class Glb
 		private Gltf.Accessor accessor(byte[] data, int componentType, int values, String type, Integer target)
 		{
 			// Every view starts 4-aligned, which covers every component size used here
-			while (bytes.size() % 4 != 0)
-			{
-				bytes.write(0);
-			}
+			align(bytes, 0);
 
 			Gltf.BufferView view = new Gltf.BufferView();
 			view.buffer = 0;
@@ -413,10 +434,7 @@ final class Glb
 
 		byte[] finish()
 		{
-			while (bytes.size() % 4 != 0)
-			{
-				bytes.write(0);
-			}
+			align(bytes, 0);
 			byte[] bin = bytes.toByteArray();
 			Gltf.Buffer buffer = new Gltf.Buffer();
 			buffer.byteLength = bin.length;

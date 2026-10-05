@@ -24,7 +24,6 @@
  */
 package com.customnpcmodels.authoring;
 
-import com.customnpcmodels.inject.Mesh;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -34,8 +33,6 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
@@ -53,12 +50,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
@@ -69,7 +64,6 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSlider;
 import javax.swing.JToggleButton;
-import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -93,21 +87,6 @@ public class GltfPainter
 		BRUSH, FILL, EYEDROPPER
 	}
 
-	/** One face's change, for undo. */
-	private static final class Change
-	{
-		final int face;
-		final short before;
-		final short after;
-
-		Change(int face, short before, short after)
-		{
-			this.face = face;
-			this.before = before;
-			this.after = after;
-		}
-	}
-
 	private static final int SWATCH = 22;
 	private static final int MAX_SWATCHES = 64;
 	private static final int MAX_RECENT = 12;
@@ -121,8 +100,8 @@ public class GltfPainter
 	private final JLabel status = new JLabel(" ");
 	private final JPanel currentSwatch = new JPanel();
 	private final JLabel currentLabel = new JLabel();
-	private final JSlider hue = new JSlider(0, 63, 0);
-	private final JSlider saturation = new JSlider(0, 7, 0);
+	private final JSlider hue = new JSlider(0, RsColor.MAX_HUE, 0);
+	private final JSlider saturation = new JSlider(0, RsColor.MAX_SATURATION, 0);
 	private final JSlider lightness = new JSlider(RsColor.MIN_LUMINANCE, RsColor.MAX_LUMINANCE, 64);
 	private final JPanel modelColors = new JPanel(new GridLayout(0, 8, 2, 2));
 	private final JPanel recentColors = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
@@ -132,9 +111,8 @@ public class GltfPainter
 	private short current;
 	private boolean updatingSliders;
 
-	private final Deque<List<Change>> undo = new ArrayDeque<>();
-	private final Deque<List<Change>> redo = new ArrayDeque<>();
-	private List<Change> stroke;
+	private final PaintHistory history = new PaintHistory();
+	private List<PaintHistory.Change> stroke;
 
 	/** Per face, the faces sharing an edge with it; built on first fill. */
 	private List<int[]> neighbours;
@@ -231,10 +209,10 @@ public class GltfPainter
 		bar.add(toolButton("Fill (G)", Tool.FILL, group, false));
 		bar.add(toolButton("Pick color (I)", Tool.EYEDROPPER, group, false));
 		bar.add(Box.createHorizontalStrut(16));
-		bar.add(button("Undo", e -> undo()));
-		bar.add(button("Redo", e -> redo()));
-		bar.add(button("Save", e -> save()));
-		bar.add(button("Reset view (F)", e -> viewport.frame()));
+		bar.add(ToolWindows.button("Undo", e -> undo()));
+		bar.add(ToolWindows.button("Redo", e -> redo()));
+		bar.add(ToolWindows.button("Save", e -> save()));
+		bar.add(ToolWindows.button("Reset view (F)", e -> viewport.frame()));
 		JCheckBox lighting = new JCheckBox("Game lighting", true);
 		lighting.setToolTipText("Off shows each face's flat color, with no shading");
 		lighting.addActionListener(e -> viewport.setGameLighting(lighting.isSelected()));
@@ -251,13 +229,6 @@ public class GltfPainter
 		return button;
 	}
 
-	private static JButton button(String label, ActionListener action)
-	{
-		JButton button = new JButton(label);
-		button.addActionListener(action);
-		return button;
-	}
-
 	private JComponent sidePanel()
 	{
 		JPanel panel = new JPanel();
@@ -268,16 +239,16 @@ public class GltfPainter
 		currentSwatch.setPreferredSize(new Dimension(220, 48));
 		currentSwatch.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
 		currentSwatch.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
-		panel.add(left(currentSwatch));
-		panel.add(left(currentLabel));
+		panel.add(ToolWindows.left(currentSwatch));
+		panel.add(ToolWindows.left(currentLabel));
 		panel.add(Box.createVerticalStrut(6));
 
-		panel.add(left(new JLabel("Hue")));
-		panel.add(left(hue));
-		panel.add(left(new JLabel("Saturation")));
-		panel.add(left(saturation));
-		panel.add(left(new JLabel("Lightness")));
-		panel.add(left(lightness));
+		panel.add(ToolWindows.left(new JLabel("Hue")));
+		panel.add(ToolWindows.left(hue));
+		panel.add(ToolWindows.left(new JLabel("Saturation")));
+		panel.add(ToolWindows.left(saturation));
+		panel.add(ToolWindows.left(new JLabel("Lightness")));
+		panel.add(ToolWindows.left(lightness));
 		for (JSlider slider : new JSlider[]{hue, saturation, lightness})
 		{
 			slider.addChangeListener(e -> slidersChanged());
@@ -290,12 +261,12 @@ public class GltfPainter
 		JScrollPane scroll = new JScrollPane(modelColorsHolder);
 		scroll.setPreferredSize(new Dimension(220, 200));
 		scroll.setBorder(BorderFactory.createEmptyBorder());
-		panel.add(left(scroll));
+		panel.add(ToolWindows.left(scroll));
 		panel.add(Box.createVerticalStrut(10));
 
 		panel.add(heading("Recently used"));
 		recentColors.setPreferredSize(new Dimension(220, 52));
-		panel.add(left(recentColors));
+		panel.add(ToolWindows.left(recentColors));
 
 		List<MeshPart> parts = document.parts();
 		if (parts.size() > 1)
@@ -314,15 +285,15 @@ public class GltfPainter
 			JScrollPane partsScroll = new JScrollPane(list);
 			partsScroll.setPreferredSize(new Dimension(220, Math.min(160, parts.size() * 24 + 4)));
 			partsScroll.setBorder(BorderFactory.createEmptyBorder());
-			panel.add(left(partsScroll));
+			panel.add(ToolWindows.left(partsScroll));
 		}
 
 		if (notice != null)
 		{
 			panel.add(Box.createVerticalStrut(10));
 			JLabel label = new JLabel("<html><div style='width:200px'>" + notice + "</div></html>");
-			label.setForeground(new Color(0xB36B00));
-			panel.add(left(label));
+			label.setForeground(ToolWindows.WARNING);
+			panel.add(ToolWindows.left(label));
 		}
 		panel.add(Box.createVerticalGlue());
 		return panel;
@@ -341,12 +312,6 @@ public class GltfPainter
 		label.setFont(label.getFont().deriveFont(Font.BOLD));
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
 		return label;
-	}
-
-	private static JComponent left(JComponent component)
-	{
-		component.setAlignmentX(Component.LEFT_ALIGNMENT);
-		return component;
 	}
 
 	private JComponent swatch(short hsl)
@@ -428,14 +393,7 @@ public class GltfPainter
 				}
 				else if (SwingUtilities.isMiddleMouseButton(e) || SwingUtilities.isRightMouseButton(e))
 				{
-					if (e.isShiftDown())
-					{
-						viewport.pan(dx, dy);
-					}
-					else
-					{
-						viewport.orbit(dx * 0.01, dy * 0.01);
-					}
+					viewport.drag(dx, dy, e.isShiftDown());
 				}
 				hover(e);
 			}
@@ -465,7 +423,7 @@ public class GltfPainter
 			@Override
 			public void mouseWheelMoved(MouseWheelEvent e)
 			{
-				viewport.zoom(Math.pow(1.1, e.getPreciseWheelRotation()));
+				viewport.wheel(e.getPreciseWheelRotation());
 			}
 		};
 		viewport.addMouseListener(mouse);
@@ -489,27 +447,14 @@ public class GltfPainter
 
 	private void installKeys(JComponent root)
 	{
-		bind(root, "ctrl Z", "undo", this::undo);
-		bind(root, "ctrl Y", "redo", this::redo);
-		bind(root, "ctrl shift Z", "redo2", this::redo);
-		bind(root, "ctrl S", "save", this::save);
-		bind(root, "F", "frame", viewport::frame);
-		bind(root, "B", "brush", () -> selectTool(root, Tool.BRUSH));
-		bind(root, "G", "fill", () -> selectTool(root, Tool.FILL));
-		bind(root, "I", "eyedropper", () -> selectTool(root, Tool.EYEDROPPER));
-	}
-
-	private static void bind(JComponent root, String key, String name, Runnable action)
-	{
-		root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(key), name);
-		root.getActionMap().put(name, new AbstractAction()
-		{
-			@Override
-			public void actionPerformed(ActionEvent e)
-			{
-				action.run();
-			}
-		});
+		ToolWindows.bind(root, "ctrl Z", "undo", this::undo);
+		ToolWindows.bind(root, "ctrl Y", "redo", this::redo);
+		ToolWindows.bind(root, "ctrl shift Z", "redo2", this::redo);
+		ToolWindows.bind(root, "ctrl S", "save", this::save);
+		ToolWindows.bind(root, "F", "frame", viewport::frame);
+		ToolWindows.bind(root, "B", "brush", () -> selectTool(root, Tool.BRUSH));
+		ToolWindows.bind(root, "G", "fill", () -> selectTool(root, Tool.FILL));
+		ToolWindows.bind(root, "I", "eyedropper", () -> selectTool(root, Tool.EYEDROPPER));
 	}
 
 	private void selectTool(JComponent root, Tool value)
@@ -541,7 +486,7 @@ public class GltfPainter
 		{
 			return;
 		}
-		stroke.add(new Change(face, document.color(face), current));
+		stroke.add(new PaintHistory.Change(face, document.color(face), current));
 		document.paint(face, current);
 		viewport.relight();
 		updateTitle();
@@ -568,7 +513,7 @@ public class GltfPainter
 		while (!queue.isEmpty())
 		{
 			int face = queue.poll();
-			stroke.add(new Change(face, from, current));
+			stroke.add(new PaintHistory.Change(face, from, current));
 			document.paint(face, current);
 			for (int next : adjacent.get(face))
 			{
@@ -585,46 +530,9 @@ public class GltfPainter
 
 	private List<int[]> neighbours()
 	{
-		if (neighbours != null)
+		if (neighbours == null)
 		{
-			return neighbours;
-		}
-		Mesh mesh = document.mesh();
-		int faces = mesh.getFaceCount();
-		Map<Long, List<Integer>> edges = new HashMap<>();
-		for (int face = 0; face < faces; face++)
-		{
-			int[] v = {mesh.getFaceIndices1()[face], mesh.getFaceIndices2()[face], mesh.getFaceIndices3()[face]};
-			for (int k = 0; k < 3; k++)
-			{
-				int a = Math.min(v[k], v[(k + 1) % 3]);
-				int b = Math.max(v[k], v[(k + 1) % 3]);
-				edges.computeIfAbsent((long) a << 32 | b, key -> new ArrayList<>()).add(face);
-			}
-		}
-
-		List<List<Integer>> lists = new ArrayList<>();
-		for (int face = 0; face < faces; face++)
-		{
-			lists.add(new ArrayList<>());
-		}
-		for (List<Integer> sharing : edges.values())
-		{
-			for (int a : sharing)
-			{
-				for (int b : sharing)
-				{
-					if (a != b)
-					{
-						lists.get(a).add(b);
-					}
-				}
-			}
-		}
-		neighbours = new ArrayList<>();
-		for (List<Integer> list : lists)
-		{
-			neighbours.add(list.stream().mapToInt(Integer::intValue).toArray());
+			neighbours = FaceAdjacency.of(document.mesh());
 		}
 		return neighbours;
 	}
@@ -633,8 +541,7 @@ public class GltfPainter
 	{
 		if (stroke != null && !stroke.isEmpty())
 		{
-			undo.push(stroke);
-			redo.clear();
+			history.record(stroke);
 			addRecent(current);
 			refreshModelColors();
 		}
@@ -643,32 +550,18 @@ public class GltfPainter
 
 	private void undo()
 	{
-		if (undo.isEmpty())
+		if (history.undo(document::paint))
 		{
-			return;
+			afterHistory();
 		}
-		List<Change> changes = undo.pop();
-		for (int i = changes.size() - 1; i >= 0; i--)
-		{
-			document.paint(changes.get(i).face, changes.get(i).before);
-		}
-		redo.push(changes);
-		afterHistory();
 	}
 
 	private void redo()
 	{
-		if (redo.isEmpty())
+		if (history.redo(document::paint))
 		{
-			return;
+			afterHistory();
 		}
-		List<Change> changes = redo.pop();
-		for (Change change : changes)
-		{
-			document.paint(change.face, change.after);
-		}
-		undo.push(changes);
-		afterHistory();
 	}
 
 	private void afterHistory()
@@ -684,9 +577,9 @@ public class GltfPainter
 	{
 		current = hsl;
 		updatingSliders = true;
-		hue.setValue(hsl >> 10 & 63);
-		saturation.setValue(hsl >> 7 & 7);
-		lightness.setValue(Math.max(RsColor.MIN_LUMINANCE, Math.min(RsColor.MAX_LUMINANCE, hsl & 127)));
+		hue.setValue(RsColor.hue(hsl));
+		saturation.setValue(RsColor.saturation(hsl));
+		lightness.setValue(Math.max(RsColor.MIN_LUMINANCE, Math.min(RsColor.MAX_LUMINANCE, RsColor.luminance(hsl))));
 		updatingSliders = false;
 		showCurrent();
 	}
@@ -697,7 +590,7 @@ public class GltfPainter
 		{
 			return;
 		}
-		current = (short) (hue.getValue() << 10 | saturation.getValue() << 7 | lightness.getValue());
+		current = (short) RsColor.pack(hue.getValue(), saturation.getValue(), lightness.getValue());
 		showCurrent();
 	}
 
@@ -710,14 +603,15 @@ public class GltfPainter
 	private static String describe(short hsl)
 	{
 		int value = hsl & 0xFFFF;
-		return String.format("HSL %d  (hue %d, sat %d, light %d)  #%06X", value, value >> 10 & 63, value >> 7 & 7,
-			value & 127, RsColor.hslToRgb(value));
+		return String.format("HSL %d  (hue %d, sat %d, light %d)  #%06X", value, RsColor.hue(value),
+			RsColor.saturation(value), RsColor.luminance(value), RsColor.hslToRgb(value));
 	}
 
 	private short mostUsedColor()
 	{
 		Map<Short, Integer> counts = colorCounts();
-		return counts.isEmpty() ? (short) (32 << 10 | 4 << 7 | 64) : counts.keySet().iterator().next();
+		// A model with no colors at all starts the brush on a middling one
+		return counts.isEmpty() ? (short) RsColor.pack(32, 4, 64) : counts.keySet().iterator().next();
 	}
 
 	/** Colors by how many faces use them, most first. */

@@ -33,8 +33,6 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.KeyboardFocusManager;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
@@ -51,12 +49,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
@@ -118,6 +114,14 @@ public class GltfAnimationViewer
 	private final JCheckBox lighting = new JCheckBox("Game lighting", true);
 	private final JLabel status = new JLabel(" ");
 	private final Timer timer = new Timer(20, e -> tick());
+
+	/**
+	 * The live cache, opened by the first model that needs sequence timings and kept until the window
+	 * closes, so switching to a tab not yet shown doesn't read it all again. Null when there is none;
+	 * {@link #cacheOpened} tells that apart from not opened yet.
+	 */
+	private Store cache;
+	private boolean cacheOpened;
 
 	/** The model being shown. */
 	private ModelTab active;
@@ -252,6 +256,17 @@ public class GltfAnimationViewer
 		buildWindow(center);
 	}
 
+	/** The live cache, opened on first use. Null when there is none. */
+	private Store cache() throws IOException
+	{
+		if (!cacheOpened)
+		{
+			cache = CacheFiles.openLiveCache();
+			cacheOpened = true;
+		}
+		return cache;
+	}
+
 	/** Shows a model, loading it first if this is the first time, and plays its selected animation. */
 	private void activate(ModelTab tab)
 	{
@@ -289,6 +304,18 @@ public class GltfAnimationViewer
 			public void windowClosed(WindowEvent e)
 			{
 				timer.stop();
+				if (cache != null)
+				{
+					try
+					{
+						cache.close();
+					}
+					catch (IOException ex)
+					{
+						// Only read from, and the tool is ending anyway
+						System.err.println("Could not close the live cache: " + ex.getMessage());
+					}
+				}
 			}
 		});
 
@@ -308,8 +335,8 @@ public class GltfAnimationViewer
 		JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
 		play.addActionListener(e -> setPlaying(play.isSelected()));
 		bar.add(unfocusable(play));
-		bar.add(unfocusable(button("< Frame", e -> step(-1))));
-		bar.add(unfocusable(button("Frame >", e -> step(1))));
+		bar.add(unfocusable(ToolWindows.button("< Frame", e -> step(-1))));
+		bar.add(unfocusable(ToolWindows.button("Frame >", e -> step(1))));
 		loop.setToolTipText("Off plays the sequence once and holds its last frame");
 		bar.add(unfocusable(loop));
 		bar.add(new JLabel("Speed"));
@@ -328,15 +355,8 @@ public class GltfAnimationViewer
 			}
 		});
 		bar.add(unfocusable(lighting));
-		bar.add(unfocusable(button("Reset view (F)", e -> frameCurrent())));
+		bar.add(unfocusable(ToolWindows.button("Reset view (F)", e -> frameCurrent())));
 		return bar;
-	}
-
-	private static JButton button(String label, ActionListener action)
-	{
-		JButton button = new JButton(label);
-		button.addActionListener(action);
-		return button;
 	}
 
 	/** Keeps keyboard focus on the view, so Space and the arrow keys always reach the player. */
@@ -373,18 +393,12 @@ public class GltfAnimationViewer
 			if (!updatingSlider && current != null && current.isPlayable())
 			{
 				setPlaying(false);
-				seek(Playback.startCycle(current.timing, slider.getValue()));
+				seek(current.timing.startCycle(slider.getValue()));
 			}
 		});
-		panel.add(left(slider));
-		panel.add(left(status));
+		panel.add(ToolWindows.left(slider));
+		panel.add(ToolWindows.left(status));
 		return panel;
-	}
-
-	private static JComponent left(JComponent component)
-	{
-		component.setAlignmentX(Component.LEFT_ALIGNMENT);
-		return component;
 	}
 
 	// --- Input ----------------------------------------------------------------------------------
@@ -411,20 +425,13 @@ public class GltfAnimationViewer
 				int dy = e.getY() - lastY;
 				lastX = e.getX();
 				lastY = e.getY();
-				if (e.isShiftDown())
-				{
-					viewport.pan(dx, dy);
-				}
-				else
-				{
-					viewport.orbit(dx * 0.01, dy * 0.01);
-				}
+				viewport.drag(dx, dy, e.isShiftDown());
 			}
 
 			@Override
 			public void mouseWheelMoved(MouseWheelEvent e)
 			{
-				viewport.zoom(Math.pow(1.1, e.getPreciseWheelRotation()));
+				viewport.wheel(e.getPreciseWheelRotation());
 			}
 		};
 		viewport.addMouseListener(mouse);
@@ -434,19 +441,19 @@ public class GltfAnimationViewer
 
 	private void installKeys(JComponent root)
 	{
-		bind(root, "SPACE", "play", () -> setPlaying(!play.isSelected()));
-		bind(root, "LEFT", "back", () -> step(-1));
-		bind(root, "RIGHT", "forward", () -> step(1));
-		bind(root, "F", "frame", this::frameCurrent);
+		ToolWindows.bind(root, "SPACE", "play", () -> setPlaying(!play.isSelected()));
+		ToolWindows.bind(root, "LEFT", "back", () -> step(-1));
+		ToolWindows.bind(root, "RIGHT", "forward", () -> step(1));
+		ToolWindows.bind(root, "F", "frame", this::frameCurrent);
 		if (tabStrip == null)
 		{
 			return;
 		}
 
-		bind(root, "ctrl PAGE_DOWN", "nextModel", () -> cycleModel(1));
-		bind(root, "ctrl PAGE_UP", "previousModel", () -> cycleModel(-1));
-		bind(root, "ctrl TAB", "nextModelTab", () -> cycleModel(1));
-		bind(root, "ctrl shift TAB", "previousModelTab", () -> cycleModel(-1));
+		ToolWindows.bind(root, "ctrl PAGE_DOWN", "nextModel", () -> cycleModel(1));
+		ToolWindows.bind(root, "ctrl PAGE_UP", "previousModel", () -> cycleModel(-1));
+		ToolWindows.bind(root, "ctrl TAB", "nextModelTab", () -> cycleModel(1));
+		ToolWindows.bind(root, "ctrl shift TAB", "previousModelTab", () -> cycleModel(-1));
 		// The focus manager would otherwise take Ctrl+Tab for itself, and the tab strip Ctrl+Page Up/Down
 		window.setFocusTraversalKeys(KeyboardFocusManager.FORWARD_TRAVERSAL_KEYS,
 			Collections.singleton(KeyStroke.getKeyStroke("TAB")));
@@ -456,19 +463,6 @@ public class GltfAnimationViewer
 		{
 			tabStrip.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(key), "none");
 		}
-	}
-
-	private static void bind(JComponent root, String key, String name, Runnable action)
-	{
-		root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(key), name);
-		root.getActionMap().put(name, new AbstractAction()
-		{
-			@Override
-			public void actionPerformed(ActionEvent e)
-			{
-				action.run();
-			}
-		});
 	}
 
 	// --- Playback -------------------------------------------------------------------------------
@@ -510,7 +504,7 @@ public class GltfAnimationViewer
 	{
 		playing &= current != null && current.isPlayable();
 		double now = currentCycles();
-		if (playing && !loop.isSelected() && now >= Playback.cycles(current.timing) - 1)
+		if (playing && !loop.isSelected() && now >= current.timing.cycles() - 1)
 		{
 			// Played through once already: start again from the top
 			now = 0;
@@ -564,7 +558,7 @@ public class GltfAnimationViewer
 		setPlaying(false);
 		int frames = current.clip.getFrameCount();
 		int frame = Math.floorMod(frameNow() + delta, frames);
-		seek(Playback.startCycle(current.timing, frame));
+		seek(current.timing.startCycle(frame));
 	}
 
 	private int frameNow()
@@ -578,10 +572,10 @@ public class GltfAnimationViewer
 		{
 			return;
 		}
-		if (!loop.isSelected() && currentCycles() >= Playback.cycles(current.timing))
+		if (!loop.isSelected() && currentCycles() >= current.timing.cycles())
 		{
 			setPlaying(false);
-			seek(Playback.cycles(current.timing) - 1);
+			seek(current.timing.cycles() - 1);
 			return;
 		}
 		refresh();
@@ -606,7 +600,7 @@ public class GltfAnimationViewer
 			updatingSlider = false;
 		}
 
-		long total = Playback.cycles(timing);
+		long total = timing.cycles();
 		long cycle = loop.isSelected() ? cycles % total : Math.min(cycles, total - 1);
 		status.setText(String.format("Frame %d / %d   Cycle %d / %d   %.2f s / %.2f s   Sequence %d   "
 				+ "Drag: turn   Shift+drag: move   Wheel: zoom   Left / Right: step%s",
@@ -662,7 +656,7 @@ public class GltfAnimationViewer
 				error = ex.getMessage() == null ? ex.toString() : ex.getMessage();
 				JLabel label = new JLabel("<html>Could not open " + escape(path.getFileName().toString()) + ":<br>"
 					+ escape(error) + "</html>", SwingConstants.CENTER);
-				label.setPreferredSize(new Dimension(900, 720));
+				label.setPreferredSize(new Dimension(ModelViewport.PREFERRED_WIDTH, ModelViewport.PREFERRED_HEIGHT));
 				panel.add(label, BorderLayout.CENTER);
 			}
 			// Already in the tab strip, unless this is the first model
@@ -674,12 +668,9 @@ public class GltfAnimationViewer
 			byte[] glb = Files.readAllBytes(path);
 			Manifest.Model entry = Manifest.entryFor(path);
 
-			// The cache is only read for sequence timings, all of them now, so it is closed straight after
-			try (Store store = CacheFiles.openLiveCache())
-			{
-				document = AnimationDocument.load(glb, entry,
-					store == null ? null : sequenceId -> AssetGenerator.timing(store, sequenceId));
-			}
+			Store store = cache();
+			document = AnimationDocument.load(glb, entry,
+				store == null ? null : sequenceId -> AssetGenerator.timing(store, sequenceId));
 
 			viewport = new AnimationViewport(document);
 			viewport.setGameLighting(lighting.isSelected());
@@ -772,8 +763,8 @@ public class GltfAnimationViewer
 			for (String note : notes)
 			{
 				JLabel label = new JLabel(note);
-				label.setForeground(new Color(0xB36B00));
-				box.add(left(label));
+				label.setForeground(ToolWindows.WARNING);
+				box.add(ToolWindows.left(label));
 			}
 
 			List<String> report = document.report();
@@ -796,8 +787,8 @@ public class GltfAnimationViewer
 					scroll.setVisible(toggle.isSelected());
 					box.revalidate();
 				});
-				box.add(left(toggle));
-				box.add(left(scroll));
+				box.add(ToolWindows.left(toggle));
+				box.add(ToolWindows.left(scroll));
 			}
 			return notes.isEmpty() && report.isEmpty() ? null : box;
 		}

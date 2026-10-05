@@ -45,7 +45,6 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.cache.NpcManager;
 import net.runelite.cache.definitions.ModelDefinition;
 import net.runelite.cache.definitions.NpcDefinition;
 import net.runelite.cache.fs.Store;
@@ -82,44 +81,16 @@ public class GltfExporter
 
 	public static void main(String[] args) throws IOException
 	{
-		String npcArg = System.getProperty("customnpcmodels.npc");
-		if (npcArg == null || npcArg.isEmpty())
+		String npcArg = ToolCli.required("npc", "./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]");
+		String outArg = ToolCli.option("out");
+		Path out = Paths.get(outArg == null ? "build/gltf" : outArg);
+
+		try (Store store = ToolCli.liveCache("Could not find an OSRS cache"))
 		{
-			System.err.println("Usage: ./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]");
-			System.exit(1);
-			return;
-		}
-		Path out = Paths.get(System.getProperty("customnpcmodels.out", "build/gltf"));
+			NpcDefinition npc = ToolCli.npc(store, npcArg);
 
-		try (Store store = CacheFiles.openLiveCache())
-		{
-			if (store == null)
-			{
-				System.err.println("Could not find an OSRS cache; pass one with -PcacheDir=<path>");
-				System.exit(1);
-				return;
-			}
-
-			NpcManager npcs = new NpcManager(store);
-			npcs.load();
-			NpcDefinition npc = npcs.get(Integer.parseInt(npcArg.trim()));
-			if (npc == null || npc.models == null)
-			{
-				System.err.println("No NPC with id " + npcArg + ", or it has no models");
-				System.exit(1);
-				return;
-			}
-
-			Set<Integer> sequences = new LinkedHashSet<>();
-			String seqArg = System.getProperty("customnpcmodels.seqs");
-			if (seqArg != null && !seqArg.isEmpty())
-			{
-				for (String seq : seqArg.split(","))
-				{
-					sequences.add(Integer.parseInt(seq.trim()));
-				}
-			}
-			else
+			Set<Integer> sequences = ToolCli.sequenceIds(ToolCli.option("seqs"));
+			if (sequences.isEmpty())
 			{
 				sequences.addAll(defaultSequences(store, npc, System.out::println));
 			}

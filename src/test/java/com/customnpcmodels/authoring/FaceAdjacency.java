@@ -24,36 +24,58 @@
  */
 package com.customnpcmodels.authoring;
 
-/**
- * Which frame of a live sequence the client shows after a number of client cycles.
- * <p>
- * The plugin only ever receives a frame index, so a clip plays in steps: frame {@code i} is held
- * for {@code frameLengths[i]} cycles - at least one - with nothing in between. A loop restarts at
- * frame 0. What the client does after the last frame of an action (its {@code frameStep} and
- * {@code maxLoops}) decides whether it repeats, not what the frames look like, so it is not modeled.
- */
-final class Playback
+import com.customnpcmodels.inject.Mesh;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Which faces of a mesh touch which, for flood fills. */
+final class FaceAdjacency
 {
-	private Playback()
+	private FaceAdjacency()
 	{
 	}
 
-	/**
-	 * @param elapsedCycles client cycles since the sequence started, 0 or more
-	 * @param loop          wrap back to frame 0 after the last frame, rather than hold it
-	 */
-	static int frameAt(SequenceTiming timing, long elapsedCycles, boolean loop)
+	/** Per face, the faces sharing an edge with it. Faces that only share a corner do not count. */
+	static List<int[]> of(Mesh mesh)
 	{
-		long total = timing.cycles();
-		long cycle = loop ? elapsedCycles % total : Math.min(elapsedCycles, total - 1);
-		for (int frame = 0; frame < timing.frameCount(); frame++)
+		int faces = mesh.getFaceCount();
+		Map<Long, List<Integer>> edges = new HashMap<>();
+		for (int face = 0; face < faces; face++)
 		{
-			cycle -= Math.max(timing.frameLengths[frame], 1);
-			if (cycle < 0)
+			int[] v = {mesh.getFaceIndices1()[face], mesh.getFaceIndices2()[face], mesh.getFaceIndices3()[face]};
+			for (int k = 0; k < 3; k++)
 			{
-				return frame;
+				int a = Math.min(v[k], v[(k + 1) % 3]);
+				int b = Math.max(v[k], v[(k + 1) % 3]);
+				edges.computeIfAbsent((long) a << 32 | b, key -> new ArrayList<>()).add(face);
 			}
 		}
-		return timing.frameCount() - 1;
+
+		List<List<Integer>> lists = new ArrayList<>();
+		for (int face = 0; face < faces; face++)
+		{
+			lists.add(new ArrayList<>());
+		}
+		for (List<Integer> sharing : edges.values())
+		{
+			for (int a : sharing)
+			{
+				for (int b : sharing)
+				{
+					if (a != b)
+					{
+						lists.get(a).add(b);
+					}
+				}
+			}
+		}
+		List<int[]> neighbours = new ArrayList<>();
+		for (List<Integer> list : lists)
+		{
+			neighbours.add(list.stream().mapToInt(Integer::intValue).toArray());
+		}
+		return neighbours;
 	}
 }

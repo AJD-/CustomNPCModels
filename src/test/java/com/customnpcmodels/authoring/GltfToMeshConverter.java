@@ -89,6 +89,10 @@ final class GltfToMeshConverter
 		Mesh mesh;
 		Rig rig;
 		final List<Clip> clips = new ArrayList<>();
+		/** The same clips, by the animation each was made from, in the map's order. */
+		final Map<String, Clip> clipsByAnimation = new LinkedHashMap<>();
+		/** Animations in the file that the map leaves out, so were not converted; each is in the report too. */
+		final List<String> unmapped = new ArrayList<>();
 		final List<String> report = new ArrayList<>();
 		/** Whether vertices were welded by {@code _RS_VERTEX}, so they keep the exported mesh's numbering. */
 		boolean keptVertexNumbering;
@@ -678,10 +682,10 @@ final class GltfToMeshConverter
 			double[] rgba = geometry.colors.get(corner);
 			if (hintHolds && rgba != null)
 			{
-				int rgb = RsColor.hslToRgb(hint);
-				hintHolds = Math.abs(rgba[0] - RsColor.srgbToLinear(rgb >> 16 & 255)) <= COLOR_TOLERANCE
-					&& Math.abs(rgba[1] - RsColor.srgbToLinear(rgb >> 8 & 255)) <= COLOR_TOLERANCE
-					&& Math.abs(rgba[2] - RsColor.srgbToLinear(rgb & 255)) <= COLOR_TOLERANCE;
+				double[] hinted = RsColor.hslToLinear(hint);
+				hintHolds = Math.abs(rgba[0] - hinted[0]) <= COLOR_TOLERANCE
+					&& Math.abs(rgba[1] - hinted[1]) <= COLOR_TOLERANCE
+					&& Math.abs(rgba[2] - hinted[2]) <= COLOR_TOLERANCE;
 			}
 		}
 		if (hintHolds)
@@ -853,7 +857,8 @@ final class GltfToMeshConverter
 		{
 			if (!animations.containsKey(name))
 			{
-				result.report.add("Animation '" + name + "' is not mapped to a live sequence and was ignored");
+				result.unmapped.add(name);
+				result.report.add(unmappedMessage(name));
 			}
 		}
 
@@ -865,9 +870,17 @@ final class GltfToMeshConverter
 				throw new GltfException("The manifest maps animation '" + entry.getKey() + "', which the file does not have "
 					+ "(it has " + byName.keySet() + ")");
 			}
-			result.clips.add(buildClip(rigId, entry.getValue(), animation, skin, order, parentSlot, inverseBinds,
-				restJoints, centroids, types));
+			Clip clip = buildClip(rigId, entry.getValue(), animation, skin, order, parentSlot, inverseBinds,
+				restJoints, centroids, types);
+			result.clips.add(clip);
+			result.clipsByAnimation.put(entry.getKey(), clip);
 		}
+	}
+
+	/** The report's line for an animation the map leaves out. */
+	static String unmappedMessage(String animation)
+	{
+		return "Animation '" + animation + "' is not mapped to a live sequence and was ignored";
 	}
 
 	private static void addSubtree(List<Integer> order, int slot, int[] parentSlot)

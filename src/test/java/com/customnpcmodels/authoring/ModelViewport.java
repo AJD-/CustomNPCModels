@@ -60,6 +60,16 @@ import javax.swing.JComponent;
  */
 abstract class ModelViewport extends JComponent
 {
+	/** The size a view asks for, and so the size its window opens at. */
+	static final int PREFERRED_WIDTH = 900;
+	static final int PREFERRED_HEIGHT = 720;
+
+	/** Radians the view turns per pixel dragged. */
+	private static final double ORBIT_PER_PIXEL = 0.01;
+
+	/** How far one notch of the mouse wheel zooms. */
+	private static final double ZOOM_PER_NOTCH = 1.1;
+
 	/** Lighter's faceColors3 sentinels. */
 	private static final int FLAT_SHADED = -1;
 	private static final int HIDDEN = -2;
@@ -121,7 +131,7 @@ abstract class ModelViewport extends JComponent
 		lit1 = new int[faces];
 		lit2 = new int[faces];
 		lit3 = new int[faces];
-		setPreferredSize(new Dimension(900, 720));
+		setPreferredSize(new Dimension(PREFERRED_WIDTH, PREFERRED_HEIGHT));
 	}
 
 	/** A face's unlit packed HSL color. */
@@ -231,6 +241,28 @@ abstract class ModelViewport extends JComponent
 		yaw += dYaw;
 		pitch = Math.max(-1.5, Math.min(1.5, pitch + dPitch));
 		repaint();
+	}
+
+	/**
+	 * Moves the camera for a mouse drag of {@code dx}, {@code dy} pixels: pans when {@code pan}, as
+	 * Shift does in Blender, and orbits otherwise.
+	 */
+	void drag(int dx, int dy, boolean pan)
+	{
+		if (pan)
+		{
+			pan(dx, dy);
+		}
+		else
+		{
+			orbit(dx * ORBIT_PER_PIXEL, dy * ORBIT_PER_PIXEL);
+		}
+	}
+
+	/** Zooms for a turn of the mouse wheel, in notches; positive zooms out. */
+	void wheel(double notches)
+	{
+		zoom(Math.pow(ZOOM_PER_NOTCH, notches));
 	}
 
 	void zoom(double factor)
