@@ -189,6 +189,22 @@ public class ModelCache
 	}
 
 	/**
+	 * The NPC whose chathead an NPC id shows in dialogue, from the model drawn for it, or
+	 * {@link NpcBinding#NO_CHATHEAD} when it keeps its own: no enabled pack has a model for it, the
+	 * model names no chathead, or the model could not be built and so the NPC is not swapped at all.
+	 * Client thread only.
+	 */
+	public int chatheadFor(int npcId)
+	{
+		if (SwapBlacklist.isBlocked(npcId) || unbuildable.contains(npcId))
+		{
+			return NpcBinding.NO_CHATHEAD;
+		}
+		ResolvedModel resolved = catalog.get(npcId);
+		return resolved == null ? NpcBinding.NO_CHATHEAD : resolved.getBinding().getChatheadNpcId();
+	}
+
+	/**
 	 * Poses the model for an NPC, or null when it is not being substituted.
 	 *
 	 * <p>The returned model is shared by every NPC of this id and is overwritten by the next pose, so

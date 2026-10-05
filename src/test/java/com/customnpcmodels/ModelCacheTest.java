@@ -203,6 +203,51 @@ public class ModelCacheTest
 		assertEquals(Collections.singleton(NPC_ID), cache.boundNpcIds());
 	}
 
+	@Test
+	public void testAChatheadComesFromTheModelDrawn()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(
+			TestBinding.of("talker", new int[]{NPC_ID}, new int[]{1}).rig(7).chathead(NpcID.POH_SERVANT_DEMON).build())));
+
+		assertEquals(NpcID.POH_SERVANT_DEMON, cache.chatheadFor(NPC_ID));
+		assertEquals("an NPC no pack has a model for keeps its own",
+			NpcBinding.NO_CHATHEAD, cache.chatheadFor(NPC_ID + 1));
+	}
+
+	@Test
+	public void testAModelWithoutAChatheadKeepsTheNpcsOwn()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(binding("quiet", NPC_ID))));
+
+		assertEquals(NpcBinding.NO_CHATHEAD, cache.chatheadFor(NPC_ID));
+	}
+
+	@Test
+	public void testABlacklistedNpcKeepsItsChathead()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(
+			TestBinding.of("mixed", new int[]{NpcID.INFERNO_JAD, NPC_ID}, new int[]{1}).rig(7)
+				.chathead(NpcID.POH_SERVANT_DEMON).build())));
+
+		assertEquals(NpcBinding.NO_CHATHEAD, cache.chatheadFor(NpcID.INFERNO_JAD));
+		assertEquals(NpcID.POH_SERVANT_DEMON, cache.chatheadFor(NPC_ID));
+	}
+
+	/** A model switched off leaves the catalog, and the NPC's own chathead comes back with it. */
+	@Test
+	public void testAChatheadGoesWithItsModel()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(
+			TestBinding.of("talker", new int[]{NPC_ID}, new int[]{1}).rig(7).chathead(NpcID.POH_SERVANT_DEMON).build())));
+		cache.setCatalog(TestPacks.catalogOf());
+
+		assertEquals(NpcBinding.NO_CHATHEAD, cache.chatheadFor(NPC_ID));
+	}
+
 	/**
 	 * Two packs authored apart reuse the same mesh id, rig id and sequence - the exporter hands every
 	 * author the same ids for the same NPC. Each NPC must still be built and posed from its own pack

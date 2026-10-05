@@ -91,6 +91,9 @@ public class CustomNpcModelsPlugin extends Plugin
 	private InteractTargetTracker targetTracker;
 
 	@Inject
+	private ChatheadSwapper chatheadSwapper;
+
+	@Inject
 	private RendererAttachment attachment;
 
 	@Inject
@@ -142,6 +145,7 @@ public class CustomNpcModelsPlugin extends Plugin
 		panel.setHubEnabled(config.hubEnabled());
 
 		packLoader.start(this::getPluginDirectory, this::recheckLoadedNpcs);
+		chatheadSwapper.start(this::canSubstitute);
 		packLoader.load();
 		clientThread.invoke(() ->
 		{
@@ -153,6 +157,7 @@ public class CustomNpcModelsPlugin extends Plugin
 		// Last, as RuneLite registers the plugin itself: the bus does not dedupe, so registering
 		// before something that can throw would register it twice on the next start
 		eventBus.register(targetTracker);
+		eventBus.register(chatheadSwapper);
 	}
 
 	@Override
@@ -161,6 +166,7 @@ public class CustomNpcModelsPlugin extends Plugin
 		log.info("Custom NPC Models stopped");
 		session.stop();
 		eventBus.unregister(targetTracker);
+		eventBus.unregister(chatheadSwapper);
 
 		if (navButton != null)
 		{
@@ -177,6 +183,8 @@ public class CustomNpcModelsPlugin extends Plugin
 
 		clientThread.invoke(() ->
 		{
+			// A dialogue left open shows the NPC's own head again
+			chatheadSwapper.stop();
 			attachment.detach();
 			// Nothing is being swapped anymore, so Interact Highlight's own outlines are correct again
 			outlineTakeover.sync();

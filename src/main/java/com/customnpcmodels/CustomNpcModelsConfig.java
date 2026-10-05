@@ -75,10 +75,21 @@ public interface CustomNpcModelsConfig extends Config
 		return true;
 	}
 
+	@ConfigItem(
+		keyName = "swapChatheads",
+		name = "Swap chatheads",
+		description = "In dialogue, show the chathead a custom model's pack picks for it in place of the NPC's own.",
+		position = 2
+	)
+	default boolean swapChatheads()
+	{
+		return true;
+	}
+
 	@ConfigSection(
 		name = "Safety",
 		description = "Safety settings to disable custom models in dangerous areas or worlds",
-		position = 2,
+		position = 3,
 		closedByDefault = true
 	)
 	String safetySection = "safetySection";
@@ -110,7 +121,7 @@ public interface CustomNpcModelsConfig extends Config
 	@ConfigSection(
 		name = "Compatibility",
 		description = "Settings for working alongside other plugins",
-		position = 3,
+		position = 4,
 		closedByDefault = true
 	)
 	String compatibilitySection = "compatibilitySection";
@@ -135,7 +146,7 @@ public interface CustomNpcModelsConfig extends Config
 	@ConfigSection(
 		name = "Custom Model Hub",
 		description = "Browsing and downloading model packs from the Custom Model Hub",
-		position = 4,
+		position = 5,
 		closedByDefault = true
 	)
 	String hubSection = "hubSection";
