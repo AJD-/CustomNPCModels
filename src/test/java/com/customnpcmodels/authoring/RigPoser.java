@@ -43,11 +43,6 @@ import com.customnpcmodels.inject.Rig;
  */
 final class RigPoser
 {
-	private static final int TYPE_PIVOT = 0;
-	private static final int TYPE_TRANSLATE = 1;
-	private static final int TYPE_ROTATE = 2;
-	private static final int TYPE_SCALE = 3;
-
 	private RigPoser()
 	{
 	}
@@ -88,7 +83,7 @@ final class RigPoser
 
 			switch (rig.getType(transform))
 			{
-				case TYPE_PIVOT:
+				case Rig.TYPE_PIVOT:
 				{
 					double sumX = 0;
 					double sumY = 0;
@@ -111,19 +106,19 @@ final class RigPoser
 					pivotZ = dz + (counted > 0 ? sumZ / counted : 0);
 					break;
 				}
-				case TYPE_TRANSLATE:
+				case Rig.TYPE_TRANSLATE:
 					apply(groups, named, Mat4.translation(dx, dy, dz));
 					break;
-				case TYPE_ROTATE:
+				case Rig.TYPE_ROTATE:
 					apply(groups, named, Mat4.multiply(
 						Mat4.translation(pivotX, pivotY, pivotZ),
 						Mat4.rsRotation(dx, dy, dz),
 						Mat4.translation(-pivotX, -pivotY, -pivotZ)));
 					break;
-				case TYPE_SCALE:
+				case Rig.TYPE_SCALE:
 					apply(groups, named, Mat4.multiply(
 						Mat4.translation(pivotX, pivotY, pivotZ),
-						Mat4.scale(dx / 128.0, dy / 128.0, dz / 128.0),
+						Mat4.scale(dx / (double) Rig.SCALE_UNIT, dy / (double) Rig.SCALE_UNIT, dz / (double) Rig.SCALE_UNIT),
 						Mat4.translation(-pivotX, -pivotY, -pivotZ)));
 					break;
 				default:

@@ -54,11 +54,11 @@ import net.runelite.api.ModelData;
 public final class Lighter
 {
 	/** Face is shaded across its corners from the vertex normals. */
-	private static final int RENDER_TYPE_GOURAUD = 0;
+	static final int RENDER_TYPE_GOURAUD = 0;
 	/** Face takes a single color from its own normal. */
-	private static final int RENDER_TYPE_FLAT = 1;
+	static final int RENDER_TYPE_FLAT = 1;
 	/** Face is drawn unshaded. */
-	private static final int RENDER_TYPE_UNSHADED = 3;
+	static final int RENDER_TYPE_UNSHADED = 3;
 
 	/** {@code faceColors3} sentinel: flat shaded. */
 	static final int FLAT_SHADED = -1;

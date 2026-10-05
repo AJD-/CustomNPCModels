@@ -158,8 +158,8 @@ public final class DirectoryPackSource
 			long size = bundleFile.size();
 			if (size > AssetCodec.MAX_FILE_BYTES)
 			{
-				return LoadedPack.failed(info, BUNDLE_FILE + " is " + size / (1024 * 1024) + " MiB, past the "
-					+ AssetCodec.MAX_FILE_BYTES / (1024 * 1024) + " MiB limit");
+				return LoadedPack.failed(info, BUNDLE_FILE + " is " + AssetCodec.mebibytes(size) + ", past the "
+					+ AssetCodec.mebibytes(AssetCodec.MAX_FILE_BYTES) + " limit");
 			}
 
 			try (InputStream in = bundleFile.openInputStream())
@@ -184,26 +184,5 @@ public final class DirectoryPackSource
 	static boolean isValidFolderName(String name)
 	{
 		return FOLDER_NAME.matcher(name).matches() && !RESERVED_NAME.matcher(name).matches();
-	}
-
-	/** {@code pack.json} as written. The id is never taken from it: a pack's folder decides that. */
-	static final class PackJson
-	{
-		String name;
-		String author;
-		String description;
-		String version;
-		String license;
-		List<String> tags;
-		String commit;
-
-		PackInfo toInfo(PackInfo folder)
-		{
-			return new PackInfo(folder.getId(), folder.getKind(),
-				name == null || name.trim().isEmpty() ? folder.getName() : name.trim(),
-				author, description, version, license,
-				tags == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(tags)),
-				commit);
-		}
 	}
 }

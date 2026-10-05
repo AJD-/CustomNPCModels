@@ -108,6 +108,19 @@ public class PackImporterTest
 	}
 
 	@Test
+	public void testAnIdThatIsNotAStringFallsBackToTheFolderName() throws IOException
+	{
+		Filepath local = local();
+		PackImporter.Result result = PackImporter.importFolder(
+			source("exported", bundleBytes(), "{\"id\": {\"not\": \"a string\"}, \"name\": \"Mole\"}"), local, new Gson());
+
+		assertTrue(result.getMessage(), result.isImported());
+		List<LoadedPack> packs = new DirectoryPackSource(local, PackKind.LOCAL, new Gson()).load();
+		assertEquals("local:exported", packs.get(0).getId());
+		assertTrue("the loader ignores the id the same way", packs.get(0).isLoaded());
+	}
+
+	@Test
 	public void testAnExistingPackIsNeverOverwritten() throws IOException
 	{
 		Filepath local = local();

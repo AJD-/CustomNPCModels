@@ -830,13 +830,13 @@ final class GltfToMeshConverter
 			int[] subtreeGroups = subtree.stream().mapToInt(Integer::intValue).toArray();
 
 			int base = k * TRANSFORMS_PER_JOINT;
-			types[base] = 1;
+			types[base] = Rig.TYPE_TRANSLATE;
 			rigGroups[base] = subtreeGroups;
-			types[base + 1] = 0;
+			types[base + 1] = Rig.TYPE_PIVOT;
 			rigGroups[base + 1] = new int[]{groupOfSlot[slot]};
-			types[base + 2] = 2;
+			types[base + 2] = Rig.TYPE_ROTATE;
 			rigGroups[base + 2] = subtreeGroups.clone();
-			types[base + 3] = 3;
+			types[base + 3] = Rig.TYPE_SCALE;
 			rigGroups[base + 3] = subtreeGroups.clone();
 		}
 		result.rig = new Rig(rigId, types, rigGroups);
@@ -1014,11 +1014,11 @@ final class GltfToMeshConverter
 				int ax = Mat4.quantizeAngle(euler[0]);
 				int ay = Mat4.quantizeAngle(euler[1]);
 				int az = Mat4.quantizeAngle(euler[2]);
-				int sx = rint(scale[0] * 128);
-				int sy = rint(scale[1] * 128);
-				int sz = rint(scale[2] * 128);
+				int sx = rint(scale[0] * Rig.SCALE_UNIT);
+				int sy = rint(scale[1] * Rig.SCALE_UNIT);
+				int sz = rint(scale[2] * Rig.SCALE_UNIT);
 				boolean rotates = ax != 0 || ay != 0 || az != 0;
-				boolean scales = sx != 128 || sy != 128 || sz != 128;
+				boolean scales = sx != Rig.SCALE_UNIT || sy != Rig.SCALE_UNIT || sz != Rig.SCALE_UNIT;
 
 				// The pivot the engine will compute is the centroid of the joint's own group plus the
 				// op's delta, so the delta is whatever closes the gap to the joint - or, for a joint
@@ -1036,7 +1036,7 @@ final class GltfToMeshConverter
 				// What the engine will actually do, rounding and quantisation included - the next joint
 				// down is solved against this, so errors never compound along a limb
 				double[] linear = Mat4.multiply(
-					Mat4.scale(sx / 128.0, sy / 128.0, sz / 128.0),
+					Mat4.scale(sx / (double) Rig.SCALE_UNIT, sy / (double) Rig.SCALE_UNIT, sz / (double) Rig.SCALE_UNIT),
 					Mat4.rsRotation(ax, ay, az));
 				realized[slot] = rotates || scales
 					? Mat4.multiply(
@@ -1050,7 +1050,7 @@ final class GltfToMeshConverter
 				masks[base] = mask(t[0], t[1], t[2], 0, values);
 				masks[base + 1] = rotates || scales ? mask(delta[0], delta[1], delta[2], 0, values) : 0;
 				masks[base + 2] = rotates ? mask(ax, ay, az, 0, values) : 0;
-				masks[base + 3] = scales ? mask(sx, sy, sz, 128, values) : 0;
+				masks[base + 3] = scales ? mask(sx, sy, sz, Rig.SCALE_UNIT, values) : 0;
 			}
 
 			int[][] ops = FrameOps.build(types, masks, values.stream().mapToInt(Integer::intValue).toArray());

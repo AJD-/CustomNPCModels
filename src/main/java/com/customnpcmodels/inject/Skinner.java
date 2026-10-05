@@ -40,11 +40,6 @@ import net.runelite.api.Perspective;
  */
 public final class Skinner
 {
-	private static final int TYPE_PIVOT = 0;
-	private static final int TYPE_TRANSLATE = 1;
-	private static final int TYPE_ROTATE = 2;
-	private static final int TYPE_SCALE = 3;
-
 	/**
 	 * Rotations are stored in 8 bits and scaled into the 2048-entry trig table, so the smallest
 	 * step an animation can express is 1/256 of a turn. Anything authored against this rig has to
@@ -54,9 +49,6 @@ public final class Skinner
 
 	/** {@link Perspective#SINE} and {@code COSINE} are fixed point with 16 fractional bits. */
 	private static final float TRIG_SCALE = 65536f;
-
-	/** Scale ops are expressed in 128ths, matching the rest of the engine's fixed-point sizing. */
-	private static final float SCALE_UNIT = 128f;
 
 	/** Pivot for rotate and scale ops, set by type 0 and carried across the ops that follow it. */
 	private float pivotX;
@@ -118,16 +110,16 @@ public final class Skinner
 
 			switch (type)
 			{
-				case TYPE_PIVOT:
+				case Rig.TYPE_PIVOT:
 					setPivot(mesh, groups, dx, dy, dz, outX, outY, outZ);
 					break;
-				case TYPE_TRANSLATE:
+				case Rig.TYPE_TRANSLATE:
 					translate(mesh, groups, dx, dy, dz, outX, outY, outZ);
 					break;
-				case TYPE_ROTATE:
+				case Rig.TYPE_ROTATE:
 					rotate(mesh, groups, dx, dy, dz, outX, outY, outZ);
 					break;
-				case TYPE_SCALE:
+				case Rig.TYPE_SCALE:
 					scale(mesh, groups, dx, dy, dz, outX, outY, outZ);
 					break;
 				default:
@@ -251,9 +243,9 @@ public final class Skinner
 		{
 			for (int vertex : mesh.getVertexGroup(group))
 			{
-				outX[vertex] = (outX[vertex] - pivotX) * dx / SCALE_UNIT + pivotX;
-				outY[vertex] = (outY[vertex] - pivotY) * dy / SCALE_UNIT + pivotY;
-				outZ[vertex] = (outZ[vertex] - pivotZ) * dz / SCALE_UNIT + pivotZ;
+				outX[vertex] = (outX[vertex] - pivotX) * dx / Rig.SCALE_UNIT + pivotX;
+				outY[vertex] = (outY[vertex] - pivotY) * dy / Rig.SCALE_UNIT + pivotY;
+				outZ[vertex] = (outZ[vertex] - pivotZ) * dz / Rig.SCALE_UNIT + pivotZ;
 			}
 		}
 	}

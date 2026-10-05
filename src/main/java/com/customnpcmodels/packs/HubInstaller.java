@@ -25,8 +25,6 @@
 package com.customnpcmodels.packs;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -69,7 +67,7 @@ public final class HubInstaller
 		try
 		{
 			staged.joinSegment(DirectoryPackSource.BUNDLE_FILE).write(bundle);
-			staged.joinSegment(DirectoryPackSource.INFO_FILE).write(gson.toJson(info(entry)));
+			staged.joinSegment(DirectoryPackSource.INFO_FILE).write(gson.toJson(PackJson.of(entry)));
 			if (icon != null)
 			{
 				staged.joinSegment(ICON_FILE).write(icon);
@@ -173,22 +171,5 @@ public final class HubInstaller
 			}
 			leftover.deleteRecursively();
 		}
-	}
-
-	/** The installed pack's {@code pack.json}: what the panel shows, and the commit updates are told by. */
-	private static JsonObject info(HubEntry entry)
-	{
-		JsonObject json = new JsonObject();
-		json.addProperty("id", entry.getId());
-		json.addProperty("name", entry.getName());
-		json.addProperty("author", entry.getAuthor());
-		json.addProperty("description", entry.getDescription());
-		json.addProperty("version", entry.getVersion());
-		json.addProperty("license", entry.getLicense());
-		JsonArray tags = new JsonArray();
-		entry.getTags().forEach(tags::add);
-		json.add("tags", tags);
-		json.addProperty("commit", entry.getCommit());
-		return json;
 	}
 }

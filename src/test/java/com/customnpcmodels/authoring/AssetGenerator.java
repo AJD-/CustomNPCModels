@@ -380,8 +380,8 @@ public class AssetGenerator
 		AssetCodec.read(new ByteArrayInputStream(bytes.toByteArray()));
 		if (bytes.size() > AssetCodec.MAX_FILE_BYTES)
 		{
-			throw new IllegalStateException("Not writing the bundle; it is " + bytes.size() / (1024 * 1024)
-				+ " MiB, and the plugin refuses a pack past " + AssetCodec.MAX_FILE_BYTES / (1024 * 1024) + " MiB");
+			throw new IllegalStateException("Not writing the bundle; it is " + AssetCodec.mebibytes(bytes.size())
+				+ ", and the plugin refuses a pack past " + AssetCodec.mebibytes(AssetCodec.MAX_FILE_BYTES));
 		}
 
 		Files.createDirectories(output.getParent());

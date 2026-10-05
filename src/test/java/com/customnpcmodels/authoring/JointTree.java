@@ -182,12 +182,12 @@ final class JointTree
 		for (int transform = 0; transform < rig.getTransformCount(); transform++)
 		{
 			int type = rig.getType(transform);
-			if (type == 0)
+			if (type == Rig.TYPE_PIVOT)
 			{
 				lastPivot = rig.getGroups(transform);
 				continue;
 			}
-			if (type != 2)
+			if (type != Rig.TYPE_ROTATE)
 			{
 				continue;
 			}

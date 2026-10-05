@@ -115,7 +115,7 @@ public final class HubEntry
 		}
 		if (size <= 0 || size > AssetCodec.MAX_FILE_BYTES)
 		{
-			return "its size " + size + " is outside 1 byte to " + AssetCodec.MAX_FILE_BYTES / (1024 * 1024) + " MiB";
+			return "its size " + size + " is outside 1 byte to " + AssetCodec.mebibytes(AssetCodec.MAX_FILE_BYTES);
 		}
 		return null;
 	}

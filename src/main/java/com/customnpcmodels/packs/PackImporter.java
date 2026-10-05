@@ -26,7 +26,6 @@ package com.customnpcmodels.packs;
 
 import com.customnpcmodels.inject.AssetCodec;
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -77,7 +76,7 @@ public final class PackImporter
 			if (bundle.size() > AssetCodec.MAX_FILE_BYTES)
 			{
 				return new Result(false, DirectoryPackSource.BUNDLE_FILE + " is past the "
-					+ AssetCodec.MAX_FILE_BYTES / (1024 * 1024) + " MiB limit.");
+					+ AssetCodec.mebibytes(AssetCodec.MAX_FILE_BYTES) + " limit.");
 			}
 			try (InputStream in = bundle.openInputStream())
 			{
@@ -155,15 +154,10 @@ public final class PackImporter
 	{
 		try (Reader reader = info.openReader())
 		{
-			JsonObject json = gson.fromJson(reader, JsonObject.class);
-			if (json == null)
-			{
-				return null;
-			}
 			// Read as the loader will, so a pack.json it would refuse - tags that aren't a list, say -
 			// is refused now rather than imported as a pack that won't load
-			gson.fromJson(json, DirectoryPackSource.PackJson.class);
-			return json.has("id") && json.get("id").isJsonPrimitive() ? json.get("id").getAsString() : null;
+			PackJson json = gson.fromJson(reader, PackJson.class);
+			return json == null ? null : json.idText();
 		}
 		catch (JsonParseException | IllegalStateException ex)
 		{

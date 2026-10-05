@@ -65,7 +65,8 @@ public final class AssetValidator
 	private static final Set<Integer> DRAWN_RENDER_TYPES = AssetCodec.DRAWN_RENDER_TYPES;
 
 	/** Rig transform types the engine knows: pivot, translate, rotate, scale, alpha. */
-	private static final Set<Integer> RIG_TYPES = Set.of(0, 1, 2, 3, 5);
+	private static final Set<Integer> RIG_TYPES = Set.of(Rig.TYPE_PIVOT, Rig.TYPE_TRANSLATE, Rig.TYPE_ROTATE,
+		Rig.TYPE_SCALE, Rig.TYPE_ALPHA);
 
 	private AssetValidator()
 	{
