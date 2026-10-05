@@ -515,6 +515,45 @@ public class AssetCodecTest
 	}
 
 	@Test
+	public void testBindingKeepsItsCustomChathead() throws IOException
+	{
+		NpcBinding binding = roundTrip(withBindings(
+			TestBinding.of("Talker", new int[]{223}, new int[]{2944}).chatheadMesh(2944, 338).build()))
+			.getBinding(223);
+
+		assertEquals(2944, binding.getChatheadMeshId());
+		assertEquals(338, binding.getChatheadRigId());
+		assertTrue(binding.hasCustomChathead());
+	}
+
+	@Test
+	public void testRejectsBothKindsOfChathead() throws IOException
+	{
+		String message = refusalFor(withBindings(
+			TestBinding.of("Two heads", new int[]{70}, new int[]{2944}).chathead(3709).chatheadMesh(2944, 338).build()));
+
+		assertTrue(message, message.contains("both a chathead NPC and a chathead mesh"));
+	}
+
+	@Test
+	public void testRejectsAChatheadMeshTheBundleLacks() throws IOException
+	{
+		String message = refusalFor(withBindings(
+			TestBinding.of("Headless", new int[]{70}, new int[]{2944}).chatheadMesh(9999, 338).build()));
+
+		assertTrue(message, message.contains("chathead mesh 9999"));
+	}
+
+	@Test
+	public void testRejectsAChatheadRigTheBundleLacks() throws IOException
+	{
+		String message = refusalFor(withBindings(
+			TestBinding.of("Stiff", new int[]{70}, new int[]{2944}).chatheadMesh(2944, 999).build()));
+
+		assertTrue(message, message.contains("chathead rig 999"));
+	}
+
+	@Test
 	public void testRejectsABindingToAMissingMesh() throws IOException
 	{
 		String message = refusalFor(withBindings(

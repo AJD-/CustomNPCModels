@@ -461,6 +461,19 @@ public final class AssetValidator
 		{
 			problems.add(name + " names chathead NPC " + binding.getChatheadNpcId());
 		}
+		if (binding.hasChathead() && binding.hasCustomChathead())
+		{
+			problems.add(name + " names both a chathead NPC and a chathead mesh");
+		}
+		if (binding.hasCustomChathead() && bundle.getMesh(binding.getChatheadMeshId()) == null)
+		{
+			problems.add(name + " names chathead mesh " + binding.getChatheadMeshId() + ", which the bundle does not carry");
+		}
+		if (binding.hasCustomChathead() && binding.getChatheadRigId() != NpcBinding.STATIC
+			&& bundle.getRig(binding.getChatheadRigId()) == null)
+		{
+			problems.add(name + " names chathead rig " + binding.getChatheadRigId() + ", which the bundle does not carry");
+		}
 
 		// The ceilings apply to what is drawn, which is the merge
 		if (problems.isEmpty() && parts.size() > 1)

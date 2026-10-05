@@ -290,7 +290,7 @@ public class AssetGenerator
 			bindings.add(new NpcBinding(name, model.npcIds, new int[]{model.meshId}, rigId,
 				model.scaleXZ(), model.scaleY(), find, replace,
 				model.ambient == null ? 0 : model.ambient, model.contrast == null ? 0 : model.contrast,
-				chathead));
+				chathead, NpcBinding.NO_CHATHEAD, NpcBinding.STATIC));
 		}
 
 		AssetBundle bundle = new AssetBundle(meshes, rigs, clips, bindings);

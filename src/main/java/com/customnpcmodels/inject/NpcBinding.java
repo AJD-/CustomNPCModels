@@ -78,6 +78,15 @@ public final class NpcBinding
 	 */
 	private final int chatheadNpcId;
 
+	/**
+	 * The bundle mesh these NPCs show as their chathead in dialogue, drawn by the plugin, or
+	 * {@link #NO_CHATHEAD}. A binding names this or {@link #chatheadNpcId}, never both.
+	 */
+	private final int chatheadMeshId;
+
+	/** The rig the chathead mesh's emote clips are keyed by, or {@link #STATIC} for an unrigged head. */
+	private final int chatheadRigId;
+
 	/** The {@link #rigId} of a model with no rig, which only ever draws in its rest pose. */
 	public static final int STATIC = -1;
 
@@ -85,7 +94,8 @@ public final class NpcBinding
 	public static final int NO_CHATHEAD = -1;
 
 	public NpcBinding(String name, int[] npcIds, int[] meshIds, int rigId, int scaleXZ, int scaleY,
-		short[] recolorFind, short[] recolorReplace, int ambient, int contrast, int chatheadNpcId)
+		short[] recolorFind, short[] recolorReplace, int ambient, int contrast, int chatheadNpcId,
+		int chatheadMeshId, int chatheadRigId)
 	{
 		this.name = name;
 		this.npcIds = npcIds;
@@ -98,6 +108,8 @@ public final class NpcBinding
 		this.ambient = ambient;
 		this.contrast = contrast;
 		this.chatheadNpcId = chatheadNpcId;
+		this.chatheadMeshId = chatheadMeshId;
+		this.chatheadRigId = chatheadRigId;
 	}
 
 	public boolean hasRecolors()
@@ -108,5 +120,10 @@ public final class NpcBinding
 	public boolean hasChathead()
 	{
 		return chatheadNpcId != NO_CHATHEAD;
+	}
+
+	public boolean hasCustomChathead()
+	{
+		return chatheadMeshId != NO_CHATHEAD;
 	}
 }

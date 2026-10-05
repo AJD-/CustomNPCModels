@@ -41,6 +41,8 @@ public final class TestBinding
 	private int ambient;
 	private int contrast;
 	private int chatheadNpcId = NpcBinding.NO_CHATHEAD;
+	private int chatheadMeshId = NpcBinding.NO_CHATHEAD;
+	private int chatheadRigId = NpcBinding.STATIC;
 
 	private TestBinding(String name, int[] npcIds, int[] meshIds)
 	{
@@ -87,9 +89,16 @@ public final class TestBinding
 		return this;
 	}
 
+	public TestBinding chatheadMesh(int meshId, int rigId)
+	{
+		this.chatheadMeshId = meshId;
+		this.chatheadRigId = rigId;
+		return this;
+	}
+
 	public NpcBinding build()
 	{
 		return new NpcBinding(name, npcIds, meshIds, rigId, scaleXZ, scaleY, recolorFind, recolorReplace,
-			ambient, contrast, chatheadNpcId);
+			ambient, contrast, chatheadNpcId, chatheadMeshId, chatheadRigId);
 	}
 }

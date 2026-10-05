@@ -595,6 +595,8 @@ public final class AssetCodec
 		data.writeByte(binding.getAmbient());
 		data.writeByte(binding.getContrast());
 		data.writeInt(binding.getChatheadNpcId());
+		data.writeInt(binding.getChatheadMeshId());
+		data.writeInt(binding.getChatheadRigId());
 	}
 
 	private static NpcBinding readBinding(DataInputStream data) throws IOException
@@ -610,8 +612,10 @@ public final class AssetCodec
 		int ambient = data.readByte();
 		int contrast = data.readByte();
 		int chatheadNpcId = data.readInt();
+		int chatheadMeshId = data.readInt();
+		int chatheadRigId = data.readInt();
 		return new NpcBinding(name, npcIds, meshIds, rigId, scaleXZ, scaleY, recolorFind, recolorReplace,
-			ambient, contrast, chatheadNpcId);
+			ambient, contrast, chatheadNpcId, chatheadMeshId, chatheadRigId);
 	}
 
 	/**
@@ -683,6 +687,25 @@ public final class AssetCodec
 		if (binding.getChatheadNpcId() < NpcBinding.NO_CHATHEAD)
 		{
 			throw malformed("Binding '" + name + "' names chathead NPC " + binding.getChatheadNpcId());
+		}
+
+		if (binding.hasChathead() && binding.hasCustomChathead())
+		{
+			throw malformed("Binding '" + name + "' names both a chathead NPC and a chathead mesh");
+		}
+
+		if (binding.hasCustomChathead())
+		{
+			if (!meshes.containsKey(binding.getChatheadMeshId()))
+			{
+				throw malformed("Binding '" + name + "' names chathead mesh " + binding.getChatheadMeshId()
+					+ ", which the bundle does not carry");
+			}
+			if (binding.getChatheadRigId() != NpcBinding.STATIC && !rigs.containsKey(binding.getChatheadRigId()))
+			{
+				throw malformed("Binding '" + name + "' names chathead rig " + binding.getChatheadRigId()
+					+ ", which the bundle does not carry");
+			}
 		}
 
 		if (!firstMeshes.add(binding.getMeshIds()[0]))
