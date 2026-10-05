@@ -334,7 +334,7 @@ public class AssetGenerator
 				problems.add("The pack id '" + manifest.pack.id + "' may only use lowercase letters, digits and "
 					+ "hyphens, up to 64 of them");
 			}
-			if (manifest.pack.name == null || manifest.pack.name.trim().isEmpty())
+			if (manifest.pack.name == null || manifest.pack.name.isBlank())
 			{
 				problems.add("The pack has no \"name\"");
 			}

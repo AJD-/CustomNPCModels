@@ -171,7 +171,7 @@ public final class PackImporter
 	 */
 	static String folderName(String id, String folder)
 	{
-		String raw = id != null && !id.trim().isEmpty() ? id : folder;
+		String raw = id != null && !id.isBlank() ? id : folder;
 		String name = (raw == null ? "" : raw).toLowerCase(Locale.ROOT)
 			.replaceAll("[^a-z0-9_-]+", "-")
 			.replaceAll("^-+|-+$", "");

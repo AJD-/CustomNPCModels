@@ -78,7 +78,7 @@ final class PackJson
 	PackInfo toInfo(PackInfo folder)
 	{
 		return new PackInfo(folder.getId(), folder.getKind(),
-			name == null || name.trim().isEmpty() ? folder.getName() : name.trim(),
+			name == null || name.isBlank() ? folder.getName() : name.trim(),
 			author, description, version, license,
 			tags == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(tags)),
 			commit);

@@ -101,7 +101,7 @@ public final class HubEntry
 		{
 			return "its id '" + id + "' can't be a pack folder";
 		}
-		if (name == null || name.trim().isEmpty())
+		if (name == null || name.isBlank())
 		{
 			return "it has no name";
 		}

@@ -457,16 +457,16 @@ public class PacksPanel extends PluginPanel
 		item.add(top);
 
 		StringBuilder about = new StringBuilder("Hub");
-		if (entry.getAuthor() != null && !entry.getAuthor().trim().isEmpty())
+		if (entry.getAuthor() != null && !entry.getAuthor().isBlank())
 		{
 			about.append(" · by ").append(entry.getAuthor().trim());
 		}
-		if (entry.getVersion() != null && !entry.getVersion().trim().isEmpty())
+		if (entry.getVersion() != null && !entry.getVersion().isBlank())
 		{
 			about.append(" · v").append(entry.getVersion().trim());
 		}
 		item.add(detail(about.toString(), ColorScheme.LIGHT_GRAY_COLOR));
-		if (entry.getDescription() != null && !entry.getDescription().trim().isEmpty())
+		if (entry.getDescription() != null && !entry.getDescription().isBlank())
 		{
 			item.add(detail(entry.getDescription(), ColorScheme.LIGHT_GRAY_COLOR));
 		}
@@ -573,7 +573,7 @@ public class PacksPanel extends PluginPanel
 		item.add(top);
 
 		item.add(detail(describe(pack), ColorScheme.LIGHT_GRAY_COLOR));
-		if (pack.getDescription() != null && !pack.getDescription().trim().isEmpty())
+		if (pack.getDescription() != null && !pack.getDescription().isBlank())
 		{
 			item.add(detail(pack.getDescription(), ColorScheme.LIGHT_GRAY_COLOR));
 		}
@@ -694,11 +694,11 @@ public class PacksPanel extends PluginPanel
 	private static String describe(PackView pack)
 	{
 		StringBuilder text = new StringBuilder(pack.getKind().getLabel());
-		if (pack.getAuthor() != null && !pack.getAuthor().trim().isEmpty())
+		if (pack.getAuthor() != null && !pack.getAuthor().isBlank())
 		{
 			text.append(" · by ").append(pack.getAuthor().trim());
 		}
-		if (pack.getVersion() != null && !pack.getVersion().trim().isEmpty())
+		if (pack.getVersion() != null && !pack.getVersion().isBlank())
 		{
 			text.append(" · v").append(pack.getVersion().trim());
 		}

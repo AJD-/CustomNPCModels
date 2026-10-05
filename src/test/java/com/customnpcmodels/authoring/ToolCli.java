@@ -49,7 +49,7 @@ final class ToolCli
 	static String option(String name)
 	{
 		String value = System.getProperty(PREFIX + name);
-		return value == null || value.trim().isEmpty() ? null : value.trim();
+		return value == null || value.isBlank() ? null : value.trim();
 	}
 
 	/** A {@code -P} option the tool cannot run without. Prints {@code usage} and exits when it is missing. */

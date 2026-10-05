@@ -246,7 +246,7 @@ class HubController
 	private String hubUrl()
 	{
 		String override = developerMode ? System.getProperty(HUB_URL_PROPERTY) : null;
-		if (override != null && !override.trim().isEmpty())
+		if (override != null && !override.isBlank())
 		{
 			log.info("Using the test Custom Model Hub at {}", override);
 			return override.endsWith("/") ? override : override + "/";
