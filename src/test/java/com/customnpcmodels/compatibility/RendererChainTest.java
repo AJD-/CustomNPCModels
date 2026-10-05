@@ -51,7 +51,7 @@ public class RendererChainTest
 
 	private static CustomDrawCallbacks decorate(DrawCallbacks delegate)
 	{
-		return new CustomDrawCallbacks(delegate, (npc, vanilla) -> null);
+		return new CustomDrawCallbacks(delegate, npc -> null);
 	}
 
 	@Test

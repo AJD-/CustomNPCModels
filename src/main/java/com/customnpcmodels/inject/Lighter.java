@@ -45,12 +45,11 @@ import net.runelite.api.ModelData;
  * {@code faceColors3 != -2}, so getting these wrong changes what is drawn rather than just how it
  * is shaded.
  *
- * <h2>Known limit</h2>
+ * <h2>Missing render types</h2>
  *
- * Per-face render types (flat vs gouraud vs hidden) are not exposed on {@link ModelData}, so when
- * they are unavailable every face is treated as gouraud, which is what the overwhelming majority of
- * models use anyway. Geometry loaded from our own bundles carries the real types, since
- * {@code net.runelite.cache}'s {@code ModelDefinition} decodes them.
+ * A mesh with no per-face render types (flat vs gouraud vs hidden) is lit as gouraud throughout,
+ * which is what the overwhelming majority of models use anyway. Bundles generated from the cache
+ * carry the real types, since {@code net.runelite.cache}'s {@code ModelDefinition} decodes them.
  */
 public final class Lighter
 {

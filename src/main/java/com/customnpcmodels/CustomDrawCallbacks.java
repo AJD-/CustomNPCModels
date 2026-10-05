@@ -26,7 +26,6 @@ package com.customnpcmodels;
 
 import java.util.Set;
 import java.util.function.Supplier;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GameObject;
 import net.runelite.api.Model;
@@ -75,14 +74,16 @@ public class CustomDrawCallbacks implements DrawCallbacks, Supplier<DrawCallback
 {
 	/**
 	 * Supplies replacement geometry for an NPC, or {@code null} to leave it alone.
+	 * <p>
+	 * Runs per NPC per frame, so it should be a lookup and a skin only: eligibility is decided and
+	 * the geometry built ahead of time, by the plugin and {@link ModelCache}.
 	 */
 	@FunctionalInterface
 	public interface ModelSubstitutor
 	{
-		Model substitute(NPC npc, Model vanilla);
+		Model substitute(NPC npc);
 	}
 
-	@Getter
 	private final DrawCallbacks delegate;
 
 	private final ModelSubstitutor substitutor;
@@ -107,7 +108,7 @@ public class CustomDrawCallbacks implements DrawCallbacks, Supplier<DrawCallback
 			// Never allow a substitution failure to take the renderer down with it
 			try
 			{
-				substitute = substitutor.substitute((NPC) renderable, m);
+				substitute = substitutor.substitute((NPC) renderable);
 			}
 			catch (Exception ex)
 			{

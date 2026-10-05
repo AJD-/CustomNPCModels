@@ -55,7 +55,7 @@ public class RendererHostTest
 
 	private static DrawCallbacks decorate(DrawCallbacks delegate)
 	{
-		return new CustomDrawCallbacks(delegate, (npc, vanilla) -> null);
+		return new CustomDrawCallbacks(delegate, npc -> null);
 	}
 
 	@Test

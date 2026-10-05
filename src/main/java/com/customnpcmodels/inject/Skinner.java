@@ -50,7 +50,7 @@ public final class Skinner
 	 * step an animation can express is 1/256 of a turn. Anything authored against this rig has to
 	 * be quantized to that.
 	 */
-	private static final int ROTATION_SHIFT = 8;
+	private static final int ROTATION_SCALE = 8;
 
 	/** {@link Perspective#SINE} and {@code COSINE} are fixed point with 16 fractional bits. */
 	private static final float TRIG_SCALE = 65536f;
@@ -87,25 +87,6 @@ public final class Skinner
 
 		apply(mesh, rig, clip, frame, outX, outY, outZ);
 		return true;
-	}
-
-	/**
-	 * Applies a second frame on top of an already-posed buffer.
-	 *
-	 * <p>The client plays a movement pose and an action at the same time, so a walking NPC that is
-	 * also attacking needs both. Layering them in order is a simplification of what the client does
-	 * with a sequence's interleave mask, which selects per transform which of the two clips wins;
-	 * without that, the later clip overwrites shared transforms wholesale.
-	 */
-	public void overlay(Mesh mesh, Rig rig, Clip clip, int frame,
-		float[] outX, float[] outY, float[] outZ)
-	{
-		if (rig == null || clip == null || !clip.hasFrame(frame) || !mesh.isRigged())
-		{
-			return;
-		}
-
-		apply(mesh, rig, clip, frame, outX, outY, outZ);
 	}
 
 	private void apply(Mesh mesh, Rig rig, Clip clip, int frame,
@@ -215,9 +196,9 @@ public final class Skinner
 	private void rotate(Mesh mesh, int[] groups, int dx, int dy, int dz,
 		float[] outX, float[] outY, float[] outZ)
 	{
-		int angleX = (dx & 0xFF) * ROTATION_SHIFT;
-		int angleY = (dy & 0xFF) * ROTATION_SHIFT;
-		int angleZ = (dz & 0xFF) * ROTATION_SHIFT;
+		int angleX = (dx & 0xFF) * ROTATION_SCALE;
+		int angleY = (dy & 0xFF) * ROTATION_SCALE;
+		int angleZ = (dz & 0xFF) * ROTATION_SCALE;
 
 		for (int group : groups)
 		{

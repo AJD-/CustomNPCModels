@@ -125,10 +125,13 @@ public class HubClient
 		}, failed);
 	}
 
-	/** A pack's icon, as both the file and the image. Nothing when it has none or it fails. */
+	/**
+	 * A pack's icon file, once it is known to decode as a PNG no larger than {@link #MAX_ICON_SIDE}.
+	 * Nothing when it has none or it fails.
+	 */
 	public void fetchIcon(HubEntry entry, Consumer<byte[]> done)
 	{
-		if (!entry.isHasIcon())
+		if (!entry.isIconAvailable())
 		{
 			return;
 		}

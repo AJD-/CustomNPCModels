@@ -65,7 +65,6 @@ import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
-import net.runelite.api.Model;
 import net.runelite.api.NPC;
 import net.runelite.api.WorldType;
 import net.runelite.api.WorldView;
@@ -1105,7 +1104,7 @@ public class CustomNpcModelsPlugin extends Plugin
 		}
 		else if (isSupportedHost(current, findGpuPlugin()))
 		{
-			CustomDrawCallbacks callbacks = new CustomDrawCallbacks(current, this::substitute);
+			CustomDrawCallbacks callbacks = new CustomDrawCallbacks(current, modelCache::pose);
 			client.setDrawCallbacks(callbacks);
 			wrapper = callbacks;
 			declinedHost = null;
@@ -1136,7 +1135,7 @@ public class CustomNpcModelsPlugin extends Plugin
 		{
 			// Restore the delegate, never null - nulling the slot would leave the renderer running
 			// with no callbacks registered
-			client.setDrawCallbacks(wrapper.getDelegate());
+			client.setDrawCallbacks(wrapper.get());
 			log.debug("Detached custom draw callbacks");
 		}
 		else if (wrapper != null)
@@ -1250,14 +1249,4 @@ public class CustomNpcModelsPlugin extends Plugin
 		eventBus.post(ModelSwapProtocol.claimsMessage(claims));
 	}
 
-	/**
-	 * Supplies custom geometry for an NPC being drawn, or null to let the vanilla model through.
-	 * <p>
-	 * Runs per NPC per frame, so it does a lookup and a skin only - eligibility is decided in
-	 * {@link #processNpc} and the geometry is built by {@link ModelCache} ahead of time.
-	 */
-	private Model substitute(NPC npc, Model vanilla)
-	{
-		return modelCache.pose(npc);
-	}
 }

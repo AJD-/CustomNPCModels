@@ -110,11 +110,6 @@ public class ModelCache
 		substituted.remove(npcId);
 	}
 
-	public boolean isSubstituted(int npcId)
-	{
-		return substituted.contains(npcId);
-	}
-
 	/**
 	 * Builds and caches the model for an NPC id if it is not already present.
 	 * Must be called on the client thread.

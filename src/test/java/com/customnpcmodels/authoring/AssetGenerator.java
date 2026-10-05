@@ -208,7 +208,12 @@ public class AssetGenerator
 			{
 				problems.add(name + " reuses mesh id " + model.meshId);
 			}
-			if (result.rig != null && rigs.putIfAbsent(model.rigId, result.rig) != null)
+			if (result.rig != null && model.rigId < GltfExporter.ID_BASE)
+			{
+				problems.add(name + " is rigged but has no rig id; set \"rigId\" to one at or above "
+					+ GltfExporter.ID_BASE);
+			}
+			else if (result.rig != null && rigs.putIfAbsent(model.rigId, result.rig) != null)
 			{
 				problems.add(name + " reuses rig id " + model.rigId);
 			}
@@ -286,6 +291,12 @@ public class AssetGenerator
 			{
 				problems.add(name + " has mesh id " + model.meshId + "; synthetic ids start at " + GltfExporter.ID_BASE
 					+ ", so set \"meshId\" to one at or above it");
+			}
+			// A static model may leave its rig id out, but one that is set has to be synthetic too
+			if (model.rigId != 0 && model.rigId < GltfExporter.ID_BASE)
+			{
+				problems.add(name + " has rig id " + model.rigId + "; synthetic ids start at " + GltfExporter.ID_BASE
+					+ ", so set \"rigId\" to one at or above it");
 			}
 
 			if (model.glb == null)

@@ -72,7 +72,8 @@ import net.runelite.client.util.SwingUtil;
  *
  * <p>It only ever shows the last {@link PackView} snapshot it was handed and reports what the user
  * does through {@link Actions}, which writes config. The plugin reacts to that write and hands a new
- * snapshot back, so the panel holds no state of its own beyond what is expanded and searched. EDT
+ * snapshot back, so the panel keeps no pack state of its own. What it does keep is presentation:
+ * what is expanded and searched, the hub's last answer and icons, and which buttons are busy. EDT
  * only, like all Swing.
  */
 public class PacksPanel extends PluginPanel

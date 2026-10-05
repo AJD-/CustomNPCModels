@@ -148,6 +148,14 @@ public class AssetGeneratorTest
 	}
 
 	@Test
+	public void testARigIdBelowTheSyntheticRangeIsRefused() throws Exception
+	{
+		Manifest.Model model = entry();
+		model.rigId = 5;
+		assertManifestRefused(model, "has rig id 5");
+	}
+
+	@Test
 	public void testAMissingGlbIsRefused() throws Exception
 	{
 		Manifest.Model model = entry();

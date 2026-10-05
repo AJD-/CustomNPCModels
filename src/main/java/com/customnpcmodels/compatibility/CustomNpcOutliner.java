@@ -109,7 +109,7 @@ public class CustomNpcOutliner
 			- npc.getAnimationHeightOffset());
 		carrier.setOrientation(npc.getCurrentOrientation());
 
-		// Projects and rasterize the model before returning, which is what makes handing it the
+		// Projects and rasterizes the model before returning, which is what makes handing it the
 		// shared transform buffer from pose() safe
 		modelOutlineRenderer.drawOutline(carrier, outlineWidth, color, feather);
 		return true;

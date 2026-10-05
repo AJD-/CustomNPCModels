@@ -25,6 +25,7 @@
 package com.customnpcmodels.packs;
 
 import com.customnpcmodels.inject.AssetCodec;
+import com.google.gson.annotations.SerializedName;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collections;
@@ -69,7 +70,9 @@ public final class HubEntry
 	private long size;
 	private String sha256;
 
-	private boolean hasIcon;
+	/** Whether the pack ships an {@code icon.png}. */
+	@SerializedName("hasIcon")
+	private boolean iconAvailable;
 
 	/** The pack's page on GitHub. */
 	private String repo;

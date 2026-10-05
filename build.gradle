@@ -31,7 +31,7 @@ dependencies {
 	testAnnotationProcessor 'org.projectlombok:lombok:1.18.30'
 
 	testImplementation 'junit:junit:4.12'
-	// Test-only. RendererHostTest needs stand-in renderers, which only a mock can supply
+	// Test-only. Stand-in renderers and client objects, which only a mock can supply
 	testImplementation 'org.mockito:mockito-core:4.11.0'
 	testImplementation "net.runelite:client:$runeLiteVersion"
     testImplementation "net.runelite:jshell:$runeLiteVersion"
