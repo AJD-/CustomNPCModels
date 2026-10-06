@@ -4,8 +4,8 @@ Replaces NPC models and animations with custom-authored ones: original geometry,
 clips modeled in Blender, exported as glTF and compiled into a bundle that ships inside the plugin
 or in a pack.
 
-This repository holds the **framework and authoring pipeline**. It ships no bundle of its own:
-models come from packs, such as those on the Custom Model Hub.
+This repository holds the **framework and authoring pipeline**. It ships with one pack of its own,
+**Toaster Crabs**. More models come from packs, such as those on the Custom Model Hub.
 
 ## Requirements
 
