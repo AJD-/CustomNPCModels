@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels.inject;
 
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FilterInputStream;
@@ -131,7 +132,15 @@ public final class AssetCodec
 	/** {@link #read(InputStream)}, refusing to inflate past {@code maxInflatedBytes}. */
 	static AssetBundle read(InputStream in, long maxInflatedBytes) throws IOException
 	{
-		try (DataInputStream data = new DataInputStream(new Limited(new GZIPInputStream(in), maxInflatedBytes)))
+		// Inflated up front, so every length can be checked against the bytes that are actually left
+		// before anything is allocated for it
+		byte[] inflated;
+		try (InputStream limited = new Limited(new GZIPInputStream(in), maxInflatedBytes))
+		{
+			inflated = limited.readAllBytes();
+		}
+
+		try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(inflated)))
 		{
 			int magic = data.readInt();
 			if (magic != MAGIC)
@@ -771,11 +780,15 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		checkLength(data, length, Float.BYTES);
 		float[] values = new float[length];
 		for (int i = 0; i < length; i++)
 		{
 			values[i] = data.readFloat();
+			if (!Float.isFinite(values[i]))
+			{
+				throw malformed("A coordinate in the bundle is " + values[i]);
+			}
 		}
 		return values;
 	}
@@ -801,7 +814,7 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		checkLength(data, length, Integer.BYTES);
 		int[] values = new int[length];
 		for (int i = 0; i < length; i++)
 		{
@@ -831,7 +844,7 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		checkLength(data, length, Short.BYTES);
 		short[] values = new short[length];
 		for (int i = 0; i < length; i++)
 		{
@@ -858,7 +871,7 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		checkLength(data, length, Byte.BYTES);
 		byte[] values = new byte[length];
 		data.readFully(values);
 		return values;
@@ -885,7 +898,8 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		// Each row is at least its own length
+		checkLength(data, length, Integer.BYTES);
 		int[][] values = new int[length][];
 		for (int i = 0; i < length; i++)
 		{
@@ -904,9 +918,10 @@ public final class AssetCodec
 		return count;
 	}
 
-	private static void checkLength(int length) throws IOException
+	/** Refuses a length the bytes left can't hold, at {@code bytesEach} bytes an element. */
+	private static void checkLength(DataInputStream data, int length, int bytesEach) throws IOException
 	{
-		if (length > MAX_ARRAY)
+		if (length > MAX_ARRAY || (long) length * bytesEach > data.available())
 		{
 			throw new IOException("Implausible array length " + length + " in custom NPC model bundle");
 		}

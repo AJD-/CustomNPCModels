@@ -246,6 +246,41 @@ public class AssetCodecTest
 		}
 	}
 
+	@Test
+	public void testRejectsALengthTheDataCannotHold() throws IOException
+	{
+		ByteArrayOutputStream raw = new ByteArrayOutputStream();
+		try (DataOutputStream data = new DataOutputStream(new GZIPOutputStream(raw)))
+		{
+			data.writeInt(0x434E5043);
+			data.writeInt(AssetCodec.VERSION);
+			data.writeInt(1);           // one mesh
+			data.writeInt(1);           // its id
+			data.writeByte(0);          // its priority
+			data.writeInt(9_000_000);   // vertices it claims, with none behind them
+		}
+
+		try
+		{
+			AssetCodec.read(new ByteArrayInputStream(raw.toByteArray()));
+			fail("expected a refusal before allocating for data that isn't there");
+		}
+		catch (IOException expected)
+		{
+			assertTrue(expected.getMessage(), expected.getMessage().contains("Implausible array length"));
+		}
+	}
+
+	@Test
+	public void testRejectsANonFiniteCoordinate() throws IOException
+	{
+		float[] vy = mesh().getVerticesY().clone();
+		vy[0] = Float.NaN;
+
+		String message = refusalFor(meshWith(vy, null, null, null));
+		assertTrue(message, message.contains("NaN"));
+	}
+
 	/**
 	 * A rig is one table written as two blocks, so they can disagree without anything else noticing.
 	 * {@link Skinner} bounds its loop on the transform count and indexes the group sets with
