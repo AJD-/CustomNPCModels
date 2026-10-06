@@ -2,12 +2,6 @@ plugins {
 	id 'java'
 }
 
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(11)
-	}
-}
-
 repositories {
 	mavenLocal()
 	maven {
@@ -71,9 +65,9 @@ tasks.register('run', JavaExec) {
 	}
 }
 
-// The authoring tools. Each runs a main class from the test source set in the project folder,
-// passing the -P options it names on as customnpcmodels.* system properties; ./gradlew tasks
-// --group authoring lists them.
+// The authoring tools, for development only: none of them is part of the Hub jar. Each runs a main
+// class from the test source set in the project folder, passing the -P options it names on as
+// customnpcmodels.* system properties; ./gradlew tasks --group authoring lists them.
 def authoringTool = { String name, String mainClassName, String text, List<String> options ->
 	tasks.register(name, JavaExec) {
 		group = 'authoring'
