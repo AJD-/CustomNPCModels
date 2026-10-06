@@ -52,7 +52,7 @@ public class LoadedPack
 		return new LoadedPack(info, null, error);
 	}
 
-	public static LoadedPack failed(PackInfo info, Exception cause)
+	public static LoadedPack failed(PackInfo info, Throwable cause)
 	{
 		return failed(info, describe(cause));
 	}
@@ -61,7 +61,7 @@ public class LoadedPack
 	 * What went wrong, never null - a truncated file throws an EOFException with no message at all,
 	 * which would otherwise leave a failed pack with nothing to say for itself.
 	 */
-	static String describe(Exception cause)
+	static String describe(Throwable cause)
 	{
 		return cause.getMessage() != null ? cause.getMessage() : cause.toString();
 	}

@@ -84,7 +84,7 @@ public final class PackImporter
 			}
 			name = folderName(info.isFile() ? idIn(info, gson) : null, source.getFileName());
 		}
-		catch (IOException | RuntimeException ex)
+		catch (IOException | RuntimeException | OutOfMemoryError ex)
 		{
 			return new Result(false, "That pack can't be read: " + LoadedPack.describe(ex));
 		}

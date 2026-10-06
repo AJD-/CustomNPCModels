@@ -167,9 +167,10 @@ public final class DirectoryPackSource
 				return LoadedPack.loaded(info, AssetCodec.read(in));
 			}
 		}
-		catch (IOException | RuntimeException ex)
+		catch (IOException | RuntimeException | OutOfMemoryError ex)
 		{
-			// Anything a malformed file can throw names this pack, rather than stopping the others
+			// Anything a malformed file can throw names this pack, rather than stopping the others -
+			// including one too large to decode
 			return LoadedPack.failed(info, ex);
 		}
 	}

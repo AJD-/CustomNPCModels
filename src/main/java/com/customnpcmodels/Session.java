@@ -31,12 +31,14 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Whether the plugin is running, and which start it is on, for work that comes back from another
  * thread to check before it acts. Also runs the plugin's disk work, so a stop can cancel all of it.
  */
 @Singleton
+@Slf4j
 class Session
 {
 	@Inject
@@ -86,7 +88,18 @@ class Session
 	void submit(Runnable task)
 	{
 		submitted.removeIf(Future::isDone);
-		submitted.add(executor.submit(task));
+		submitted.add(executor.submit(() ->
+		{
+			// The Future would keep whatever escapes, unread, so it is logged here instead
+			try
+			{
+				task.run();
+			}
+			catch (Throwable ex)
+			{
+				log.warn("Custom NPC Models background task failed", ex);
+			}
+		}));
 	}
 
 	boolean isActive()
