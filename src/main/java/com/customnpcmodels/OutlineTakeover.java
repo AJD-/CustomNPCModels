@@ -27,11 +27,17 @@ package com.customnpcmodels;
 import com.customnpcmodels.compatibility.CustomInteractHighlightOverlay;
 import com.customnpcmodels.compatibility.CustomNpcOutliner;
 import com.customnpcmodels.compatibility.InteractHighlightCompat;
+import com.customnpcmodels.compatibility.ModelSwapProtocol;
+import com.customnpcmodels.compatibility.PartnerOutlines;
+import java.util.function.Function;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Model;
+import net.runelite.api.NPC;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -39,6 +45,9 @@ import net.runelite.client.ui.overlay.OverlayManager;
 /**
  * Draws Interact Highlight's NPC outlines in its place while custom models are drawn, so the outline
  * follows the model on screen, and hands them back otherwise. Client thread only, except where said.
+ * <p>
+ * Retro NPC Swapper can do the same, and is told over {@link ModelSwapProtocol} whether this plugin
+ * has, along with how to pose the NPCs this plugin swaps so its outlines can follow them too.
  */
 @Singleton
 @Slf4j
@@ -68,8 +77,27 @@ class OutlineTakeover
 	@Inject
 	private RendererAttachment attachment;
 
+	@Inject
+	private EventBus eventBus;
+
+	@Inject
+	private PartnerOutlines partnerOutlines;
+
+	@Inject
+	private Session session;
+
+	@Inject
+	private ModelCache modelCache;
+
 	// Whether we are currently drawing Interact Highlight's NPC outlines in its place
 	private boolean takenOver;
+
+	// What Retro was last told about takenOver, or null when it has been told nothing this start
+	private Boolean posted;
+
+	// Handed to Retro, which calls it on the client thread while it draws the outlines. The session
+	// check keeps a stopped plugin from posing for it before it hears the poser was withdrawn.
+	private final Function<NPC, Model> poser = npc -> session.isActive() ? modelCache.pose(npc) : null;
 
 	/**
 	 * Takes over Interact Highlight's NPC outlines, or hands them back.
@@ -102,6 +130,69 @@ class OutlineTakeover
 
 		// Last, so a failure to write config does not leave us recorded as having taken over
 		takenOver = takeOver;
+		publish(false);
+	}
+
+	/**
+	 * Tells Retro NPC Swapper whether we draw the outlines, and how to pose our NPCs. Posted only
+	 * when that changes, unless {@code always}.
+	 */
+	void publish(boolean always)
+	{
+		if (!always && posted != null && posted == takenOver)
+		{
+			return;
+		}
+
+		posted = takenOver;
+		eventBus.post(ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS, takenOver, poser));
+	}
+
+	/**
+	 * Tells Retro NPC Swapper we have let go of the outlines and the poser, as the plugin stops.
+	 * Called after {@link #sync} has handed the outlines back, so Retro stashes Interact
+	 * Highlight's restored settings rather than our false ones if it takes them over.
+	 */
+	void withdraw()
+	{
+		posted = null;
+		eventBus.post(ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS, false, null));
+		partnerOutlines.reset();
+	}
+
+	/**
+	 * Finishes the handshake: Retro has answered the sync request by now if it is running, so
+	 * deciding whether to take the outlines over can no longer race its answer.
+	 */
+	void finishHandshake()
+	{
+		partnerOutlines.setHandshakeDone();
+		publish(true);
+		sync();
+	}
+
+	/**
+	 * Takes in what Retro NPC Swapper says about the outlines. Recorded straight away, so a
+	 * decision made after this sees it; acted on later, on the client thread. Any thread.
+	 */
+	void onPartnerOutlines(ModelSwapProtocol.Outlines outlines)
+	{
+		partnerOutlines.accept(outlines);
+		clientThread.invokeLater(this::onPartnerChanged);
+	}
+
+	/** Forgets Retro NPC Swapper's state as it stops. Any thread. */
+	void onPartnerStopped()
+	{
+		partnerOutlines.forget();
+		clientThread.invokeLater(this::onPartnerChanged);
+	}
+
+	private void onPartnerChanged()
+	{
+		// The carrier may still hold a model Retro posed
+		outliner.clear();
+		sync();
 	}
 
 	/**
@@ -128,6 +219,9 @@ class OutlineTakeover
 
 		interactHighlight.restoreStaleStash();
 		sync();
+		// sync() sees no change when the new profile is not taken over either, but Retro may still
+		// think we draw the outlines
+		publish(false);
 	}
 
 	/**
