@@ -63,7 +63,7 @@ import net.runelite.client.util.ImageUtil;
 @Slf4j
 @PluginDescriptor(
 	name = "Custom NPC Models",
-	description = "Replaces NPC models and animations with custom-authored ones, drawn from a bundle of original assets.",
+	description = "Allows you to replace NPC models and animations with custom-authored ones.",
 	tags = {"npc", "model", "animation", "custom"},
 	// Must match the plugin-hub file name; it also names this plugin's data directory
 	internalName = "custom-npc-models"

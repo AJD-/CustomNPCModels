@@ -37,6 +37,10 @@ import net.runelite.api.gameval.NpcID;
  * model keeps the live animations, so an author could exaggerate an attack tell or give each attack
  * style its own look. Rather than trust every bundle, these NPCs are refused wherever bindings enter
  * the plugin, and the authoring tools refuse to build them at all.
+ * <p>
+ * Other bosses are not on the list. A custom model plays the NPC's own sequences on the client's
+ * timing, adds no indicator and leaves the clickbox as it was, and Hub packs are reviewed before
+ * they are listed, so one that exaggerates an attack tell is not published.
  */
 public final class SwapBlacklist
 {

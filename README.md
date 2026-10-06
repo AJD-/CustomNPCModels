@@ -38,11 +38,14 @@ with the reason why.
 
 ### The Custom Model Hub
 
-The hub is a collection of reviewed, original model packs hosted on GitHub. It's **off by default**:
-switch on `Enable Custom Model Hub` in the plugin's settings (under **Custom Model Hub**) to use it.
-Doing so contacts GitHub, which means sending GitHub your IP address, and you will see a warning before
-it takes effect. **I do _not_ personally see or log your IP address.** While it's off, the plugin makes
-no network requests at all.
+The hub is a collection of model packs hosted on GitHub, each reviewed before it's listed. A pack may
+be wholly original or an edit of the game's own model, and overtly adult content isn't accepted. To
+report a pack, open an issue on the [hub repository](https://github.com/AJD-/custom-model-hub/issues).
+
+It's **off by default**: switch on `Enable Custom Model Hub` in the plugin's settings (under **Custom
+Model Hub**) to use it. Doing so contacts GitHub, which means sending GitHub your IP address, and you
+will see a warning before it takes effect. **I do _not_ personally see or log your IP address.** While
+it's off, the plugin makes no network requests at all.
 
 With it on, the side panel lists the hub's packs below your installed packs. From there you can **Install**
 one, **Update** it when the hub has a newer version, or **Remove** it. Every download is checked
@@ -56,7 +59,7 @@ don't need to edit it by hand. A hub pack can be removed via the sidebar even wi
 - The plugin wraps the renderer's draw callbacks and hands it a prebuilt model whenever a bound NPC
   is drawn. That geometry isn't something the client decoded, so the client can't animate it. The
   plugin skins and lights it in Java, reading the frame index the client is already driving.
-- **No animation is changed.** Each authored clip is keyed to a live sequence the NPC already plays,
+- **The game's animations still drive the model.** Each authored clip is keyed to a live sequence the NPC already plays,
   and has exactly that sequence's frame count. The client keeps playing its own animations, and only
   the geometry they drive is different. An action that has no authored clip holds the movement pose.
 - **Clickboxes are untouched.** The client resolves clickboxes from the original model before the
@@ -89,6 +92,9 @@ don't need to edit it by hand. A hub pack can be removed via the sidebar even wi
   that binds one of these NPCs, and the plugin drops them from any binding that names them, so it 
   never claims one from Retro NPC Swapper either. `exportGltf` still exports them, but writes no manifest
   entry.
+  Other bosses aren't blocked. A custom model plays the NPC's own sequences on the client's own
+  timing, adds no indicator, and leaves the clickbox as it was. Hub packs are reviewed, so none that
+  exaggerates an attack tell is listed.
 - Retro NPC Swapper compatibility: both plugins wrap the renderer, and each can stack on top of the
   other. They're loaded by separate classloaders, so each wrapper exposes the renderer beneath it
   through a plain Java `Supplier`. Neither needs the other's classes. This plugin tells Retro which
@@ -171,7 +177,7 @@ It uses the Giant Mole (id 5779). The same steps work for any NPC.
 6. Prepare the development client. `./gradlew run` uses your normal RuneLite profile, including its
    Plugin Hub plugins and their settings, so:
    - Turn on **GPU** or **117 HD**. 117 HD's **Legacy renderer** isn't supported.
-   - **Retro NPC Swapper** 2.3.0 or later can stay on: it leaves your NPC to this plugin. Turn off
+   - **Retro NPC Swapper** 2.5.0 or later can stay on: it leaves your NPC to this plugin. Turn off
      an older version, and any other plugin that substitutes models. Those can't share the renderer,
      so whichever takes it first wins and this plugin quietly stands down. This can be done after the
      client has started, and the swap happens within a tick. The profile is shared with your normal
