@@ -65,6 +65,18 @@ public class HeadRenderer
 	private int[] rgb3 = new int[0];
 	private final int[] corners = new int[3];
 
+	/** Drops the buffers the last render kept, so a stopped plugin holds none of them. */
+	public void release()
+	{
+		image = null;
+		depth = new float[0];
+		coloredHead = null;
+		coloredBrightness = Double.NaN;
+		rgb1 = new int[0];
+		rgb2 = new int[0];
+		rgb3 = new int[0];
+	}
+
 	/** {@link #render(HeadModel, float[], float[], float[], ChatheadCamera, int, int, double, double)}, centered. */
 	public BufferedImage render(HeadModel head, float[] x, float[] y, float[] z, ChatheadCamera camera,
 		int width, int height)

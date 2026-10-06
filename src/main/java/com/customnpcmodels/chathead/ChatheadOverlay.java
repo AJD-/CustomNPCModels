@@ -123,6 +123,22 @@ public class ChatheadOverlay extends Overlay
 		head = null;
 	}
 
+	/**
+	 * Hides the head and drops everything kept for drawing it. The overlay is a singleton, so this
+	 * is what lets a stopped plugin let go of the last head, image and emote timings.
+	 */
+	public void clear()
+	{
+		hide();
+		image = null;
+		renderedHead = null;
+		frameLengths.clear();
+		x = new float[0];
+		y = new float[0];
+		z = new float[0];
+		renderer.release();
+	}
+
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
