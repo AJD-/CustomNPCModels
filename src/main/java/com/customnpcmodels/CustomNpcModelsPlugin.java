@@ -248,7 +248,7 @@ public class CustomNpcModelsPlugin extends Plugin
 	@Subscribe
 	public void onPluginMessage(PluginMessage event)
 	{
-		if (ModelSwapProtocol.isSyncReq(event))
+		if (ModelSwapProtocol.isSyncReq(event, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER))
 		{
 			// Retro NPC Swapper has just started and knows nothing of our claims yet. It posts from
 			// its startUp, off the client thread, and working out the claims reads the client.
