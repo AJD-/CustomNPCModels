@@ -266,6 +266,10 @@ public class CustomNpcModelsPlugin extends Plugin
 		{
 			outlineTakeover.onPartnerOutlines(outlines);
 		}
+		else if (ModelSwapProtocol.isOptOut(event, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER))
+		{
+			outlineTakeover.onPartnerOptOut();
+		}
 	}
 
 	@Subscribe

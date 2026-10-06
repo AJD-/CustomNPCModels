@@ -107,9 +107,9 @@ class OutlineTakeover
 	 */
 	void sync()
 	{
-		boolean takeOver = config.overrideInteractHighlight()
-			&& attachment.isAttached()
-			&& interactHighlight.isInteractHighlightActive();
+		boolean takeOver = shouldTakeOver(
+			config.overrideInteractHighlight() && attachment.isAttached() && interactHighlight.isInteractHighlightActive(),
+			takenOver, partnerOutlines.isHandshakeDone(), partnerOutlines.isOwning());
 
 		if (takeOver == takenOver)
 		{
@@ -131,6 +131,19 @@ class OutlineTakeover
 		// Last, so a failure to write config does not leave us recorded as having taken over
 		takenOver = takeOver;
 		publish(false);
+	}
+
+	/**
+	 * Whether to draw the outlines, given whether they are {@code wanted} here at all.
+	 * <p>
+	 * Only one of this plugin and Retro NPC Swapper may: both would turn Interact Highlight's
+	 * settings off and stash the other's false as the user's choice. Whichever took them first
+	 * keeps them until it lets go, and neither takes them before its handshake, when it cannot yet
+	 * know whether the other already has.
+	 */
+	static boolean shouldTakeOver(boolean wanted, boolean takenOver, boolean handshakeDone, boolean partnerOwning)
+	{
+		return wanted && handshakeDone && (takenOver || !partnerOwning);
 	}
 
 	/**
@@ -179,6 +192,21 @@ class OutlineTakeover
 	{
 		partnerOutlines.accept(outlines);
 		clientThread.invokeLater(this::onPartnerChanged);
+	}
+
+	/**
+	 * Turns the fix off here too when Retro NPC Swapper was drawing the outlines and the user turned
+	 * Interact Highlight's back on. Written straight away, so it is off before Retro posts that it
+	 * has let go and this plugin would otherwise take the outlines over again. Any thread.
+	 */
+	void onPartnerOptOut()
+	{
+		if (config.overrideInteractHighlight())
+		{
+			log.debug("Interact Highlight NPC outlines re-enabled by the user; turning the fix off");
+			configManager.setConfiguration(CustomNpcModelsConfig.GROUP,
+				CustomNpcModelsConfig.OVERRIDE_INTERACT_HIGHLIGHT, false);
+		}
 	}
 
 	/** Forgets Retro NPC Swapper's state as it stops. Any thread. */
@@ -243,6 +271,9 @@ class OutlineTakeover
 		final String changedKey = event.getKey();
 		clientThread.invoke(() ->
 		{
+			// First, so Retro NPC Swapper turns its fix off before we post that we have let go
+			eventBus.post(ModelSwapProtocol.optOutMessage(ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS));
+
 			// optOut() has to clear the suppression before the write below, or the
 			// ConfigChanged it posts comes back through sync() into restore(),
 			// which would put the stash back over the value the user just chose.
