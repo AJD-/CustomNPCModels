@@ -19,8 +19,8 @@ any NPC this plugin has a custom model for is left to it entirely: Retro swaps n
 model nor its animations. Older versions of Retro NPC Swapper can't share the renderer, so whichever
 of the two starts first draws and the other stands down. The `Fix Interact Highlight outlines`
 option can be on in either plugin, or both: only one of the two draws Interact Highlight's NPC
-outlines, each around whichever plugin's model is on screen. With a version of Retro NPC Swapper
-from before this was shared, turn it on in only one of the two.
+outlines, each around whichever plugin's model is on screen. With Retro NPC Swapper older than
+2.5.0, turn it on in only one of the two.
 
 ## The side panel
 
