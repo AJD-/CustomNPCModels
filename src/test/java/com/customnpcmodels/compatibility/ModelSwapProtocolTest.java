@@ -26,7 +26,9 @@ package com.customnpcmodels.compatibility;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,6 +36,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import net.runelite.api.Model;
+import net.runelite.api.NPC;
 import net.runelite.client.events.PluginMessage;
 import org.junit.Test;
 
@@ -92,10 +97,79 @@ public class ModelSwapProtocolTest
 	}
 
 	@Test
-	public void testHelloIsRecognised()
+	public void testSyncReqIsRecognisedFromThePartnerOnly()
 	{
-		assertTrue(ModelSwapProtocol.isSyncReq(ModelSwapProtocol.synMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER)));
-		assertFalse(ModelSwapProtocol.isSyncReq(ModelSwapProtocol.claimsMessage(Collections.emptySet())));
-		assertFalse(ModelSwapProtocol.isSyncReq(new PluginMessage(ModelSwapProtocol.NAMESPACE, ModelSwapProtocol.SYN)));
+		PluginMessage syn = ModelSwapProtocol.synMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER);
+		assertTrue(ModelSwapProtocol.isSyncReq(syn, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+		assertFalse(ModelSwapProtocol.isSyncReq(syn, ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS));
+		assertFalse(ModelSwapProtocol.isSyncReq(ModelSwapProtocol.claimsMessage(Collections.emptySet()),
+			ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS));
+		assertFalse(ModelSwapProtocol.isSyncReq(new PluginMessage(ModelSwapProtocol.NAMESPACE, ModelSwapProtocol.SYN),
+			ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+	}
+
+	@Test
+	public void testOutlinesRoundTrip()
+	{
+		Function<NPC, Model> poser = npc -> null;
+		ModelSwapProtocol.Outlines outlines = ModelSwapProtocol.readOutlines(
+			ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER, true, poser),
+			ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER);
+		assertNotNull(outlines);
+		assertTrue(outlines.isOwning());
+		assertSame(poser, outlines.getPoser());
+	}
+
+	@Test
+	public void testOutlinesWithoutAPoserWithdrawIt()
+	{
+		PluginMessage message = ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS, false, null);
+		assertFalse(message.getData().containsKey(ModelSwapProtocol.KEY_POSER));
+
+		ModelSwapProtocol.Outlines outlines = ModelSwapProtocol.readOutlines(message, ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS);
+		assertNotNull(outlines);
+		assertFalse(outlines.isOwning());
+		assertNull(outlines.getPoser());
+	}
+
+	@Test
+	public void testOwnOutlinesAreNotThePartners()
+	{
+		PluginMessage message = ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS, true, npc -> null);
+		assertNull(ModelSwapProtocol.readOutlines(message, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+	}
+
+	@Test
+	public void testOtherMessagesAreNotOutlines()
+	{
+		assertNull(ModelSwapProtocol.readOutlines(null, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+		assertNull(ModelSwapProtocol.readOutlines(ModelSwapProtocol.synMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER),
+			ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+
+		Map<String, Object> data = new HashMap<>(
+			ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER, true, null).getData());
+		data.remove(ModelSwapProtocol.KEY_OWNING);
+		assertNull(ModelSwapProtocol.readOutlines(new PluginMessage(ModelSwapProtocol.NAMESPACE, ModelSwapProtocol.OUTLINES, data),
+			ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+	}
+
+	@Test
+	public void testOutlinesOfAnotherVersionAreIgnored()
+	{
+		Map<String, Object> data = new HashMap<>(
+			ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER, true, null).getData());
+		data.put(ModelSwapProtocol.KEY_VERSION, ModelSwapProtocol.VERSION + 1);
+		assertNull(ModelSwapProtocol.readOutlines(new PluginMessage(ModelSwapProtocol.NAMESPACE, ModelSwapProtocol.OUTLINES, data),
+			ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+	}
+
+	@Test
+	public void testOptOutIsRecognisedFromThePartnerOnly()
+	{
+		PluginMessage optOut = ModelSwapProtocol.optOutMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER);
+		assertTrue(ModelSwapProtocol.isOptOut(optOut, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+		assertFalse(ModelSwapProtocol.isOptOut(optOut, ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS));
+		assertFalse(ModelSwapProtocol.isOptOut(ModelSwapProtocol.synMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER),
+			ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
 	}
 }

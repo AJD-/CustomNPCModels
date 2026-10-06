@@ -14,12 +14,12 @@ so nothing changes while neither is rendering. 117 HD's optional **Legacy render
 The plugin detects all of this and stands down until a supported renderer holds the renderer slot
 again. 117 HD isn't a dependency.
 
-**Retro NPC Swapper** (2.3.0 and later) runs alongside this plugin. Each draws the NPCs it swaps, and
-any NPC this plugin has a custom model for is left to it entirely: Retro swaps neither that NPC's
-model nor its animations. Older versions of Retro NPC Swapper can't share the renderer, so whichever
-of the two starts first draws and the other stands down. Turn on the `Fix Interact Highlight
-outlines` option in only one of the two plugins. Each turns Interact Highlight's NPC outlines off and
-restores them on its own, so with both on, those settings can be restored wrong.
+**Retro NPC Swapper** (2.5.0 and later) runs alongside this plugin. This plugin takes render priority
+over the Retro NPC Swapper plugin for custom models you install and select. Beware: Pre 2.5.0 versions
+of Retro NPC Swapper can't share the renderer, and whichever plugin is registered first will display
+their models. The `Fix Interact Highlight outlines` option can be on in either plugin, or both: only
+one of the two draws Interact Highlight's NPC outlines, each around whichever plugin's model is on
+screen. With Retro NPC Swapper older than 2.5.0, turn it on in only one of the two.
 
 ## The side panel
 
@@ -34,20 +34,21 @@ The plugin's button in the sidebar opens a list of every model pack it found. Fr
 
 What you switch off is remembered per RuneLite profile. A pack or model you haven't seen before starts
 switched on. Models for NPCs that can never be swapped (see "How it works") are listed, greyed out,
-with the reason.
+with the reason why.
 
 ### The Custom Model Hub
 
 The hub is a collection of reviewed, original model packs hosted on GitHub. It's **off by default**:
 switch on `Enable Custom Model Hub` in the plugin's settings (under **Custom Model Hub**) to use it.
-Doing so contacts GitHub, which means sending it your IP address, and the setting says so before it
-takes effect. While it's off, the plugin makes no network requests at all.
+Doing so contacts GitHub, which means sending GitHub your IP address, and you will see a warning before
+it takes effect. **I do _not_ personally see or log your IP address.** While it's off, the plugin makes
+no network requests at all.
 
-With it on, the side panel lists the hub's packs below your own. From there you can **Install**
+With it on, the side panel lists the hub's packs below your installed packs. From there you can **Install**
 one, **Update** it when the hub has a newer version, or **Remove** it. Every download is checked
 against the size and SHA-256 the hub lists, and read as a pack, before anything is written. Installed
-hub packs live in `~/.runelite/plugin-data/custom-npc-models/hub/`, which the plugin manages, so
-don't edit it by hand. A hub pack can be removed from its own card even with the hub switched off.
+hub packs live in `~/.runelite/plugin-data/custom-npc-models/hub/`, which the plugin manages, so you
+don't need to edit it by hand. A hub pack can be removed via the sidebar even with the hub switched off.
 
 <details>
 <summary>How it works</summary>
@@ -62,30 +63,25 @@ don't edit it by hand. A hub pack can be removed from its own card even with the
   draw callback runs.
 - Everything is drawn from **packs**. A pack is one compiled `bundle.dat`. The plugin reads the pack
   inside its own jar, the development bundle under `./gradlew run`, and every pack in its data
-  folder (see "Using a pack without the Hub" below). There's no fallback to the game cache, so an
-  NPC whose model can't be built stays vanilla.
-- When two packs have a model for the same NPC, the first in priority order draws it. By default
-  that's the development bundle, then hub and local packs, then the pack inside the plugin. Each
-  model is built and animated from its own pack alone, so packs authored separately can reuse mesh,
+  folder (see "Using a pack without the Hub" below). An NPC whose model can't be built stays vanilla.
+- When two packs have a model for the same NPC, the first in priority order draws it. By default,
+  that's the development bundle, then hub and local packs, then the pack bundled with the plugin. Each
+  model is built and animated from its own pack, so packs authored separately can reuse mesh,
   rig and sequence ids without clashing. A pack that can't be read is skipped with a warning in the
   log, and the rest still load. The side panel changes the priority order, and which packs and
-  models are drawn. That takes effect straight away, rebuilding only the NPCs it changes.
+  models are drawn. This takes effect straight away, rebuilding only the NPCs it changes.
 - `Interact Highlight` compatibility: the **Compatibility** section's `Fix Interact Highlight
   outlines` option draws that plugin's NPC hover and interact outlines around the custom model
   instead of the original. It does this by turning those two settings off in Interact Highlight
   while active, then restoring them when this plugin stops.
 - **Chatheads:** a model can name a game NPC whose dialogue head it shows in place of its own (the
-  manifest's `chathead`). The dialogue head is drawn from the game cache, so it borrows another NPC's
-  head rather than drawing the pack's geometry. Each frame, before the dialogue is drawn, the plugin
-  points the head at that NPC and leaves its emote alone. It puts the NPC's own head back when the
-  model, the `Swap chatheads` setting or a safety setting takes the swap away, and when it stops.
-  The dialogue may ask for a multi NPC (the Demon butler, 229, speaks as 230), so the plugin
-  resolves it to the NPC it shows as before looking up its model.
-  A model can instead carry a head of its own (an object for `chathead`): the plugin blanks the
-  dialogue head and draws its head in an overlay, posed by the line's emote, lit and framed as the
-  client draws an interface model, and drawn past the head widget's edges as far as the dialogue
-  reaches, as the client draws it. The widget doesn't say which emote frame the client is on, so the
-  drawn head times the emote itself from when the page opens.
+  manifest's `chathead`). This can borrow another NPC's chathead rather than drawing the pack's
+  geometry. It puts the NPC's own head back when the model, the `Swap chatheads` setting or a safety
+  setting takes the swap away, and when it stops. The dialogue may ask for a multi NPC (the Demon
+  butler, id 229, speaks as id 230), so the plugin resolves it to the NPC it shows as before looking
+  up its model.
+- A model can instead carry a head of its own (an object for `chathead`): the plugin will render
+  the custom chathead rather than the vanilla one, matching the "emote" that the game calls for.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
 - Some NPCs are never swapped, whatever a pack says: Jagex's third-party client rules forbid 
   extra visual indicators of boss mechanics, and name wave-based minigames explicitly. 
@@ -105,16 +101,17 @@ don't edit it by hand. A hub pack can be removed from its own card even with the
 ## Authoring Custom Assets
 ### The manifest
 
-`assets/models.json` lists what gets bundled. Each entry names a `.glb` beside it, the synthetic
+`assets/models.json` lists what gets bundled. Each entry names a `.glb` beside it, the custom
 mesh and rig ids (keep them at 1,000,000 and up, and stable), the NPC ids that wear it, an optional
 scale (1/128ths, applied after animation, as the game does), recolors and NPC lighting
 adjustments (`ambient`, `contrast`, as in the NPC definition), a map from each glTF animation
-name to the live sequence it stands in for, and optionally a `chathead`: a game NPC whose dialogue
-head these NPCs show instead of their own. `generateAssets` refuses one that has no chathead in the
+name to the live sequence it stands in for, and optionally a `chathead`: that will be displayed
+instead of the vanilla one. `generateAssets` refuses one that has no chathead in the
 cache. For a head of the pack's own, `chathead` is `{"glb", "meshId", "rigId"}` instead, with ids at
 or above 2,000,000. Every animation in that glb named by a number becomes the emote of that id,
 unless `"animations"` maps them. Models can share one head; it's converted once.
 
+#### Example `models.json` contents, for a pack containing a Giant Mole model and a Maid model:
 ```json
 {
   "models": [
@@ -169,8 +166,8 @@ It uses the Giant Mole (id 5779). The same steps work for any NPC.
    `./gradlew generateAssets -PassetsDir=assets-dev -Pdev`
    It should end with `Wrote ...src\test\resources\com\customnpcmodels\custom-assets-dev.dat`.
    **Don't leave out `-Pdev`.** Without it, the export is written into the shipped bundle,
-   `src/main/resources/com/customnpcmodels/custom-assets.dat`, which goes into the Hub jar. That
-   export is Jagex geometry. If this happens, delete that file.
+   `src/main/resources/com/customnpcmodels/custom-assets.dat`, which goes into the Hub jar. If this
+   happens, delete that file before committing.
 6. Prepare the development client. `./gradlew run` uses your normal RuneLite profile, including its
    Plugin Hub plugins and their settings, so:
    - Turn on **GPU** or **117 HD**. 117 HD's **Legacy renderer** isn't supported.
@@ -235,16 +232,6 @@ If the model still doesn't change, see the "Debugging" section below.
   `"pack": {"id": "my-pack", "name": "My pack", "author": "...", "version": "1.0", "tags": [...]}`.
   The id may only use lowercase letters, digits and hyphens. `pack.json` also lists the pack's
   models, taken from the bundle.
-- `./gradlew writeBlacklistFixture` writes `build/fixtures/blacklisted-pack`: the dev bundle's first
-  model, also bound to TzKal-Zuk. `generateAssets` refuses to build such a pack, so this is how to
-  check in game that the plugin refuses one too. Import it with **Import pack...**: the panel lists
-  the model as partly never swapped, and the log shows `NPC 7706 (the Inferno) is never swapped`.
-- `./gradlew serveHubFixture [-Prevision=2]` serves a test Custom Model Hub on `localhost:8765`,
-  built from the dev bundle. It has a pack that installs, one built for a newer bundle format, and
-  one whose download fails its checksum. Start the client against it with
-  `./gradlew run -PhubUrl=http://localhost:8765/`: the plugin only accepts another hub address in
-  developer mode, which `./gradlew run` always is. Restart the fixture with `-Prevision=2` to offer
-  an update. Stop it with Ctrl+C.
 - `./gradlew compareGltf -Pnpc=<id> -Pglb=<file> [-Pseqs=a,b,...]` reports how far a `.glb` has
   moved from the NPC it was exported from, without starting the client: converter warnings, which
   vertex groups moved at rest, which faces were recolored, and the worst vertex error over every
@@ -271,13 +258,18 @@ If the model still doesn't change, see the "Debugging" section below.
   `.glb` directly in it as tabs; Ctrl+Page Up / Page Down or Ctrl+Tab / Ctrl+Shift+Tab move between
   them, and Loop, Speed and Game lighting carry over. Without `-Pglb` it asks for one or more files;
   pick several, or Ctrl+A for the whole folder, to get tabs.
+- `./gradlew serveHubFixture [-Prevision=2]` serves a test Custom Model Hub on `localhost:8765`,
+  built from the dev bundle. It has a pack that installs, one built for a newer bundle format, and
+  one whose download fails its checksum. Start the client against it with
+  `./gradlew run -PhubUrl=http://localhost:8765/`: the plugin only accepts another hub address in
+  developer mode, which `./gradlew run` always is. Restart the fixture with `-Prevision=2` to offer
+  an update. Stop it with Ctrl+C.
 </details>
 
 <details>
 <summary>Editing an export in Blender</summary>
 
-Tested with Blender 5.2. Every setting below was measured with `compareGltf`. With any of them
-wrong, the file still converts, but it comes out wrong without saying so.
+Tested with Blender 5.2. Every setting below was measured with `compareGltf`.
 
 1. Export the NPC into `assets-dev`. Every sequence on its rig comes along; pass `-Pseqs` to
    choose them yourself:
@@ -286,14 +278,13 @@ wrong, the file still converts, but it comes out wrong without saying so.
    before importing**. A game tick is 0.02 s, so at 50 fps every key lands on a whole frame.
 3. **File > Import > glTF 2.0**, with *Merge Vertices* off (the default) and *Disable Bone Shape* on.
    Otherwise the importer adds a stray Icosphere, and an unskinned mesh in the export is refused.
-   The model then looks grey in the default Solid view. The colors did come in, but Solid view
-   shades by the material's viewport color. To see them, switch *Viewport Shading* to
-   **Material Preview**, or open the Solid shading options and set *Color* to **Attribute**.
+   To view the face colors, switch *Viewport Shading* to **Material Preview**, or open the Solid
+   shading options and set *Color* to **Attribute**.
 4. Edit the mesh:
    - Select vertices through their vertex group (`group_N`) and move, scale or sculpt them. Every copy
      of a vertex moves together, so the original vertex numbering survives. Deleting vertices, or
-     moving one copy of a vertex apart from the others, is fine too. The converter then welds by
-     position and says so.
+     moving one copy of a vertex apart from the others is fine too. The converter then welds by
+     position and reports that it did so.
    - Recolor in Vertex Paint with **face selection masking**, filling whole faces. A face takes the
      average of its three corners, so a half-painted face comes out muddy. Or leave color for
      `paintGltf` after export.
@@ -359,8 +350,8 @@ name Windows reserves such as `con` or `aux`. To remove a local pack, choose **R
 delete its folder and choose **Refresh**.
 
 Blacklisted NPCs are ignored in local packs too. A model made from an `exportGltf` export is Jagex
-geometry. It's fine in your own local folder, and it may be submitted to the Custom Model Hub, which
-players have to switch on and install from. Don't share it anywhere else.
+geometry. It's fine in your own local folder, and it may be submitted to the Custom Model Hub.
+Overtly adult content is not allowed on the Custom Model Hub.
 </details>
 
 <details>
@@ -372,7 +363,7 @@ these lines:
 
 | Logged | Root Cause/Remediation Steps |
 |---|---|
-| `Draw callbacks held by unsupported renderer <class>; skipping model swap` | Something else holds the renderer slot. `com.retronpcswapper...` is a Retro NPC Swapper older than 2.3.0 (update it or turn it off), and `rs117.hd` outside `rs117.hd.renderer.zone` is 117 HD's Legacy renderer. Turn it off. |
+| `Draw callbacks held by unsupported renderer <class>; skipping model swap` | Something else holds the renderer slot. `com.retronpcswapper...` is a Retro NPC Swapper older than 2.5.0 (update it or turn it off), and `rs117.hd` outside `rs117.hd.renderer.zone` is 117 HD's Legacy renderer. Turn it off. |
 | No `Attached custom draw callbacks over ...` at all | Neither GPU nor 117 HD is on. |
 | `Custom NPC models loaded: ModelCatalog{npcs=0, ...}` | No pack has a model for any NPC. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
 | `Custom NPC models loaded: ModelCatalog{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. `conflicts` counts models another pack took priority over. |

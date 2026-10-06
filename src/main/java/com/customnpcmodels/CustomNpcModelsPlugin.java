@@ -198,6 +198,7 @@ public class CustomNpcModelsPlugin extends Plugin
 			attachment.detach();
 			// Nothing is being swapped anymore, so Interact Highlight's own outlines are correct again
 			outlineTakeover.sync();
+			outlineTakeover.withdraw();
 			modelCache.clear();
 			packLoader.clear();
 			retroClaims.clear();
@@ -248,11 +249,26 @@ public class CustomNpcModelsPlugin extends Plugin
 	@Subscribe
 	public void onPluginMessage(PluginMessage event)
 	{
-		if (ModelSwapProtocol.isSyncReq(event))
+		if (ModelSwapProtocol.isSyncReq(event, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER))
 		{
 			// Retro NPC Swapper has just started and knows nothing of our claims yet. It posts from
 			// its startUp, off the client thread, and working out the claims reads the client.
-			clientThread.invoke(() -> retroClaims.publish(canSubstitute(), true));
+			clientThread.invoke(() ->
+			{
+				retroClaims.publish(canSubstitute(), true);
+				outlineTakeover.publish(true);
+			});
+			return;
+		}
+
+		ModelSwapProtocol.Outlines outlines = ModelSwapProtocol.readOutlines(event, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER);
+		if (outlines != null)
+		{
+			outlineTakeover.onPartnerOutlines(outlines);
+		}
+		else if (ModelSwapProtocol.isOptOut(event, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER))
+		{
+			outlineTakeover.onPartnerOptOut();
 		}
 	}
 
@@ -288,7 +304,15 @@ public class CustomNpcModelsPlugin extends Plugin
 	@Subscribe
 	public void onPluginChanged(PluginChanged event)
 	{
-		if (RendererAttachment.isRendererPlugin(event.getPlugin()))
+		if (event.getPlugin() == this && event.isLoaded())
+		{
+			// Posted from here rather than startUp, which runs before the event bus has registered
+			// us, so Retro NPC Swapper's answer is heard. The handshake is finished behind that
+			// answer on the client thread queue, so the takeover decision never races it.
+			eventBus.post(ModelSwapProtocol.synMessage(ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS));
+			clientThread.invokeLater(outlineTakeover::finishHandshake);
+		}
+		else if (RendererAttachment.isRendererPlugin(event.getPlugin()))
 		{
 			// attach() declines on its own when no supported renderer is holding the slot
 			clientThread.invoke(this::attach);
@@ -298,12 +322,23 @@ public class CustomNpcModelsPlugin extends Plugin
 			// Its startUp re-registers its overlay, so the suppression has to be re-applied
 			clientThread.invoke(outlineTakeover::sync);
 		}
-		else if (event.isLoaded() && RetroClaims.isRetroPlugin(event.getPlugin()))
+		else if (RetroClaims.isRetroPlugin(event.getPlugin()))
 		{
-			// Its hello goes out from inside its startUp, before the event bus has registered it,
-			// so a reply to that alone can be posted before it is listening. This event comes after
-			// the registration, so the claims sent from here are always heard.
-			clientThread.invoke(() -> retroClaims.publish(canSubstitute(), true));
+			if (event.isLoaded())
+			{
+				// Its hello goes out from inside its startUp, before the event bus has registered it,
+				// so a reply to that alone can be posted before it is listening. This event comes after
+				// the registration, so the claims sent from here are always heard.
+				clientThread.invoke(() ->
+				{
+					retroClaims.publish(canSubstitute(), true);
+					outlineTakeover.publish(true);
+				});
+			}
+			else
+			{
+				outlineTakeover.onPartnerStopped();
+			}
 		}
 	}
 
