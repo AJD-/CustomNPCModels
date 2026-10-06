@@ -287,6 +287,25 @@ public class AssetValidatorTest
 	}
 
 	@Test
+	public void testRejectsANegativeChathead()
+	{
+		String problem = only(AssetValidator.validate(bundleWith(
+			TestBinding.of("a", new int[]{5}, new int[]{1}).chathead(-2).build()), id -> -1));
+
+		assertTrue(problem, problem.contains("chathead NPC -2"));
+	}
+
+	@Test
+	public void testRejectsBothKindsOfChathead()
+	{
+		String problem = only(AssetValidator.validate(bundleWith(
+			TestBinding.of("a", new int[]{5}, new int[]{1}).chathead(3709).chatheadMesh(1, NpcBinding.STATIC).build()),
+			id -> -1));
+
+		assertTrue(problem, problem.contains("both a chathead NPC and a chathead mesh"));
+	}
+
+	@Test
 	public void testRejectsABlacklistedNpc()
 	{
 		String problem = only(AssetValidator.validate(bundleWith(

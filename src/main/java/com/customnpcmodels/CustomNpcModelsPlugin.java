@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels;
 
+import com.customnpcmodels.chathead.ChatheadOverlay;
 import com.customnpcmodels.compatibility.InteractHighlightCompat;
 import com.customnpcmodels.compatibility.InteractTargetTracker;
 import com.customnpcmodels.compatibility.ModelSwapProtocol;
@@ -56,6 +57,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
@@ -89,6 +91,15 @@ public class CustomNpcModelsPlugin extends Plugin
 
 	@Inject
 	private InteractTargetTracker targetTracker;
+
+	@Inject
+	private ChatheadSwapper chatheadSwapper;
+
+	@Inject
+	private ChatheadOverlay chatheadOverlay;
+
+	@Inject
+	private OverlayManager overlayManager;
 
 	@Inject
 	private RendererAttachment attachment;
@@ -142,6 +153,7 @@ public class CustomNpcModelsPlugin extends Plugin
 		panel.setHubEnabled(config.hubEnabled());
 
 		packLoader.start(this::getPluginDirectory, this::recheckLoadedNpcs);
+		chatheadSwapper.start(this::canSubstitute);
 		packLoader.load();
 		clientThread.invoke(() ->
 		{
@@ -152,7 +164,9 @@ public class CustomNpcModelsPlugin extends Plugin
 
 		// Last, as RuneLite registers the plugin itself: the bus does not dedupe, so registering
 		// before something that can throw would register it twice on the next start
+		overlayManager.add(chatheadOverlay);
 		eventBus.register(targetTracker);
+		eventBus.register(chatheadSwapper);
 	}
 
 	@Override
@@ -161,6 +175,8 @@ public class CustomNpcModelsPlugin extends Plugin
 		log.info("Custom NPC Models stopped");
 		session.stop();
 		eventBus.unregister(targetTracker);
+		eventBus.unregister(chatheadSwapper);
+		overlayManager.remove(chatheadOverlay);
 
 		if (navButton != null)
 		{
@@ -177,6 +193,8 @@ public class CustomNpcModelsPlugin extends Plugin
 
 		clientThread.invoke(() ->
 		{
+			// A dialogue left open shows the NPC's own head again
+			chatheadSwapper.stop();
 			attachment.detach();
 			// Nothing is being swapped anymore, so Interact Highlight's own outlines are correct again
 			outlineTakeover.sync();

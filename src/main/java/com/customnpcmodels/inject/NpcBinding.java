@@ -71,11 +71,31 @@ public final class NpcBinding
 	private final int ambient;
 	private final int contrast;
 
+	/**
+	 * The NPC whose chathead these NPCs show in dialogue instead of their own, or
+	 * {@link #NO_CHATHEAD} to keep their own. A dialogue head can only draw from the game cache, so
+	 * this names a cache NPC rather than a bundle mesh.
+	 */
+	private final int chatheadNpcId;
+
+	/**
+	 * The bundle mesh these NPCs show as their chathead in dialogue, drawn by the plugin, or
+	 * {@link #NO_CHATHEAD}. A binding names this or {@link #chatheadNpcId}, never both.
+	 */
+	private final int chatheadMeshId;
+
+	/** The rig the chathead mesh's emote clips are keyed by, or {@link #STATIC} for an unrigged head. */
+	private final int chatheadRigId;
+
 	/** The {@link #rigId} of a model with no rig, which only ever draws in its rest pose. */
 	public static final int STATIC = -1;
 
+	/** The {@link #chatheadNpcId} of a model that leaves the NPCs' own chathead alone. */
+	public static final int NO_CHATHEAD = -1;
+
 	public NpcBinding(String name, int[] npcIds, int[] meshIds, int rigId, int scaleXZ, int scaleY,
-		short[] recolorFind, short[] recolorReplace, int ambient, int contrast)
+		short[] recolorFind, short[] recolorReplace, int ambient, int contrast, int chatheadNpcId,
+		int chatheadMeshId, int chatheadRigId)
 	{
 		this.name = name;
 		this.npcIds = npcIds;
@@ -87,10 +107,23 @@ public final class NpcBinding
 		this.recolorReplace = recolorReplace;
 		this.ambient = ambient;
 		this.contrast = contrast;
+		this.chatheadNpcId = chatheadNpcId;
+		this.chatheadMeshId = chatheadMeshId;
+		this.chatheadRigId = chatheadRigId;
 	}
 
 	public boolean hasRecolors()
 	{
 		return recolorFind != null && recolorFind.length > 0;
+	}
+
+	public boolean hasChathead()
+	{
+		return chatheadNpcId != NO_CHATHEAD;
+	}
+
+	public boolean hasCustomChathead()
+	{
+		return chatheadMeshId != NO_CHATHEAD;
 	}
 }

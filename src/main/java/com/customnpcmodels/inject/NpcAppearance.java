@@ -44,6 +44,16 @@ public final class NpcAppearance
 	/** The definition stores contrast in steps the decoder multiplies by 5. */
 	private static final int NPC_CONTRAST_STEP = 5;
 
+	/**
+	 * The client's lighting for interface models, chatheads among them:
+	 * {@code ModelData.light()}'s defaults, unlike the NPC formula above.
+	 */
+	private static final int CHATHEAD_AMBIENT = 64;
+	private static final int CHATHEAD_CONTRAST = 768;
+	private static final int CHATHEAD_LIGHT_X = -50;
+	private static final int CHATHEAD_LIGHT_Y = -10;
+	private static final int CHATHEAD_LIGHT_Z = -50;
+
 	private NpcAppearance()
 	{
 	}
@@ -99,6 +109,17 @@ public final class NpcAppearance
 			colors, mesh.getFaceRenderTypes(), mesh.getFaceTextures(),
 			NPC_AMBIENT + ambient, NPC_CONTRAST + contrast * NPC_CONTRAST_STEP,
 			NPC_LIGHT_X, NPC_LIGHT_Y, NPC_LIGHT_Z,
+			lit1, lit2, lit3);
+	}
+
+	/** Lights a chathead's faces as the client lights an interface model, at rest, into the renderer's three corner arrays. */
+	public static void lightChathead(Mesh mesh, short[] colors, int[] lit1, int[] lit2, int[] lit3)
+	{
+		Lighter.light(
+			mesh.getVerticesCount(), mesh.getVerticesX(), mesh.getVerticesY(), mesh.getVerticesZ(),
+			mesh.getFaceCount(), mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(),
+			colors, mesh.getFaceRenderTypes(), mesh.getFaceTextures(),
+			CHATHEAD_AMBIENT, CHATHEAD_CONTRAST, CHATHEAD_LIGHT_X, CHATHEAD_LIGHT_Y, CHATHEAD_LIGHT_Z,
 			lit1, lit2, lit3);
 	}
 

@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels;
 
+import com.customnpcmodels.chathead.HeadModel;
 import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.InjectedModel;
@@ -77,6 +78,9 @@ public class ModelCache
 
 	/** Fully prepared geometry per NPC id. */
 	private final Map<Integer, BuiltModel> builtModels = new HashMap<>();
+
+	/** Each NPC id's own chathead, built on first use; dropped whenever the catalog changes. */
+	private final Map<Integer, HeadModel> heads = new HashMap<>();
 
 	private final Skinner skinner = new Skinner();
 
@@ -165,6 +169,8 @@ public class ModelCache
 
 		ModelCatalog previous = this.catalog;
 		this.catalog = allowed;
+		// Rare, and a head is cheap to build again
+		heads.clear();
 
 		// Packs are read off-thread and can land after NPCs were already checked against an older
 		// catalog. Dropping what changed makes those pick up the new model on their next check.
@@ -186,6 +192,69 @@ public class ModelCache
 	public Set<Integer> boundNpcIds()
 	{
 		return new HashSet<>(catalog.npcIds());
+	}
+
+	/**
+	 * The NPC whose chathead an NPC id shows in dialogue, from the model drawn for it, or
+	 * {@link NpcBinding#NO_CHATHEAD} when it keeps its own: no enabled pack has a model for it, the
+	 * model names no chathead, or the model could not be built and so the NPC is not swapped at all.
+	 * Client thread only.
+	 */
+	public int chatheadFor(int npcId)
+	{
+		if (SwapBlacklist.isBlocked(npcId) || unbuildable.contains(npcId))
+		{
+			return NpcBinding.NO_CHATHEAD;
+		}
+		ResolvedModel resolved = catalog.get(npcId);
+		return resolved == null ? NpcBinding.NO_CHATHEAD : resolved.getBinding().getChatheadNpcId();
+	}
+
+	/**
+	 * The pack's own chathead for an NPC id, built on first use, or null when it has none: no
+	 * enabled pack has a model for it, the model borrows a chathead or names none, or the model could
+	 * not be built. Client thread only.
+	 */
+	public HeadModel headFor(int npcId)
+	{
+		if (SwapBlacklist.isBlocked(npcId) || unbuildable.contains(npcId))
+		{
+			return null;
+		}
+		ResolvedModel resolved = catalog.get(npcId);
+		if (resolved == null || !resolved.getBinding().hasCustomChathead())
+		{
+			return null;
+		}
+		HeadModel head = heads.get(npcId);
+		if (head == null)
+		{
+			head = buildHead(resolved);
+			if (head != null)
+			{
+				heads.put(npcId, head);
+			}
+		}
+		return head;
+	}
+
+	private static HeadModel buildHead(ResolvedModel resolved)
+	{
+		NpcBinding binding = resolved.getBinding();
+		Mesh mesh = resolved.getSource().getMesh(binding.getChatheadMeshId());
+		if (mesh == null)
+		{
+			// The codec checks the head mesh resolves, so this is the bundle and the code disagreeing
+			return null;
+		}
+		int faces = mesh.getFaceCount();
+		int[] lit1 = new int[faces];
+		int[] lit2 = new int[faces];
+		int[] lit3 = new int[faces];
+		NpcAppearance.lightChathead(mesh, mesh.getFaceColors(), lit1, lit2, lit3);
+		int rigId = binding.getChatheadRigId();
+		Rig rig = rigId == NpcBinding.STATIC ? null : resolved.getSource().getRig(rigId);
+		return new HeadModel(mesh, rig, rigId, resolved.getSource(), lit1, lit2, lit3);
 	}
 
 	/**
@@ -346,6 +415,7 @@ public class ModelCache
 		reportedActions.clear();
 		builtModels.clear();
 		unbuildable.clear();
+		heads.clear();
 	}
 
 	/** Geometry for one NPC id: the mesh it was built from, and the model handed out. */

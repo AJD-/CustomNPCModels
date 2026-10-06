@@ -51,6 +51,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.cache.NpcManager;
+import net.runelite.cache.definitions.NpcDefinition;
 import net.runelite.cache.definitions.SequenceDefinition;
 import net.runelite.cache.fs.Store;
 
@@ -59,7 +61,7 @@ import net.runelite.cache.fs.Store;
  * <p>
  * Reads no geometry from any cache. The live cache is opened only for the frame counts and
  * lengths of the sequences authored clips stand in for, which is what they are sampled against, and
- * only when some model has animations at all.
+ * to check that a chathead NPC a model names has a chathead, and only when some model needs either.
  * <p>
  * Every conversion's report is printed, and the result goes through {@link AssetValidator}
  * before anything is written, so a bundle that would draw wrongly is never produced. With
@@ -91,6 +93,15 @@ public class AssetGenerator
 		SequenceTiming get(int sequenceId) throws IOException;
 	}
 
+	/** Whether an NPC exists and has a chathead, so a model may name it as its own. */
+	interface Chatheads
+	{
+		boolean has(int npcId) throws IOException;
+	}
+
+	/** For a build with no cache: knows no NPC, so any chathead a model names is refused. */
+	private static final Chatheads NO_CHATHEADS = npcId -> false;
+
 	public static void main(String[] args) throws IOException
 	{
 		Path assetsDir = Paths.get(System.getProperty(ASSETS_DIR_PROPERTY, "assets"));
@@ -109,19 +120,22 @@ public class AssetGenerator
 		}
 		refuseIfAny(problems);
 
-		boolean needsCache = manifest.models.stream().anyMatch(m -> m.animations != null && !m.animations.isEmpty());
-		Store store = needsCache ? CacheFiles.openLiveCache() : null;
+		boolean animated = manifest.models.stream().anyMatch(m -> m.animations != null && !m.animations.isEmpty());
+		boolean chatheads = manifest.models.stream().anyMatch(m -> m.chatheadNpc() != null);
+		boolean heads = manifest.models.stream().anyMatch(m -> m.chatheadHead() != null);
+		Store store = animated || chatheads || heads ? CacheFiles.openLiveCache() : null;
 
 		try (store)
 		{
-			if (needsCache && store == null)
+			if ((animated || chatheads || heads) && store == null)
 			{
-				System.err.println("Animated models are sampled against live sequences, but there is no live cache; "
-					+ "pass one with -PcacheDir=<path>");
+				System.err.println("Animations are sampled against live sequences and chatheads checked against live NPCs, "
+					+ "but there is no live cache; pass one with -PcacheDir=<path>");
 				System.exit(1);
 				return;
 			}
-			AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId));
+			AssetBundle bundle = build(manifest, assetsDir, sequenceId -> timing(store, sequenceId),
+				chatheads ? chatheads(store) : NO_CHATHEADS);
 			if (packOut != null)
 			{
 				Path dir = packOut.isEmpty() ? PACKS.resolve(manifest.pack.id) : Paths.get(packOut);
@@ -149,12 +163,31 @@ public class AssetGenerator
 		return new SequenceTiming(sequenceId, sequence.frameLengths);
 	}
 
+	/** The live cache's NPCs, loaded once, as a {@link Chatheads}. */
+	static Chatheads chatheads(Store store) throws IOException
+	{
+		NpcManager npcs = new NpcManager(store);
+		npcs.load();
+		return npcId ->
+		{
+			NpcDefinition npc = npcs.get(npcId);
+			return npc != null && npc.chatheadModels != null && npc.chatheadModels.length > 0;
+		};
+	}
+
+	/** {@link #build(Manifest, Path, Timings, Chatheads)} for a manifest that names no chatheads. */
+	static AssetBundle build(Manifest manifest, Path assetsDir, Timings timings) throws IOException
+	{
+		return build(manifest, assetsDir, timings, NO_CHATHEADS);
+	}
+
 	/**
 	 * Converts and validates every model in the manifest into one bundle.
 	 *
 	 * @throws IllegalStateException naming every problem, when the result would not be valid
 	 */
-	static AssetBundle build(Manifest manifest, Path assetsDir, Timings timings) throws IOException
+	static AssetBundle build(Manifest manifest, Path assetsDir, Timings timings, Chatheads chatheads)
+		throws IOException
 	{
 		refuseIfAny(checkManifest(manifest, assetsDir));
 
@@ -165,6 +198,7 @@ public class AssetGenerator
 		List<NpcBinding> bindings = new ArrayList<>();
 		Map<Integer, Integer> frameCounts = new HashMap<>();
 		List<String> problems = new ArrayList<>();
+		Map<Integer, String> headGlbs = new HashMap<>();
 
 		for (Manifest.Model model : manifest.models)
 		{
@@ -246,17 +280,139 @@ public class AssetGenerator
 					replace[i] = (short) model.recolors.get(i).replace;
 				}
 			}
+			// A dialogue head draws from the cache, so a chathead with nothing there would show none at all
+			Integer borrowed = model.chatheadNpc();
+			int chathead = borrowed == null ? NpcBinding.NO_CHATHEAD : borrowed;
+			if (borrowed != null && (chathead < 0 || !chatheads.has(chathead)))
+			{
+				problems.add(name + " names chathead NPC " + chathead + ", which has no chathead in the cache");
+			}
+
+			Manifest.Head head = model.chatheadHead();
+			int headMesh = NpcBinding.NO_CHATHEAD;
+			int headRig = NpcBinding.STATIC;
+			if (head != null)
+			{
+				headMesh = head.meshId;
+				headRig = buildHead(name, head, assetsDir, timings, meshes, rigs, clips, clipKeys, frameCounts,
+					headGlbs, problems);
+			}
+
 			// A glb with no skin converts to no rig, and so draws at rest; its binding names none
 			int rigId = result.rig == null ? NpcBinding.STATIC : model.rigId;
 			bindings.add(new NpcBinding(name, model.npcIds, new int[]{model.meshId}, rigId,
 				model.scaleXZ(), model.scaleY(), find, replace,
-				model.ambient == null ? 0 : model.ambient, model.contrast == null ? 0 : model.contrast));
+				model.ambient == null ? 0 : model.ambient, model.contrast == null ? 0 : model.contrast,
+				chathead, headMesh, headRig));
 		}
 
 		AssetBundle bundle = new AssetBundle(meshes, rigs, clips, bindings);
 		problems.addAll(AssetValidator.validate(bundle, sequenceId -> frameCounts.getOrDefault(sequenceId, -1)));
 		refuseIfAny(problems);
 		return bundle;
+	}
+
+	/**
+	 * Converts a model's own chathead into the bundle, once however many models wear it, and returns
+	 * the rig its emotes are keyed by ({@link NpcBinding#STATIC} for an unskinned head). Problems are
+	 * added rather than thrown, so every one is reported together.
+	 */
+	private static int buildHead(String name, Manifest.Head head, Path assetsDir, Timings timings,
+		Map<Integer, Mesh> meshes, Map<Integer, Rig> rigs, List<Clip> clips, Set<Long> clipKeys,
+		Map<Integer, Integer> frameCounts, Map<Integer, String> headGlbs, List<String> problems) throws IOException
+	{
+		if (head.glb == null || head.meshId < GltfExporter.HEAD_ID_BASE
+			|| (head.rigId != 0 && head.rigId < GltfExporter.HEAD_ID_BASE))
+		{
+			problems.add(name + " has chathead mesh id " + head.meshId + " and rig id " + head.rigId + " for '" + head.glb
+				+ "'; a head needs a glb and synthetic ids at or above " + GltfExporter.HEAD_ID_BASE);
+			return NpcBinding.STATIC;
+		}
+		String converted = headGlbs.putIfAbsent(head.meshId, head.glb);
+		if (converted != null)
+		{
+			if (!converted.equals(head.glb))
+			{
+				problems.add(name + " gives chathead mesh id " + head.meshId + " to '" + head.glb + "', which '"
+					+ converted + "' already has");
+			}
+			Mesh shared = meshes.get(head.meshId);
+			return shared != null && shared.isRigged() ? head.rigId : NpcBinding.STATIC;
+		}
+
+		Path file = assetsDir.resolve(head.glb);
+		if (!Files.isRegularFile(file))
+		{
+			problems.add(name + ": chathead " + file.toAbsolutePath() + " does not exist");
+			return NpcBinding.STATIC;
+		}
+		byte[] glb = Files.readAllBytes(file);
+
+		Map<String, Integer> names = head.animations;
+		if (names == null)
+		{
+			// An exported head names each animation after its emote, and there are over a hundred
+			names = new LinkedHashMap<>();
+			JsonArray animations = Glb.readJson(glb).getAsJsonArray("animations");
+			for (int i = 0; animations != null && i < animations.size(); i++)
+			{
+				String animation = animations.get(i).getAsJsonObject().get("name").getAsString();
+				if (animation.matches("\\d+"))
+				{
+					names.put(animation, Integer.parseInt(animation));
+				}
+			}
+		}
+		Map<String, SequenceTiming> emotes = new LinkedHashMap<>();
+		for (Map.Entry<String, Integer> entry : names.entrySet())
+		{
+			SequenceTiming timing = timings.get(entry.getValue());
+			if (timing == null)
+			{
+				problems.add(name + "'s chathead maps animation '" + entry.getKey() + "' to sequence " + entry.getValue()
+					+ ", which is not a frame-based live sequence");
+				continue;
+			}
+			emotes.put(entry.getKey(), timing);
+			frameCounts.put(entry.getValue(), timing.frameCount());
+		}
+
+		GltfToMeshConverter.Result result;
+		try
+		{
+			result = GltfToMeshConverter.convert(glb, head.meshId, head.rigId, emotes);
+		}
+		catch (GltfException ex)
+		{
+			problems.add(name + "'s chathead: " + ex.getMessage());
+			return NpcBinding.STATIC;
+		}
+		for (String line : result.report)
+		{
+			System.out.println("  chathead: " + line);
+		}
+		if (meshes.putIfAbsent(head.meshId, result.mesh) != null)
+		{
+			problems.add(name + "'s chathead reuses mesh id " + head.meshId);
+			return NpcBinding.STATIC;
+		}
+		if (result.rig == null)
+		{
+			return NpcBinding.STATIC;
+		}
+		if (rigs.putIfAbsent(head.rigId, result.rig) != null)
+		{
+			problems.add(name + "'s chathead reuses rig id " + head.rigId);
+		}
+		for (Clip clip : result.clips)
+		{
+			if (clipKeys.add(AssetBundle.clipKey(clip.getRigId(), clip.getSequenceId())))
+			{
+				clips.add(clip);
+			}
+		}
+		System.out.println("  chathead " + head.meshId + ": " + result.clips.size() + " emotes");
+		return head.rigId;
 	}
 
 	/**

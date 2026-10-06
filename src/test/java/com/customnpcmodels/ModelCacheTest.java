@@ -27,12 +27,14 @@ package com.customnpcmodels;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import com.customnpcmodels.chathead.HeadModel;
 import com.customnpcmodels.inject.AssetBundle;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Lighter;
@@ -201,6 +203,100 @@ public class ModelCacheTest
 		assertFalse(cache.ensureBuilt(NpcID.INFERNO_JAD));
 		assertTrue(cache.ensureBuilt(NPC_ID));
 		assertEquals(Collections.singleton(NPC_ID), cache.boundNpcIds());
+	}
+
+	@Test
+	public void testAChatheadComesFromTheModelDrawn()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(
+			TestBinding.of("talker", new int[]{NPC_ID}, new int[]{1}).rig(7).chathead(NpcID.POH_SERVANT_DEMON).build())));
+
+		assertEquals(NpcID.POH_SERVANT_DEMON, cache.chatheadFor(NPC_ID));
+		assertEquals("an NPC no pack has a model for keeps its own",
+			NpcBinding.NO_CHATHEAD, cache.chatheadFor(NPC_ID + 1));
+	}
+
+	@Test
+	public void testAModelWithoutAChatheadKeepsTheNpcsOwn()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(binding("quiet", NPC_ID))));
+
+		assertEquals(NpcBinding.NO_CHATHEAD, cache.chatheadFor(NPC_ID));
+	}
+
+	@Test
+	public void testABlacklistedNpcKeepsItsChathead()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(
+			TestBinding.of("mixed", new int[]{NpcID.INFERNO_JAD, NPC_ID}, new int[]{1}).rig(7)
+				.chathead(NpcID.POH_SERVANT_DEMON).build())));
+
+		assertEquals(NpcBinding.NO_CHATHEAD, cache.chatheadFor(NpcID.INFERNO_JAD));
+		assertEquals(NpcID.POH_SERVANT_DEMON, cache.chatheadFor(NPC_ID));
+	}
+
+	/** A model switched off leaves the catalog, and the NPC's own chathead comes back with it. */
+	@Test
+	public void testAChatheadGoesWithItsModel()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(
+			TestBinding.of("talker", new int[]{NPC_ID}, new int[]{1}).rig(7).chathead(NpcID.POH_SERVANT_DEMON).build())));
+		cache.setCatalog(TestPacks.catalogOf());
+
+		assertEquals(NpcBinding.NO_CHATHEAD, cache.chatheadFor(NPC_ID));
+	}
+
+	/** A head mesh beside the body. */
+	private static AssetBundle bundleWithHead(NpcBinding binding)
+	{
+		AssetBundle body = bundle(binding);
+		Map<Integer, Mesh> meshes = new LinkedHashMap<>(body.getMeshes());
+		meshes.put(2, new TestMesh().id(2).vy(new float[]{0f, -128f, -128f, 0f}).build());
+		return new AssetBundle(meshes, body.getRigs(), body.getClips(), body.getBindings());
+	}
+
+	@Test
+	public void testACustomHeadIsBuiltForItsNpc()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundleWithHead(
+			TestBinding.of("talker", new int[]{NPC_ID}, new int[]{1}).rig(7).chatheadMesh(2, 7).build())));
+
+		HeadModel head = cache.headFor(NPC_ID);
+
+		assertNotNull(head);
+		assertEquals(2, head.getMesh().getId());
+		assertEquals(7, head.getRigId());
+		assertNotNull("emotes are looked up on the head's rig", head.clip(SEQUENCE));
+		assertSame("built once", head, cache.headFor(NPC_ID));
+		assertNull("an NPC no pack has a model for has none", cache.headFor(NPC_ID + 1));
+	}
+
+	@Test
+	public void testABorrowedChatheadIsNoCustomHead()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundle(
+			TestBinding.of("talker", new int[]{NPC_ID}, new int[]{1}).rig(7).chathead(NpcID.POH_SERVANT_DEMON).build())));
+
+		assertNull(cache.headFor(NPC_ID));
+	}
+
+	@Test
+	public void testAHeadGoesWithItsModel()
+	{
+		ModelCache cache = new ModelCache();
+		cache.setCatalog(TestPacks.catalogOf(bundleWithHead(
+			TestBinding.of("talker", new int[]{NPC_ID}, new int[]{1}).rig(7).chatheadMesh(2, 7).build())));
+		assertNotNull(cache.headFor(NPC_ID));
+
+		cache.setCatalog(TestPacks.catalogOf());
+
+		assertNull(cache.headFor(NPC_ID));
 	}
 
 	/**

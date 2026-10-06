@@ -25,6 +25,7 @@
 package com.customnpcmodels.authoring;
 
 import com.customnpcmodels.inject.Mesh;
+import com.customnpcmodels.inject.RsColor;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

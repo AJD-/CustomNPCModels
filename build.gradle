@@ -111,7 +111,7 @@ authoringTool('dumpNpcDefinitions', 'com.customnpcmodels.cache.ModernNpcDumper',
 //   ./gradlew exportGltf -Pnpc=5779
 //   ./gradlew exportGltf -Pnpc=5779 -Pseqs=3309,3313 -Pout=assets-dev
 authoringTool('exportGltf', 'com.customnpcmodels.authoring.GltfExporter',
-	'Exports an NPC from the live cache as a .glb and a manifest stub.', ['npc', 'seqs', 'out', 'cacheDir'])
+	'Exports an NPC (or with -Pchathead, its chathead) from the live cache as a .glb.', ['npc', 'seqs', 'out', 'cacheDir', 'chathead'])
 
 // Reports how far a .glb - typically one re-exported from Blender - has moved from the NPC it came
 // from: converter warnings, moved vertex groups, recolored faces and per-sequence pose error, eg:

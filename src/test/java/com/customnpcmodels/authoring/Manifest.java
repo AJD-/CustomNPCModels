@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels.authoring;
 
+import com.google.gson.JsonElement;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -49,7 +50,8 @@ import java.util.Map;
  *       "scaleXZ": 118,
  *       "scaleY": 118,
  *       "recolors": [{"find": 5169, "replace": 21662}],
- *       "animations": {"3309": 3309, "3313": 3313}
+ *       "animations": {"3309": 3309, "3313": 3313},
+ *       "chathead": 3709
  *     }
  *   ]
  * }
@@ -60,6 +62,8 @@ import java.util.Map;
  * animation's name to the live sequence it stands in for - the NPC keeps playing that sequence, and
  * the clip is sampled at its frame count. Scale is in 1/128ths and defaults to 128;
  * {@code ambient} and {@code contrast} are the NPC definition's lighting bytes and default to 0.
+ * {@code chathead} is optional: a cache NPC whose dialogue head these NPCs show instead of their own,
+ * or {"glb", "meshId", "rigId"} for a head of the pack's own.
  */
 final class Manifest
 {
@@ -103,6 +107,25 @@ final class Manifest
 		List<Recolor> recolors;
 		Map<String, Integer> animations = new LinkedHashMap<>();
 
+		/**
+		 * The head these NPCs show in dialogue, or null to keep their own: an NPC id to borrow a cache
+		 * chathead from, or an object naming a head of the pack's own, which the plugin draws itself.
+		 * Read through {@link #chatheadNpc} and {@link #chatheadHead}.
+		 */
+		JsonElement chathead;
+
+		/** The NPC whose chathead is borrowed, or null when none is or the head is the pack's own. */
+		Integer chatheadNpc()
+		{
+			return chathead != null && chathead.isJsonPrimitive() ? chathead.getAsInt() : null;
+		}
+
+		/** The pack's own head, or null when there is none. */
+		Head chatheadHead()
+		{
+			return chathead != null && chathead.isJsonObject() ? Glb.GSON.fromJson(chathead, Head.class) : null;
+		}
+
 		int scaleXZ()
 		{
 			return scaleXZ == null ? 128 : scaleXZ;
@@ -112,6 +135,19 @@ final class Manifest
 		{
 			return scaleY == null ? 128 : scaleY;
 		}
+	}
+
+	/**
+	 * A chathead of the pack's own: a .glb, usually from {@code exportGltf -Pchathead}, and synthetic
+	 * ids at or above {@code GltfExporter.HEAD_ID_BASE}. Without {@code animations}, every animation
+	 * named by a number is the emote of that id.
+	 */
+	static final class Head
+	{
+		String glb;
+		int meshId;
+		int rigId;
+		Map<String, Integer> animations;
 	}
 
 	static final class Recolor

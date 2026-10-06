@@ -26,6 +26,7 @@ package com.customnpcmodels.authoring;
 
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.NpcAppearance;
+import com.customnpcmodels.inject.RsColor;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;

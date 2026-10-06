@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.customnpcmodels.authoring;
+package com.customnpcmodels.inject;
 
 /**
  * Converts between the engine's packed HSL face colors and RGB.
@@ -37,19 +37,19 @@ package com.customnpcmodels.authoring;
  * reverse has no closed form that lands back on the same bucket, so it starts from the analytic
  * inverse and searches the neighboring buckets for the nearest RGB.
  */
-final class RsColor
+public final class RsColor
 {
-	static final int MAX_HUE = 63;
-	static final int MAX_SATURATION = 7;
-	static final int MIN_LUMINANCE = 1;
-	static final int MAX_LUMINANCE = 126;
+	public static final int MAX_HUE = 63;
+	public static final int MAX_SATURATION = 7;
+	public static final int MIN_LUMINANCE = 1;
+	public static final int MAX_LUMINANCE = 126;
 
 	private RsColor()
 	{
 	}
 
 	/** Packed HSL to 0xRRGGBB, in the display (sRGB) space the client draws in. */
-	static int hslToRgb(int hsl)
+	public static int hslToRgb(int hsl)
 	{
 		double hue = hue(hsl) / 64.0 + 0.0078125;
 		double saturation = saturation(hsl) / 8.0 + 0.0625;
@@ -68,10 +68,28 @@ final class RsColor
 	}
 
 	/**
+	 * Packed HSL to 0xRRGGBB as the client draws it at a brightness setting: each channel raised to
+	 * {@code brightness}, as the client builds its palette. 1 is the plain palette; the game's settings
+	 * are below it, and lighten.
+	 */
+	public static int hslToRgb(int hsl, double brightness)
+	{
+		int rgb = hslToRgb(hsl);
+		if (brightness == 1)
+		{
+			return rgb;
+		}
+		int r = (int) (Math.pow((rgb >> 16 & 255) / 256.0, brightness) * 256.0);
+		int g = (int) (Math.pow((rgb >> 8 & 255) / 256.0, brightness) * 256.0);
+		int b = (int) (Math.pow((rgb & 255) / 256.0, brightness) * 256.0);
+		return Math.min(255, r) << 16 | Math.min(255, g) << 8 | Math.min(255, b);
+	}
+
+	/**
 	 * 0xRRGGBB to the packed HSL whose {@link #hslToRgb} is nearest, luminance clamped to
 	 * {@link #MIN_LUMINANCE}..{@link #MAX_LUMINANCE}.
 	 */
-	static short rgbToHsl(int rgb)
+	public static short rgbToHsl(int rgb)
 	{
 		int r = rgb >> 16 & 255;
 		int g = rgb >> 8 & 255;
@@ -137,44 +155,44 @@ final class RsColor
 	}
 
 	/** Packed HSL to the linear red, green and blue glTF's COLOR_0 carries, each 0..1. */
-	static double[] hslToLinear(int hsl)
+	public static double[] hslToLinear(int hsl)
 	{
 		int rgb = hslToRgb(hsl);
 		return new double[]{srgbToLinear(rgb >> 16 & 255), srgbToLinear(rgb >> 8 & 255), srgbToLinear(rgb & 255)};
 	}
 
 	/** Display (sRGB) channel 0..255 to the linear 0..1 value glTF's COLOR_0 carries. */
-	static double srgbToLinear(int channel)
+	public static double srgbToLinear(int channel)
 	{
 		double c = channel / 255.0;
 		return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 	}
 
 	/** Linear 0..1 back to a display (sRGB) channel 0..255. */
-	static int linearToSrgb(double linear)
+	public static int linearToSrgb(double linear)
 	{
 		double c = Math.max(0, Math.min(1, linear));
 		double s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
 		return clamp((int) Math.round(s * 255), 0, 255);
 	}
 
-	static int pack(int hue, int saturation, int luminance)
+	public static int pack(int hue, int saturation, int luminance)
 	{
 		return hue << 10 | saturation << 7 | luminance;
 	}
 
-	static int hue(int hsl)
+	public static int hue(int hsl)
 	{
 		return hsl >> 10 & 63;
 	}
 
-	static int saturation(int hsl)
+	public static int saturation(int hsl)
 	{
 		return hsl >> 7 & 7;
 	}
 
 	/** The full 7 bits, 0..127 - not clamped to the range an author is given. */
-	static int luminance(int hsl)
+	public static int luminance(int hsl)
 	{
 		return hsl & 127;
 	}

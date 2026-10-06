@@ -30,6 +30,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import com.customnpcmodels.inject.Mesh;
+import com.customnpcmodels.inject.RsColor;
 import com.customnpcmodels.inject.TestMesh;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;

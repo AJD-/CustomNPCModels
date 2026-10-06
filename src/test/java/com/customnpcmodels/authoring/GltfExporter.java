@@ -29,6 +29,7 @@ import com.customnpcmodels.cache.MeshFactory;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.MeshMerger;
+import com.customnpcmodels.inject.NpcAppearance;
 import com.customnpcmodels.inject.Rig;
 import com.customnpcmodels.inject.SwapBlacklist;
 import java.io.IOException;
@@ -62,14 +63,22 @@ import net.runelite.cache.fs.Store;
  * <b>The output is Jagex geometry.</b> It goes to a gitignored directory and must never be
  * committed or bundled for release; bundle it only with {@code generateAssets -Pdev}.
  * <p>
- * Run with {@code ./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]}. Without
- * {@code -Pseqs} every sequence on the NPC's rig is exported - see {@link #defaultSequences}.
+ * Run with {@code ./gradlew exportGltf -Pnpc=<id> [-Pchathead] [-Pseqs=a,b,...] [-Pout=dir]}. Without
+ * {@code -Pseqs} every sequence on the NPC's rig is exported - see {@link #defaultSequences}. With
+ * {@code -Pchathead} the NPC's chathead is exported instead, with every emote; see
+ * {@link #exportChathead}.
  */
 @Slf4j
 public class GltfExporter
 {
 	/** Synthetic ids for an exported NPC: this plus the NPC id, clear of anything a cache uses. */
 	static final int ID_BASE = 1_000_000;
+
+	/** Synthetic ids for an exported chathead: this plus the NPC id, clear of the NPC's own export. */
+	static final int HEAD_ID_BASE = 2_000_000;
+
+	/** A talking emote. Every chathead emote animates the skeleton it does. */
+	static final int CHATHEAD_EMOTE = 554;
 
 	/**
 	 * The most sequences a rig can animate and still be taken as one NPC's. Monster rigs measured 7 to
@@ -79,21 +88,29 @@ public class GltfExporter
 
 	public static void main(String[] args) throws IOException
 	{
-		String npcArg = ToolCli.required("npc", "./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]");
+		String npcArg = ToolCli.required("npc", "./gradlew exportGltf -Pnpc=<id> [-Pchathead] [-Pseqs=a,b,...] [-Pout=dir]");
 		String outArg = ToolCli.option("out");
 		Path out = Paths.get(outArg == null ? "build/gltf" : outArg);
 
 		try (Store store = ToolCli.liveCache("Could not find an OSRS cache"))
 		{
 			NpcDefinition npc = ToolCli.npc(store, npcArg);
+			boolean chathead = ToolCli.flag("chathead");
 
 			Set<Integer> sequences = ToolCli.sequenceIds(ToolCli.option("seqs"));
 			if (sequences.isEmpty())
 			{
-				sequences.addAll(defaultSequences(store, npc, System.out::println));
+				sequences.addAll(chathead ? chatheadSequences(store) : defaultSequences(store, npc, System.out::println));
 			}
 
-			export(store, npc, sequences, out);
+			if (chathead)
+			{
+				exportChathead(store, npc, sequences, out);
+			}
+			else
+			{
+				export(store, npc, sequences, out);
+			}
 		}
 	}
 
@@ -186,20 +203,7 @@ public class GltfExporter
 		Map<Integer, Rig> rigs = new LinkedHashMap<>();
 		List<Clip> clips = new ArrayList<>();
 		Map<Integer, SequenceTiming> timings = new LinkedHashMap<>();
-		Map<String, Integer> animations = new LinkedHashMap<>();
-		for (int sequenceId : sequences)
-		{
-			Clip clip = CacheFiles.buildClip(store, sequenceId, rigs);
-			SequenceTiming timing = AssetGenerator.timing(store, sequenceId);
-			if (clip == null || timing == null)
-			{
-				log.info("  sequence {} skipped: not a frame-based live sequence", sequenceId);
-				continue;
-			}
-			clips.add(clip);
-			timings.put(sequenceId, timing);
-			animations.put(String.valueOf(sequenceId), sequenceId);
-		}
+		Map<String, Integer> animations = clips(store, sequences, rigs, clips, timings);
 
 		List<String> report = new ArrayList<>();
 		byte[] glb = GlbWriter.write(mesh, parts, rigs, clips, timings, report);
@@ -255,11 +259,91 @@ public class GltfExporter
 		return merge(npc, partMeshes(store, npc));
 	}
 
+	/** Each sequence's clip and timing, skipping any that isn't frame-based; returns the manifest's animation map. */
+	private static Map<String, Integer> clips(Store store, Set<Integer> sequences, Map<Integer, Rig> rigs,
+		List<Clip> clips, Map<Integer, SequenceTiming> timings) throws IOException
+	{
+		Map<String, Integer> animations = new LinkedHashMap<>();
+		for (int sequenceId : sequences)
+		{
+			Clip clip = CacheFiles.buildClip(store, sequenceId, rigs);
+			SequenceTiming timing = AssetGenerator.timing(store, sequenceId);
+			if (clip == null || timing == null)
+			{
+				log.info("  sequence {} skipped: not a frame-based live sequence", sequenceId);
+				continue;
+			}
+			clips.add(clip);
+			timings.put(sequenceId, timing);
+			animations.put(String.valueOf(sequenceId), sequenceId);
+		}
+		return animations;
+	}
+
+	/** Every frame-based sequence on the chathead skeleton, the one {@link #CHATHEAD_EMOTE} animates. */
+	static Set<Integer> chatheadSequences(Store store) throws IOException
+	{
+		int skeleton = CacheFiles.framemapOf(store, CHATHEAD_EMOTE);
+		return new LinkedHashSet<>(CacheFiles.sequencesByFramemap(store).getOrDefault(skeleton, new ArrayList<>()));
+	}
+
+	/**
+	 * Writes an NPC's chathead as {@code <name>-chathead.glb}, with an animation per emote, and prints
+	 * the manifest's {@code chathead} entry for it. The NPC's recolors are baked into the faces, since
+	 * a head carries no recolors of its own, and no manifest entry is written: a head belongs to the
+	 * models that name it.
+	 *
+	 * @return the written file
+	 */
+	static Path exportChathead(Store store, NpcDefinition npc, Set<Integer> sequences, Path out) throws IOException
+	{
+		if (npc.chatheadModels == null || npc.chatheadModels.length == 0)
+		{
+			throw new IOException("NPC " + npc.id + " has no chathead");
+		}
+		int id = HEAD_ID_BASE + npc.id;
+		String name = npc.name == null ? "npc-" + npc.id : npc.name;
+		System.out.println(name + " (id " + npc.id + "), chathead");
+
+		List<Mesh> parts = partMeshes(store, npc.chatheadModels);
+		Mesh merged = MeshMerger.merge(id, parts).withId(id);
+		Mesh mesh = merged.withFaceColors(NpcAppearance.recolor(merged.getFaceColors(),
+			npc.recolorToFind, npc.recolorToReplace));
+
+		Map<Integer, Rig> rigs = new LinkedHashMap<>();
+		List<Clip> clips = new ArrayList<>();
+		Map<Integer, SequenceTiming> timings = new LinkedHashMap<>();
+		clips(store, sequences, rigs, clips, timings);
+
+		List<String> report = new ArrayList<>();
+		byte[] glb = GlbWriter.write(mesh, partRanges(npc.chatheadModels, parts), rigs, clips, timings, report);
+		for (String line : report)
+		{
+			System.out.println("  " + line);
+		}
+
+		String file = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-") + "-chathead.glb";
+		Files.createDirectories(out);
+		Path written = out.resolve(file);
+		Files.write(written, glb);
+		log.info("  wrote {} ({} KB, {} verts, {} faces, {} clips)", written.toAbsolutePath(), glb.length / 1024,
+			mesh.getVerticesCount(), mesh.getFaceCount(), clips.size());
+		System.out.println("  in models.json: \"chathead\": {\"glb\": \"" + file + "\", \"meshId\": " + id
+			+ ", \"rigId\": " + id + "}");
+		return written;
+	}
+
 	/** The NPC's models, decoded, in definition order. */
 	static List<Mesh> partMeshes(Store store, NpcDefinition npc) throws IOException
 	{
+		return partMeshes(store, npc.models);
+	}
+
+	/** Models, decoded, in the order given. */
+	static List<Mesh> partMeshes(Store store, int[] modelIds) throws IOException
+	{
 		List<Mesh> parts = new ArrayList<>();
-		for (int modelId : npc.models)
+		for (int modelId : modelIds)
 		{
 			ModelDefinition model = CacheFiles.decodeModel(store, modelId);
 			if (model == null)
@@ -271,11 +355,17 @@ public class GltfExporter
 		return parts;
 	}
 
+	/** {@link #partRanges(int[], List)} for the NPC's models. */
+	static List<MeshPart> partRanges(NpcDefinition npc, List<Mesh> parts)
+	{
+		return partRanges(npc.models, parts);
+	}
+
 	/**
 	 * Where each model's faces land in the merged mesh: the merge appends every part's faces after
 	 * the last's, so each is one run. A single model is the whole mesh.
 	 */
-	static List<MeshPart> partRanges(NpcDefinition npc, List<Mesh> parts)
+	static List<MeshPart> partRanges(int[] modelIds, List<Mesh> parts)
 	{
 		if (parts.size() == 1)
 		{
@@ -287,7 +377,7 @@ public class GltfExporter
 		for (int i = 0; i < parts.size(); i++)
 		{
 			int faces = parts.get(i).getFaceCount();
-			ranges.add(new MeshPart(MeshPart.name(i, npc.models[i]), firstFace, faces));
+			ranges.add(new MeshPart(MeshPart.name(i, modelIds[i]), firstFace, faces));
 			firstFace += faces;
 		}
 		return ranges;

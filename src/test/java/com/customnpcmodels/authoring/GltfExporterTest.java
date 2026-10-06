@@ -25,17 +25,28 @@
 package com.customnpcmodels.authoring;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import com.google.gson.JsonObject;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import net.runelite.api.gameval.NpcID;
 import net.runelite.cache.definitions.NpcDefinition;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
-/** Which sequences an export takes when none are named. */
+/** Which sequences an export takes when none are named, and what a chathead export writes. */
 public class GltfExporterTest
 {
+	@Rule
+	public TemporaryFolder folder = new TemporaryFolder();
+
 	/**
 	 * The mole's definition names only standing and walking, but its rig carries its digging, death
 	 * and attack sequences too - the ones a Blender edit has to keep.
@@ -63,5 +74,39 @@ public class GltfExporterTest
 		assertEquals(man.standingAnimation, (int) sequences.get(0));
 		assertTrue("sequences " + sequences, sequences.size() <= 15);
 		assertTrue("report " + report, report.size() == 1 && report.get(0).contains("-Pseqs"));
+	}
+
+	/** Every chathead emote animates one skeleton: the talking emote 554's. */
+	@Test
+	public void testChatheadSequencesAreTheEmotes() throws Exception
+	{
+		Set<Integer> sequences = GltfExporter.chatheadSequences(LiveFixtures.store());
+
+		assertTrue(sequences.contains(554));
+		assertTrue("the Demon butler's emote is one of them", sequences.contains(569));
+		assertTrue("sequences " + sequences.size(), sequences.size() > 100);
+	}
+
+	/** The female Vyrewatch's head, as a .glb with an animation per emote and no manifest entry. */
+	@Test
+	public void testExportsAChatheadWithItsEmotes() throws Exception
+	{
+		Path out = folder.getRoot().toPath();
+		NpcDefinition vyrewatch = LiveFixtures.npc(NpcID.SANG_MYQ3_FEMALE_WALK_VYREWATCH_1);
+
+		Path glb = GltfExporter.exportChathead(LiveFixtures.store(), vyrewatch,
+			GltfExporter.chatheadSequences(LiveFixtures.store()), out);
+
+		assertEquals("vyrewatch-chathead.glb", glb.getFileName().toString());
+		JsonObject json = Glb.readJson(Files.readAllBytes(glb));
+		assertTrue(json.getAsJsonArray("animations").size() > 100);
+		assertFalse("a head is no model of its own", Files.exists(out.resolve(Manifest.FILE_NAME)));
+	}
+
+	@Test(expected = IOException.class)
+	public void testRefusesAnNpcWithNoChathead() throws Exception
+	{
+		GltfExporter.exportChathead(LiveFixtures.store(), LiveFixtures.npc(NpcID.VYREWATCH_ELITE_1),
+			GltfExporter.chatheadSequences(LiveFixtures.store()), folder.getRoot().toPath());
 	}
 }

@@ -74,6 +74,18 @@ don't edit it by hand. A hub pack can be removed from its own card even with the
   outlines` option draws that plugin's NPC hover and interact outlines around the custom model
   instead of the original. It does this by turning those two settings off in Interact Highlight
   while active, then restoring them when this plugin stops.
+- **Chatheads:** a model can name a game NPC whose dialogue head it shows in place of its own (the
+  manifest's `chathead`). The dialogue head is drawn from the game cache, so it borrows another NPC's
+  head rather than drawing the pack's geometry. Each frame, before the dialogue is drawn, the plugin
+  points the head at that NPC and leaves its emote alone. It puts the NPC's own head back when the
+  model, the `Swap chatheads` setting or a safety setting takes the swap away, and when it stops.
+  The dialogue may ask for a multi NPC (the Demon butler, 229, speaks as 230), so the plugin
+  resolves it to the NPC it shows as before looking up its model.
+  A model can instead carry a head of its own (an object for `chathead`): the plugin blanks the
+  dialogue head and draws its head in an overlay, posed by the line's emote, lit and framed as the
+  client draws an interface model, and drawn past the head widget's edges as far as the dialogue
+  reaches, as the client draws it. The widget doesn't say which emote frame the client is on, so the
+  drawn head times the emote itself from when the page opens.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
 - Some NPCs are never swapped, whatever a pack says: Jagex's third-party client rules forbid 
   extra visual indicators of boss mechanics, and name wave-based minigames explicitly. 
@@ -96,8 +108,12 @@ don't edit it by hand. A hub pack can be removed from its own card even with the
 `assets/models.json` lists what gets bundled. Each entry names a `.glb` beside it, the synthetic
 mesh and rig ids (keep them at 1,000,000 and up, and stable), the NPC ids that wear it, an optional
 scale (1/128ths, applied after animation, as the game does), recolors and NPC lighting
-adjustments (`ambient`, `contrast`, as in the NPC definition), and a map from each glTF animation
-name to the live sequence it stands in for:
+adjustments (`ambient`, `contrast`, as in the NPC definition), a map from each glTF animation
+name to the live sequence it stands in for, and optionally a `chathead`: a game NPC whose dialogue
+head these NPCs show instead of their own. `generateAssets` refuses one that has no chathead in the
+cache. For a head of the pack's own, `chathead` is `{"glb", "meshId", "rigId"}` instead, with ids at
+or above 2,000,000. Every animation in that glb named by a number becomes the emote of that id,
+unless `"animations"` maps them. Models can share one head; it's converted once.
 
 ```json
 {
@@ -110,7 +126,17 @@ name to the live sequence it stands in for:
       "npcIds": [5779],
       "scaleXZ": 118,
       "scaleY": 118,
-      "animations": { "3309": 3309, "3313": 3313 }
+      "animations": { "3309": 3309, "3313": 3313 },
+      "chathead": 3709
+    },
+    {
+      "name": "Maid",
+      "glb": "maid.glb",
+      "meshId": 1000223,
+      "rigId": 1000223,
+      "npcIds": [223],
+      "animations": { "808": 808, "819": 819 },
+      "chathead": { "glb": "maid-head.glb", "meshId": 2000223, "rigId": 2000223 }
     }
   ]
 }
@@ -169,8 +195,11 @@ If the model still doesn't change, see the "Debugging" section below.
 - `./gradlew dumpNpcDefinitions -Pnpc=<ids or name>` prints live NPC definitions: model parts,
   scale, recolors, the standing and walking sequences with their frame counts, and whether any part
   is textured.
-- `./gradlew exportGltf -Pnpc=<id> [-Pseqs=a,b,...] [-Pout=dir]` exports an NPC from the live cache
+- `./gradlew exportGltf -Pnpc=<id> [-Pchathead] [-Pseqs=a,b,...] [-Pout=dir]` exports an NPC from the live cache
   as a `.glb`, with its rig and animations, plus a manifest entry binding it back to the same NPC.
+  `-Pchathead` exports the NPC's chathead instead, with every emote on the chathead skeleton (over a
+  hundred) and the NPC's recolors baked in, as `<name>-chathead.glb`. It prints its `chathead` entry
+  rather than writing a manifest entry, since a head belongs to the models that name it.
   Without `-Pseqs` it exports every sequence that animates the NPC's rig. That covers the attacks,
   blocks and deaths the NPC definition never names. A rig shared by more than 64 sequences, such as
   the humanoid rig, gets only the definition's own sequences (standing, walking, turning, running),
