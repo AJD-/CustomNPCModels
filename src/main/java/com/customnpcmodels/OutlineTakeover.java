@@ -179,6 +179,8 @@ class OutlineTakeover
 	 */
 	void finishHandshake()
 	{
+		log.debug("Handshake done; Retro NPC Swapper {} the outlines",
+			partnerOutlines.isOwning() ? "draws" : "does not draw");
 		partnerOutlines.setHandshakeDone();
 		publish(true);
 		sync();
@@ -209,11 +211,19 @@ class OutlineTakeover
 		}
 	}
 
-	/** Forgets Retro NPC Swapper's state as it stops. Any thread. */
+	/**
+	 * Forgets Retro NPC Swapper's state as it stops. Any thread.
+	 * <p>
+	 * Queued rather than done here: Retro hands the outlines back on the client thread after its
+	 * shutDown, and a sync already queued that saw it gone first would stash its false values.
+	 */
 	void onPartnerStopped()
 	{
-		partnerOutlines.forget();
-		clientThread.invokeLater(this::onPartnerChanged);
+		clientThread.invokeLater(() ->
+		{
+			partnerOutlines.forget();
+			onPartnerChanged();
+		});
 	}
 
 	private void onPartnerChanged()
