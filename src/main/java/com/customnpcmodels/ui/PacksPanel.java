@@ -29,6 +29,7 @@ import com.customnpcmodels.packs.PackKind;
 import com.customnpcmodels.packs.PackView;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -38,6 +39,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -45,11 +47,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -148,6 +152,25 @@ public class PacksPanel extends PluginPanel
 	 * their hub id, local packs by their pack id.
 	 */
 	private final Set<String> busy = new HashSet<>();
+
+	/**
+	 * The cards the list shows, by key, with what each was built to show. A rebuild keeps every card
+	 * whose content is unchanged, so switching one pack doesn't clear and rebuild the whole list.
+	 */
+	private Map<String, Card> cards = new HashMap<>();
+
+	/** A card in the list, and everything it was built from. */
+	private static final class Card
+	{
+		private final List<Object> shows;
+		private final JComponent component;
+
+		private Card(List<Object> shows, JComponent component)
+		{
+			this.shows = shows;
+			this.component = component;
+		}
+	}
 
 	public PacksPanel(Actions actions)
 	{
@@ -353,7 +376,8 @@ public class PacksPanel extends PluginPanel
 
 	private void rebuild()
 	{
-		SwingUtil.fastRemoveAll(list);
+		Map<String, Card> kept = new HashMap<>();
+		List<Component> wanted = new ArrayList<>();
 
 		List<String> terms = terms(search.getText());
 		List<PackView> shown = packs.stream()
@@ -362,50 +386,104 @@ public class PacksPanel extends PluginPanel
 
 		if (shown.isEmpty())
 		{
-			PluginErrorPanel empty = new PluginErrorPanel();
-			empty.setContent(packs.isEmpty() ? "No packs" : "No matches",
-				packs.isEmpty() ? "Import a pack to get started." : "");
-			list.add(empty);
+			String title = packs.isEmpty() ? "No packs" : "No matches";
+			String text = packs.isEmpty() ? "Import a pack to get started." : "";
+			wanted.add(card(kept, "empty", Arrays.asList(title, text), () ->
+			{
+				PluginErrorPanel empty = new PluginErrorPanel();
+				empty.setContent(title, text);
+				return empty;
+			}));
 		}
 		else
 		{
 			for (PackView pack : shown)
 			{
-				list.add(packItem(pack));
+				// Everything packItem reads, so a card is only built again when what it shows changed
+				int index = packs.indexOf(pack);
+				List<Object> shows = Arrays.asList(pack, index == 0, index == packs.size() - 1,
+					expanded.contains(pack.getId()), busy.contains(pack.getId()), busy.contains(hubFolder(pack)),
+					pack.getCommit() == null ? null : hubIcons.get(pack.getCommit()));
+				wanted.add(card(kept, "pack:" + pack.getId(), shows, () -> packItem(pack)));
 			}
 		}
 
-		addHubSection(terms);
+		addHubSection(terms, kept, wanted);
+
+		cards = kept;
+		show(wanted);
+	}
+
+	/**
+	 * The card under {@code key}: the one already built when it was built to show the same
+	 * {@code shows}, else a new one. Either way it is kept in {@code kept} for the next rebuild.
+	 */
+	private JComponent card(Map<String, Card> kept, String key, List<Object> shows, Supplier<JComponent> build)
+	{
+		Card card = cards.get(key);
+		if (card == null || !card.shows.equals(shows))
+		{
+			card = new Card(shows, build.get());
+		}
+		kept.put(key, card);
+		return card.component;
+	}
+
+	/**
+	 * Puts {@code wanted} in the list, in order, moving only what has to move. A card already in its
+	 * place is left alone, rather than the list being emptied and filled again.
+	 */
+	private void show(List<Component> wanted)
+	{
+		for (int i = 0; i < wanted.size(); i++)
+		{
+			Component card = wanted.get(i);
+			if (i >= list.getComponentCount() || list.getComponent(i) != card)
+			{
+				// Takes the card out of its old place first when it is already in the list
+				list.add(card, i);
+			}
+		}
+		while (list.getComponentCount() > wanted.size())
+		{
+			list.remove(list.getComponentCount() - 1);
+		}
 
 		list.revalidate();
 		list.repaint();
 	}
 
-	private void addHubSection(List<String> terms)
+	private void addHubSection(List<String> terms, Map<String, Card> kept, List<Component> wanted)
 	{
-		JLabel heading = new JLabel("Custom Model Hub");
-		heading.setFont(FontManager.getRunescapeBoldFont());
-		heading.setForeground(Color.WHITE);
-		heading.setBorder(new EmptyBorder(8, 0, 0, 0));
-		list.add(heading);
+		wanted.add(card(kept, "hub-heading", Collections.emptyList(), () ->
+		{
+			JLabel heading = new JLabel("Custom Model Hub");
+			heading.setFont(FontManager.getRunescapeBoldFont());
+			heading.setForeground(Color.WHITE);
+			heading.setBorder(new EmptyBorder(8, 0, 0, 0));
+			return heading;
+		}));
 
 		if (!hubEnabled)
 		{
-			list.add(detail("Switch on Enable Custom Model Hub in this plugin's settings to browse and download "
-				+ "packs. Until then, nothing is fetched.", ColorScheme.LIGHT_GRAY_COLOR));
+			wanted.add(detailCard(kept, "hub-off", "Switch on Enable Custom Model Hub in this plugin's settings to "
+				+ "browse and download packs. Until then, nothing is fetched.", ColorScheme.LIGHT_GRAY_COLOR));
 			return;
 		}
 		if (hubLoading)
 		{
-			list.add(detail("Loading the hub's packs...", ColorScheme.LIGHT_GRAY_COLOR));
+			wanted.add(detailCard(kept, "hub-loading", "Loading the hub's packs...", ColorScheme.LIGHT_GRAY_COLOR));
 			return;
 		}
 		if (hubError != null)
 		{
-			list.add(detail(hubError, ColorScheme.PROGRESS_ERROR_COLOR));
-			JButton retry = new JButton("Retry");
-			retry.addActionListener(e -> requestHub());
-			list.add(retry);
+			wanted.add(detailCard(kept, "hub-error", hubError, ColorScheme.PROGRESS_ERROR_COLOR));
+			wanted.add(card(kept, "hub-retry", Collections.emptyList(), () ->
+			{
+				JButton retry = new JButton("Retry");
+				retry.addActionListener(e -> requestHub());
+				return retry;
+			}));
 			return;
 		}
 		if (hubEntries == null)
@@ -418,13 +496,36 @@ public class PacksPanel extends PluginPanel
 			.collect(Collectors.toList());
 		if (shown.isEmpty())
 		{
-			list.add(detail(hubEntries.isEmpty() ? "The hub has no packs yet." : "No hub packs match.",
-				ColorScheme.LIGHT_GRAY_COLOR));
+			wanted.add(detailCard(kept, "hub-none", hubEntries.isEmpty() ? "The hub has no packs yet."
+				: "No hub packs match.", ColorScheme.LIGHT_GRAY_COLOR));
 		}
 		for (HubEntry entry : shown)
 		{
-			list.add(hubItem(entry));
+			// Everything hubItem reads; an entry is the same object until the hub is fetched again
+			PackView installed = installedFrom(entry);
+			List<Object> shows = Arrays.asList(entry, hubIcons.get(entry.getCommit()), installed != null,
+				installed == null ? null : installed.getCommit(), busy.contains(entry.getId()));
+			wanted.add(card(kept, "hub:" + entry.getId(), shows, () -> hubItem(entry)));
 		}
+	}
+
+	private JComponent detailCard(Map<String, Card> kept, String key, String text, Color color)
+	{
+		return card(kept, key, Arrays.asList(text, color), () -> detail(text, color));
+	}
+
+	/** The installed pack a hub entry was installed as, or null. */
+	private PackView installedFrom(HubEntry entry)
+	{
+		return packs.stream()
+			.filter(pack -> pack.getId().equals(entry.getPackId()))
+			.findFirst().orElse(null);
+	}
+
+	/** The folder under {@code hub/} a hub pack is installed in, or null for any other pack. */
+	private static String hubFolder(PackView pack)
+	{
+		return pack.getKind() == PackKind.HUB ? pack.getId().substring(PackKind.HUB.packId("").length()) : null;
 	}
 
 	private JPanel hubItem(HubEntry entry)
@@ -477,9 +578,7 @@ public class PacksPanel extends PluginPanel
 				ColorScheme.LIGHT_GRAY_COLOR));
 		}
 
-		PackView installed = packs.stream()
-			.filter(pack -> pack.getId().equals(entry.getPackId()))
-			.findFirst().orElse(null);
+		PackView installed = installedFrom(entry);
 		boolean update = installed != null && !entry.getCommit().equals(installed.getCommit());
 
 		if (!entry.isCompatible())
@@ -566,9 +665,11 @@ public class PacksPanel extends PluginPanel
 		int index = packs.indexOf(pack);
 		JPanel order = new JPanel(new GridLayout(1, 2, 2, 0));
 		order.setOpaque(false);
-		order.add(orderButton("▲", "Take priority over the pack above", index > 0, () -> movePack(index, -1)));
+		// Moved by id rather than by this index: a kept card stays while the packs around it move, so
+		// its index can change under it
+		order.add(orderButton("▲", "Take priority over the pack above", index > 0, () -> movePack(pack.getId(), -1)));
 		order.add(orderButton("▼", "Give priority to the pack below", index < packs.size() - 1,
-			() -> movePack(index, 1)));
+			() -> movePack(pack.getId(), 1)));
 		top.add(order, BorderLayout.EAST);
 		item.add(top);
 
@@ -624,7 +725,7 @@ public class PacksPanel extends PluginPanel
 	{
 		if (pack.getKind() == PackKind.HUB)
 		{
-			item.add(hubRemoveButton(pack.getId().substring(PackKind.HUB.packId("").length()), pack.getName()));
+			item.add(hubRemoveButton(hubFolder(pack), pack.getName()));
 		}
 		else if (pack.getKind() == PackKind.LOCAL)
 		{
@@ -664,9 +765,14 @@ public class PacksPanel extends PluginPanel
 		return row;
 	}
 
-	private void movePack(int index, int delta)
+	private void movePack(String packId, int delta)
 	{
 		List<String> ids = packs.stream().map(PackView::getId).collect(Collectors.toList());
+		int index = ids.indexOf(packId);
+		if (index < 0 || index + delta < 0 || index + delta >= ids.size())
+		{
+			return;
+		}
 		Collections.swap(ids, index, index + delta);
 		actions.setOrder(ids);
 	}
