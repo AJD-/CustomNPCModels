@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels.inject;
 
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FilterInputStream;
@@ -83,6 +84,9 @@ public final class AssetCodec
 	private static final int MAX_ENTRIES = 100_000;
 	private static final int MAX_ARRAY = 10_000_000;
 
+	/** The most meshes one binding may merge. The client's own NPCs use a handful. */
+	static final int MAX_PARTS = 64;
+
 	private AssetCodec()
 	{
 	}
@@ -128,7 +132,15 @@ public final class AssetCodec
 	/** {@link #read(InputStream)}, refusing to inflate past {@code maxInflatedBytes}. */
 	static AssetBundle read(InputStream in, long maxInflatedBytes) throws IOException
 	{
-		try (DataInputStream data = new DataInputStream(new Limited(new GZIPInputStream(in), maxInflatedBytes)))
+		// Inflated up front, so every length can be checked against the bytes that are actually left
+		// before anything is allocated for it
+		byte[] inflated;
+		try (InputStream limited = new Limited(new GZIPInputStream(in), maxInflatedBytes))
+		{
+			inflated = limited.readAllBytes();
+		}
+
+		try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(inflated)))
 		{
 			int magic = data.readInt();
 			if (magic != MAGIC)
@@ -644,6 +656,12 @@ public final class AssetCodec
 			throw malformed("Binding '" + name + "' names no meshes");
 		}
 
+		if (binding.getMeshIds().length > MAX_PARTS)
+		{
+			throw malformed("Binding '" + name + "' names " + binding.getMeshIds().length
+				+ " meshes, past the " + MAX_PARTS + " a model may merge");
+		}
+
 		List<Mesh> parts = new ArrayList<>();
 		for (int meshId : binding.getMeshIds())
 		{
@@ -716,6 +734,18 @@ public final class AssetCodec
 
 		if (parts.size() > 1)
 		{
+			// The merge keeps every face, so this is known before it allocates for them
+			long faces = 0;
+			for (Mesh part : parts)
+			{
+				faces += part.getFaceCount();
+			}
+			if (faces > MAX_FACES)
+			{
+				throw new IOException("Binding '" + name + "' merges to " + faces + " faces, past the "
+					+ MAX_FACES + " ceiling");
+			}
+
 			Mesh merged = MeshMerger.merge(binding.getMeshIds()[0], parts);
 			if (merged.getVerticesCount() > MAX_VERTICES || merged.getFaceCount() > MAX_FACES)
 			{
@@ -750,11 +780,15 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		checkLength(data, length, Float.BYTES);
 		float[] values = new float[length];
 		for (int i = 0; i < length; i++)
 		{
 			values[i] = data.readFloat();
+			if (!Float.isFinite(values[i]))
+			{
+				throw malformed("A coordinate in the bundle is " + values[i]);
+			}
 		}
 		return values;
 	}
@@ -780,7 +814,7 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		checkLength(data, length, Integer.BYTES);
 		int[] values = new int[length];
 		for (int i = 0; i < length; i++)
 		{
@@ -810,7 +844,7 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		checkLength(data, length, Short.BYTES);
 		short[] values = new short[length];
 		for (int i = 0; i < length; i++)
 		{
@@ -837,7 +871,7 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		checkLength(data, length, Byte.BYTES);
 		byte[] values = new byte[length];
 		data.readFully(values);
 		return values;
@@ -864,7 +898,8 @@ public final class AssetCodec
 		{
 			return null;
 		}
-		checkLength(length);
+		// Each row is at least its own length
+		checkLength(data, length, Integer.BYTES);
 		int[][] values = new int[length][];
 		for (int i = 0; i < length; i++)
 		{
@@ -883,9 +918,10 @@ public final class AssetCodec
 		return count;
 	}
 
-	private static void checkLength(int length) throws IOException
+	/** Refuses a length the bytes left can't hold, at {@code bytesEach} bytes an element. */
+	private static void checkLength(DataInputStream data, int length, int bytesEach) throws IOException
 	{
-		if (length > MAX_ARRAY)
+		if (length > MAX_ARRAY || (long) length * bytesEach > data.available())
 		{
 			throw new IOException("Implausible array length " + length + " in custom NPC model bundle");
 		}

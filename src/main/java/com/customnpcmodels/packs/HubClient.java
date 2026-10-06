@@ -252,7 +252,7 @@ public class HubClient
 		{
 			AssetCodec.read(new ByteArrayInputStream(bytes));
 		}
-		catch (IOException | RuntimeException ex)
+		catch (IOException | RuntimeException | OutOfMemoryError ex)
 		{
 			return "the pack can't be read: " + LoadedPack.describe(ex);
 		}

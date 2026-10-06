@@ -246,6 +246,41 @@ public class AssetCodecTest
 		}
 	}
 
+	@Test
+	public void testRejectsALengthTheDataCannotHold() throws IOException
+	{
+		ByteArrayOutputStream raw = new ByteArrayOutputStream();
+		try (DataOutputStream data = new DataOutputStream(new GZIPOutputStream(raw)))
+		{
+			data.writeInt(0x434E5043);
+			data.writeInt(AssetCodec.VERSION);
+			data.writeInt(1);           // one mesh
+			data.writeInt(1);           // its id
+			data.writeByte(0);          // its priority
+			data.writeInt(9_000_000);   // vertices it claims, with none behind them
+		}
+
+		try
+		{
+			AssetCodec.read(new ByteArrayInputStream(raw.toByteArray()));
+			fail("expected a refusal before allocating for data that isn't there");
+		}
+		catch (IOException expected)
+		{
+			assertTrue(expected.getMessage(), expected.getMessage().contains("Implausible array length"));
+		}
+	}
+
+	@Test
+	public void testRejectsANonFiniteCoordinate() throws IOException
+	{
+		float[] vy = mesh().getVerticesY().clone();
+		vy[0] = Float.NaN;
+
+		String message = refusalFor(meshWith(vy, null, null, null));
+		assertTrue(message, message.contains("NaN"));
+	}
+
 	/**
 	 * A rig is one table written as two blocks, so they can disagree without anything else noticing.
 	 * {@link Skinner} bounds its loop on the transform count and indexes the group sets with
@@ -824,6 +859,53 @@ public class AssetCodecTest
 		catch (IOException expected)
 		{
 			assertTrue(expected.getMessage(), expected.getMessage().contains("merges to"));
+		}
+	}
+
+	@Test
+	public void testRejectsABindingNamingTooManyMeshes() throws IOException
+	{
+		// One small mesh named over and over would otherwise merge into an enormous one
+		int[] meshIds = new int[AssetCodec.MAX_PARTS + 1];
+		Arrays.fill(meshIds, 2944);
+		String message = refusalFor(withBindings(TestBinding.of("Many", new int[]{70}, meshIds).build()));
+
+		assertTrue(message, message.contains("past the " + AssetCodec.MAX_PARTS));
+	}
+
+	@Test
+	public void testRejectsPartsWhoseFacesPassTheCeilingBeforeMerging() throws IOException
+	{
+		// Half the face ceiling and one more, on three vertices: twice over is past it
+		int faces = AssetCodec.MAX_FACES / 2 + 1;
+		int[] i2 = new int[faces];
+		int[] i3 = new int[faces];
+		Arrays.fill(i2, 1);
+		Arrays.fill(i3, 2);
+		Mesh mesh = new TestMesh()
+			.id(1)
+			.vx(new float[]{0, 1, 0})
+			.vy(new float[]{0, 0, 1})
+			.vz(new float[3])
+			.i1(new int[faces])
+			.i2(i2)
+			.i3(i3)
+			.colors(new short[faces])
+			.groups(null)
+			.build();
+		NpcBinding binding = TestBinding.of("Doubled", new int[]{70}, new int[]{1, 1}).build();
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		AssetCodec.write(new AssetBundle(Collections.singletonMap(1, mesh), Collections.emptyMap(),
+			Collections.emptyList(), Collections.singletonList(binding)), out);
+
+		try
+		{
+			AssetCodec.read(new ByteArrayInputStream(out.toByteArray()));
+			fail("expected a refusal for parts past the face ceiling");
+		}
+		catch (IOException expected)
+		{
+			assertTrue(expected.getMessage(), expected.getMessage().contains("merges to " + faces * 2 + " faces"));
 		}
 	}
 }

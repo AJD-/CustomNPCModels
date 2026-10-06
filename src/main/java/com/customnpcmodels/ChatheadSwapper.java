@@ -142,7 +142,7 @@ class ChatheadSwapper
 			head.setModelType(shown.getType());
 			head.setModelId(shown.getId());
 		}
-		overlay.hide();
+		overlay.clear();
 		shown = null;
 		drawable.clear();
 	}

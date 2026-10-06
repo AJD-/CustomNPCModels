@@ -126,6 +126,18 @@ public class DirectoryPackSourceTest
 		assertTrue(find(packs, "local:bad,name").getError().contains("folder names"));
 	}
 
+	@Test
+	public void testAnOversizedPackJsonIsRefusedUnread() throws IOException
+	{
+		Files.write(pack("huge").resolve("bundle.dat"), TestPacks.bundleBytes());
+		Files.write(pack("huge").resolve("pack.json"), new byte[(int) DirectoryPackSource.MAX_INFO_BYTES + 1]);
+
+		LoadedPack huge = find(load(), "local:huge");
+
+		assertFalse(huge.isLoaded());
+		assertTrue(huge.getError(), huge.getError().contains("KiB limit"));
+	}
+
 	/**
 	 * Names {@link Filepath} would refuse are refused as a pack instead, rather than throwing out of
 	 * the whole load. Checked on the rule directly: Windows cannot even create most of these folders.

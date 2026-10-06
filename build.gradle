@@ -2,12 +2,6 @@ plugins {
 	id 'java'
 }
 
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(11)
-	}
-}
-
 repositories {
 	mavenLocal()
 	maven {
@@ -35,9 +29,7 @@ dependencies {
 	testImplementation 'org.mockito:mockito-core:4.11.0'
 	testImplementation "net.runelite:client:$runeLiteVersion"
 	testImplementation "net.runelite:jshell:$runeLiteVersion"
-	// Dev tooling only - decodes the live OSRS cache for the glTF exporter and for the sequence
-	// metadata the generator samples clips against. Not in the Hub jar, which is built from the
-	// main sourceSet and does not reference it.
+	// Dev tooling only
 	testImplementation("net.runelite:cache:$runeLiteVersion") {
 		// The client already brings logback; without this every run warns about two bindings
 		exclude group: 'org.slf4j', module: 'slf4j-simple'
@@ -71,9 +63,9 @@ tasks.register('run', JavaExec) {
 	}
 }
 
-// The authoring tools. Each runs a main class from the test source set in the project folder,
-// passing the -P options it names on as customnpcmodels.* system properties; ./gradlew tasks
-// --group authoring lists them.
+// The authoring tools, for development only: none of them is part of the Hub jar. Each runs a main
+// class from the test source set in the project folder, passing the -P options it names on as
+// customnpcmodels.* system properties; ./gradlew tasks --group authoring lists them.
 def authoringTool = { String name, String mainClassName, String text, List<String> options ->
 	tasks.register(name, JavaExec) {
 		group = 'authoring'
