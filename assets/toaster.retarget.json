@@ -1,0 +1,12 @@
+{
+  "1315": {"from": "closed", "fit": "loop"},
+  "14500": {"from": "closed", "fit": "loop"},
+  "1316": "emerge",
+  "1314": "hide",
+  "1310": {"from": "idle", "fit": "loop"},
+  "1311": {"from": "walk", "fit": "loop"},
+  "1312": "attack",
+  "2368": "pinch",
+  "1313": "block",
+  "14501": {"from": "dance", "fit": "loop"}
+}

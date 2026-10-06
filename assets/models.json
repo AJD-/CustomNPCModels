@@ -1,3 +1,33 @@
 {
-  "models": []
+  "pack": {
+    "id": "toaster-crabs",
+    "name": "Toaster Crabs",
+    "author": "AJD",
+    "version": "1.0",
+    "description": "Rock Crabs become toasters.",
+    "license": "BSD-2-Clause",
+    "tags": ["rock crabs", "fun", "original"]
+  },
+  "models": [
+    {
+      "name": "Rock Crab (toaster)",
+      "glb": "toaster-retargeted.glb",
+      "meshId": 1000100,
+      "rigId": 1000100,
+      "npcIds": [100, 101],
+      "scaleXZ": 110,
+      "scaleY": 110,
+      "animations": { "1315": 1315, "14500": 14500, "1316": 1316, "1314": 1314, "1310": 1310, "1311": 1311, "1312": 1312, "2368": 2368, "1313": 1313, "14501": 14501 }
+    },
+    {
+      "name": "Small Rock Crab (toaster)",
+      "glb": "toaster-retargeted.glb",
+      "meshId": 1000102,
+      "rigId": 1000102,
+      "npcIds": [102, 103],
+      "scaleXZ": 72,
+      "scaleY": 72,
+      "animations": { "1315": 1315, "14500": 14500, "1316": 1316, "1314": 1314, "1310": 1310, "1311": 1311, "1312": 1312, "2368": 2368, "1313": 1313, "14501": 14501 }
+    }
+  ]
 }
