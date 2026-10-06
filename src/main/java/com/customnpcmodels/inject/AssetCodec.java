@@ -83,6 +83,9 @@ public final class AssetCodec
 	private static final int MAX_ENTRIES = 100_000;
 	private static final int MAX_ARRAY = 10_000_000;
 
+	/** The most meshes one binding may merge. The client's own NPCs use a handful. */
+	static final int MAX_PARTS = 64;
+
 	private AssetCodec()
 	{
 	}
@@ -644,6 +647,12 @@ public final class AssetCodec
 			throw malformed("Binding '" + name + "' names no meshes");
 		}
 
+		if (binding.getMeshIds().length > MAX_PARTS)
+		{
+			throw malformed("Binding '" + name + "' names " + binding.getMeshIds().length
+				+ " meshes, past the " + MAX_PARTS + " a model may merge");
+		}
+
 		List<Mesh> parts = new ArrayList<>();
 		for (int meshId : binding.getMeshIds())
 		{
@@ -716,6 +725,18 @@ public final class AssetCodec
 
 		if (parts.size() > 1)
 		{
+			// The merge keeps every face, so this is known before it allocates for them
+			long faces = 0;
+			for (Mesh part : parts)
+			{
+				faces += part.getFaceCount();
+			}
+			if (faces > MAX_FACES)
+			{
+				throw new IOException("Binding '" + name + "' merges to " + faces + " faces, past the "
+					+ MAX_FACES + " ceiling");
+			}
+
 			Mesh merged = MeshMerger.merge(binding.getMeshIds()[0], parts);
 			if (merged.getVerticesCount() > MAX_VERTICES || merged.getFaceCount() > MAX_FACES)
 			{
