@@ -54,6 +54,9 @@ public final class DirectoryPackSource
 	public static final String BUNDLE_FILE = "bundle.dat";
 	public static final String INFO_FILE = "pack.json";
 
+	/** The largest pack.json read. It lists a pack's models, so it stays small. */
+	static final long MAX_INFO_BYTES = 256L * 1024;
+
 	/**
 	 * What a pack folder may be called. It becomes part of the pack's id, which is stored in config
 	 * alongside others, so it is kept to characters that cannot be mistaken for a separator - and it
@@ -133,6 +136,15 @@ public final class DirectoryPackSource
 		Filepath infoFile = folder.joinSegment(INFO_FILE);
 		if (infoFile.isFile())
 		{
+			try
+			{
+				checkInfoSize(infoFile);
+			}
+			catch (IOException ex)
+			{
+				return LoadedPack.failed(info, ex);
+			}
+
 			try (Reader reader = infoFile.openReader())
 			{
 				PackJson json = gson.fromJson(reader, PackJson.class);
@@ -172,6 +184,15 @@ public final class DirectoryPackSource
 			// Anything a malformed file can throw names this pack, rather than stopping the others -
 			// including one too large to decode
 			return LoadedPack.failed(info, ex);
+		}
+	}
+
+	/** Refuses a pack.json past {@link #MAX_INFO_BYTES}, before it is read. */
+	static void checkInfoSize(Filepath infoFile) throws IOException
+	{
+		if (infoFile.size() > MAX_INFO_BYTES)
+		{
+			throw new IOException(INFO_FILE + " is past the " + MAX_INFO_BYTES / 1024 + " KiB limit");
 		}
 	}
 

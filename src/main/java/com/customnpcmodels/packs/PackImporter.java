@@ -152,6 +152,7 @@ public final class PackImporter
 	/** The id {@code pack.json} gives, or null. Only used to name the folder; see {@link DirectoryPackSource}. */
 	private static String idIn(Filepath info, Gson gson) throws IOException
 	{
+		DirectoryPackSource.checkInfoSize(info);
 		try (Reader reader = info.openReader())
 		{
 			// Read as the loader will, so a pack.json it would refuse - tags that aren't a list, say -
