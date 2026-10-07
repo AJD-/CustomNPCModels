@@ -14,12 +14,10 @@ so nothing changes while neither is rendering. 117 HD's optional **Legacy render
 The plugin detects all of this and stands down until a supported renderer holds the renderer slot
 again. 117 HD isn't a dependency.
 
-**Retro NPC Swapper** (2.5.0 and later) runs alongside this plugin. This plugin takes render priority
-over the Retro NPC Swapper plugin for custom models you install and select. Beware: Pre 2.5.0 versions
-of Retro NPC Swapper can't share the renderer, and whichever plugin is registered first will display
-their models. The `Fix Interact Highlight outlines` option can be on in either plugin, or both: only
-one of the two draws Interact Highlight's NPC outlines, each around whichever plugin's model is on
-screen. With Retro NPC Swapper older than 2.5.0, turn it on in only one of the two.
+**Retro NPC Swapper** can't share the renderer with this plugin yet. Whichever of the two starts
+first draws its models, and the other stands down, so turn one of them off. If you use the `Fix
+Interact Highlight outlines` option, turn it on in only one of the two. An upcoming Retro NPC
+Swapper release will run alongside this plugin.
 
 ## The side panel
 
@@ -86,17 +84,17 @@ don't need to edit it by hand. A hub pack can be removed via the sidebar even wi
 - A model can instead carry a head of its own (an object for `chathead`): the plugin will render
   the custom chathead rather than the vanilla one, matching the "emote" that the game calls for.
 - Safety settings (on by default) disable custom models on PvP worlds and in the Wilderness.
-- Some NPCs are never swapped, whatever a pack says: Jagex's third-party client rules forbid 
-  extra visual indicators of boss mechanics, and name wave-based minigames explicitly. 
+- Some NPCs are never swapped, whatever a pack says: Jagex's third-party client rules forbid
+  extra visual indicators of boss mechanics, and name wave-based minigames explicitly.
   The list is fixed in code (`SwapBlacklist`) and has no setting. `generateAssets` refuses a manifest
-  that binds one of these NPCs, and the plugin drops them from any binding that names them, so it 
+  that binds one of these NPCs, and the plugin drops them from any binding that names them, so it
   never claims one from Retro NPC Swapper either. `exportGltf` still exports them, but writes no manifest
   entry.
   Other bosses aren't blocked. A custom model plays the NPC's own sequences on the client's own
   timing, adds no indicator, and leaves the clickbox as it was. Hub packs are reviewed, so none that
   exaggerates an attack tell is listed.
-- Retro NPC Swapper compatibility: both plugins wrap the renderer, and each can stack on top of the
-  other. They're loaded by separate classloaders, so each wrapper exposes the renderer beneath it
+- Retro NPC Swapper compatibility, for the upcoming Retro release that supports it: both plugins
+  wrap the renderer, and each can stack on top of the other. They're loaded by separate classloaders, so each wrapper exposes the renderer beneath it
   through a plain Java `Supplier`. Neither needs the other's classes. This plugin tells Retro which
   NPC ids it's drawing with a RuneLite `PluginMessage` (namespace `npc-model-swap`), and Retro leaves
   those alone. When this plugin stops, or stands down in the Wilderness, it withdraws those claims
@@ -111,9 +109,9 @@ don't need to edit it by hand. A hub pack can be removed via the sidebar even wi
 mesh and rig ids (keep them at 1,000,000 and up, and stable), the NPC ids that wear it, an optional
 scale (1/128ths, applied after animation, as the game does), recolors and NPC lighting
 adjustments (`ambient`, `contrast`, as in the NPC definition), a map from each glTF animation
-name to the live sequence it stands in for, and optionally a `chathead`: that will be displayed
-instead of the vanilla one. `generateAssets` refuses one that has no chathead in the
-cache. For a head of the pack's own, `chathead` is `{"glb", "meshId", "rigId"}` instead, with ids at
+name to the live sequence it stands in for, and optionally a `chathead`: the id of a game NPC whose
+dialogue head is shown in place of the vanilla one. `generateAssets` refuses an NPC that has no
+chathead in the cache. For a head of the pack's own, `chathead` is `{"glb", "meshId", "rigId"}` instead, with ids at
 or above 2,000,000. Every animation in that glb named by a number becomes the emote of that id,
 unless `"animations"` maps them. Models can share one head; it's converted once.
 
@@ -171,16 +169,16 @@ It uses the Giant Mole (id 5779). The same steps work for any NPC.
 5. Build the development bundle:
    `./gradlew generateAssets -PassetsDir=assets-dev -Pdev`
    It should end with `Wrote ...src\test\resources\com\customnpcmodels\custom-assets-dev.dat`.
-   **Don't leave out `-Pdev`.** Without it, the export is written into the shipped bundle,
+   **Don't leave out `-Pdev`.** Without it, the export is written over the shipped bundle,
    `src/main/resources/com/customnpcmodels/custom-assets.dat`, which goes into the Hub jar. If this
-   happens, delete that file before committing.
+   happens, put the shipped bundle back before committing:
+   `git checkout -- src/main/resources/com/customnpcmodels/custom-assets.dat`.
 6. Prepare the development client. `./gradlew run` uses your normal RuneLite profile, including its
    Plugin Hub plugins and their settings, so:
    - Turn on **GPU** or **117 HD**. 117 HD's **Legacy renderer** isn't supported.
-   - **Retro NPC Swapper** 2.5.0 or later can stay on: it leaves your NPC to this plugin. Turn off
-     an older version, and any other plugin that substitutes models. Those can't share the renderer,
-     so whichever takes it first wins and this plugin quietly stands down. This can be done after the
-     client has started, and the swap happens within a tick. The profile is shared with your normal
+   - Turn off **Retro NPC Swapper**, and any other plugin that substitutes models. Those can't share
+     the renderer, so whichever takes it first wins and this plugin quietly stands down. This can be
+     done after the client has started, and the swap happens within a tick. The profile is shared with your normal
      client, so turn it back on there afterwards.
 7. Start the client with `./gradlew run`, log in (see
    [Using Jagex Accounts](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts)), and go to
@@ -226,8 +224,8 @@ If the model still doesn't change, see the "Debugging" section below.
   plays it at its own pace and cuts what runs past the sequence, for deaths that end on a long held
   frame. The output keeps the mesh, skin and colors as they were, and only the retargeted
   animations. Map each of them in `models.json` to the sequence it's named after.
-- `./gradlew generateAssets -PassetsDir=assets` Builds the asset bundle from the authoring manifest
-  (`models.json`) and the .glb files beside it
+- `./gradlew generateAssets -PassetsDir=assets` builds the asset bundle from the authoring manifest
+  (`models.json`) and the .glb files beside it.
 - `./gradlew generateAssets -PassetsDir=assets-dev -Pdev` writes the gitignored
   `custom-assets-dev.dat` on the test classpath instead. `./gradlew run` loads it as the development
   pack, which takes priority over every other pack. This is how a cache export is round-tripped
@@ -269,7 +267,8 @@ If the model still doesn't change, see the "Debugging" section below.
   one whose download fails its checksum. Start the client against it with
   `./gradlew run -PhubUrl=http://localhost:8765/`: the plugin only accepts another hub address in
   developer mode, which `./gradlew run` always is. Restart the fixture with `-Prevision=2` to offer
-  an update. Stop it with Ctrl+C.
+  an update. `-Pdelay=<seconds>` holds every `bundle.dat` back that long, to switch the hub off or
+  stop the plugin while an install is downloading. Stop it with Ctrl+C.
 </details>
 
 <details>
@@ -369,7 +368,7 @@ these lines:
 
 | Logged | Root Cause/Remediation Steps |
 |---|---|
-| `Draw callbacks held by unsupported renderer <class>; skipping model swap` | Something else holds the renderer slot. `com.retronpcswapper...` is a Retro NPC Swapper older than 2.5.0 (update it or turn it off), and `rs117.hd` outside `rs117.hd.renderer.zone` is 117 HD's Legacy renderer. Turn it off. |
+| `Draw callbacks held by unsupported renderer <class>; skipping model swap` | Something else holds the renderer slot. `com.retronpcswapper...` is Retro NPC Swapper (turn it off), and `rs117.hd` outside `rs117.hd.renderer.zone` is 117 HD's Legacy renderer. Turn it off. |
 | No `Attached custom draw callbacks over ...` at all | Neither GPU nor 117 HD is on. |
 | `Custom NPC models loaded: ModelCatalog{npcs=0, ...}` | No pack has a model for any NPC. Check `-PassetsDir`, check that `generateAssets` ended with `Wrote ...` (nothing is written if anything fails), and restart the client. |
 | `Custom NPC models loaded: ModelCatalog{...}` with counts you don't expect | The client is reading an older bundle. Regenerate it and restart the client. `conflicts` counts models another pack took priority over. |

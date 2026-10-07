@@ -295,7 +295,9 @@ public class CustomNpcModelsPlugin extends Plugin
 		// misses - including 117 HD restarting itself on a settings change, which installs a new
 		// renderer without posting any plugin event. Retro NPC Swapper stacking on top leaves us
 		// beneath it rather than out, which is why this looks through the chain.
-		if (attachment.isLost())
+		// Not once stopped: a tick can still arrive between shutDown's detach and RuneLite
+		// unregistering the plugin
+		if (session.isActive() && attachment.isLost())
 		{
 			attach();
 		}

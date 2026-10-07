@@ -29,6 +29,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.ConfigProfile;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginManager;
@@ -78,6 +79,9 @@ public class InteractHighlightCompat
 	private boolean resolved;
 
 	private boolean suppressing;
+
+	/** The RuneLite profile whose settings {@link #suppress()} wrote to. */
+	private long suppressedProfile;
 
 	// Set while our own writes are in flight. ConfigChanged is posted synchronously from
 	// setConfiguration, so this is enough to tell our writes from the user's.
@@ -172,6 +176,7 @@ public class InteractHighlightCompat
 		// comes straight back here, and re-reading the keys then would stash our own false values
 		// over the user's real ones
 		suppressing = true;
+		suppressedProfile = activeProfile();
 
 		if (configManager.getConfiguration(CustomNpcModelsConfig.GROUP, STASH_PREFIX + SHOW_HOVER) == null)
 		{
@@ -216,11 +221,17 @@ public class InteractHighlightCompat
 	/**
 	 * Whether a config change is the user turning Interact Highlight's NPC outlines back on while
 	 * we have them suppressed.
+	 * <p>
+	 * A profile switch posts a change for every key that differs between the two profiles, before
+	 * ProfileChanged, so a profile with these keys saved as true looks the same as the user ticking
+	 * them. ConfigManager has already moved to the new profile when it posts those, which is what
+	 * tells them apart.
 	 */
 	public boolean isUserOverride(ConfigChanged event)
 	{
 		return !selfWrite
 			&& suppressing
+			&& activeProfile() == suppressedProfile
 			&& GROUP.equals(event.getGroup())
 			&& (SHOW_HOVER.equals(event.getKey()) || SHOW_INTERACT.equals(event.getKey()))
 			&& "true".equals(event.getNewValue());
@@ -259,6 +270,12 @@ public class InteractHighlightCompat
 	public void forget()
 	{
 		suppressing = false;
+	}
+
+	private long activeProfile()
+	{
+		ConfigProfile profile = configManager.getProfile();
+		return profile == null ? -1 : profile.getId();
 	}
 
 	public static boolean isStashKey(String key)

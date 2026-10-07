@@ -40,6 +40,9 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
 
 /**
@@ -54,12 +57,13 @@ import javax.imageio.ImageIO;
  * </ul>
  *
  * <pre>
- * ./gradlew serveHubFixture [-Prevision=2]
+ * ./gradlew serveHubFixture [-Prevision=2] [-Pdelay=15]
  * ./gradlew run -PhubUrl=http://localhost:8765/
  * </pre>
  *
  * <p>A different {@code -Prevision} gives {@code mole-hub} a new commit, so an installed copy shows
- * an update. Stop it with Ctrl+C.
+ * an update. {@code -Pdelay} holds every {@code bundle.dat} back that many seconds, long enough to
+ * switch the hub off in the plugin's settings while an install is downloading. Stop it with Ctrl+C.
  */
 public final class HubFixture
 {
@@ -73,6 +77,7 @@ public final class HubFixture
 	public static void main(String[] args) throws IOException
 	{
 		int revision = Integer.parseInt(System.getProperty("customnpcmodels.revision", "1"));
+		int delay = Integer.parseInt(System.getProperty("customnpcmodels.delay", "0"));
 
 		byte[] bundle;
 		try (InputStream in = HubFixture.class.getResourceAsStream(DEV_RESOURCE))
@@ -111,24 +116,46 @@ public final class HubFixture
 		files.put(HubClient.MANIFEST_PATH, manifest.toString().getBytes(StandardCharsets.UTF_8));
 
 		HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), PORT), 0);
+		// Answers are sent from here, so a held-back bundle doesn't hold up the manifest and icons
+		ScheduledExecutorService answers = Executors.newScheduledThreadPool(4);
 		server.createContext("/", exchange ->
 		{
-			byte[] body = files.get(exchange.getRequestURI().getPath().substring(1));
+			String path = exchange.getRequestURI().getPath().substring(1);
+			byte[] body = files.get(path);
+			int wait = body != null && path.endsWith("/bundle.dat") ? delay : 0;
 			System.out.println(exchange.getRequestMethod() + " " + exchange.getRequestURI() + " -> "
-				+ (body == null ? 404 : 200));
-			exchange.sendResponseHeaders(body == null ? 404 : 200, body == null ? -1 : body.length);
-			if (body != null)
+				+ (body == null ? 404 : 200) + (wait > 0 ? " in " + wait + "s" : ""));
+			answers.schedule(() ->
 			{
-				try (OutputStream out = exchange.getResponseBody())
+				try
 				{
-					out.write(body);
+					exchange.sendResponseHeaders(body == null ? 404 : 200, body == null ? -1 : body.length);
+					if (body != null)
+					{
+						try (OutputStream out = exchange.getResponseBody())
+						{
+							out.write(body);
+						}
+					}
+					if (wait > 0)
+					{
+						System.out.println("Sent " + exchange.getRequestURI());
+					}
 				}
-			}
-			exchange.close();
+				catch (IOException ex)
+				{
+					// The client hung up first, as a cancelled download does
+					System.out.println("Not sent " + exchange.getRequestURI() + ": " + ex.getMessage());
+				}
+				finally
+				{
+					exchange.close();
+				}
+			}, wait, TimeUnit.SECONDS);
 		});
 		server.start();
 		System.out.println("Test Custom Model Hub at http://localhost:" + PORT + "/ (revision " + revision
-			+ "). Start the client with ./gradlew run -PhubUrl=http://localhost:" + PORT + "/ and stop this with Ctrl+C.");
+			+ (delay > 0 ? ", bundles held back " + delay + "s" : "") + "). Start the client with ./gradlew run -PhubUrl=http://localhost:" + PORT + "/ and stop this with Ctrl+C.");
 	}
 
 	/** A manifest entry listing {@code listed}'s size and checksum, whatever is actually served. */

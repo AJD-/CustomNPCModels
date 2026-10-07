@@ -158,9 +158,10 @@ authoringTool('writeBlacklistFixture', 'com.customnpcmodels.packs.BlacklistFixtu
 
 // Serves a test Custom Model Hub on localhost:8765, built from the dev bundle, for trying the hub
 // client in game before the real hub exists; pair with ./gradlew run -PhubUrl=http://localhost:8765/.
-// -Prevision=2 gives its pack a new commit, so an installed copy shows an update.
+// -Prevision=2 gives its pack a new commit, so an installed copy shows an update. -Pdelay=15 holds each
+// bundle.dat back 15 seconds, to switch the hub off mid-install.
 authoringTool('serveHubFixture', 'com.customnpcmodels.packs.HubFixture',
-	'Serves a test Custom Model Hub on localhost:8765.', ['revision'])
+	'Serves a test Custom Model Hub on localhost:8765.', ['revision', 'delay'])
 
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath

@@ -40,6 +40,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
@@ -78,6 +80,9 @@ public class HubClient
 	private final OkHttpClient http;
 	private final Gson gson;
 	private final String baseUrl;
+
+	/** Requests not yet answered, so {@link #cancelAll} can stop them. */
+	private final Set<Call> inFlight = ConcurrentHashMap.newKeySet();
 
 	/** @param baseUrl where the hub is, ending in a slash: {@link #BASE_URL}, but for testing */
 	public HubClient(OkHttpClient http, Gson gson, String baseUrl)
@@ -147,17 +152,21 @@ public class HubClient
 	private void get(String path, long maxBytes, Consumer<byte[]> done, Consumer<String> failed)
 	{
 		Request request = new Request.Builder().url(baseUrl + path).build();
-		http.newCall(request).enqueue(new Callback()
+		Call queued = http.newCall(request);
+		inFlight.add(queued);
+		queued.enqueue(new Callback()
 		{
 			@Override
 			public void onFailure(Call call, IOException ex)
 			{
+				inFlight.remove(call);
 				deliver(path, () -> failed.accept("Couldn't reach the Custom Model Hub: " + LoadedPack.describe(ex)));
 			}
 
 			@Override
 			public void onResponse(Call call, Response response)
 			{
+				inFlight.remove(call);
 				byte[] bytes;
 				try (ResponseBody body = response.body())
 				{
@@ -177,6 +186,19 @@ public class HubClient
 				deliver(path, () -> done.accept(bytes));
 			}
 		});
+	}
+
+	/**
+	 * Stops every request still waiting on the hub. Each one then fails with a cancellation, which
+	 * callers have already stopped listening for by the time they call this. Any thread.
+	 */
+	public void cancelAll()
+	{
+		for (Iterator<Call> calls = inFlight.iterator(); calls.hasNext(); )
+		{
+			calls.next().cancel();
+			calls.remove();
+		}
 	}
 
 	/**

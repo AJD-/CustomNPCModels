@@ -98,6 +98,10 @@ class HubController
 	void stop()
 	{
 		hubGeneration.incrementAndGet();
+		if (hubClient != null)
+		{
+			hubClient.cancelAll();
+		}
 		hubIcons.clear();
 	}
 
@@ -107,6 +111,15 @@ class HubController
 		// Whatever the hub was asked before this, its answer no longer applies
 		hubGeneration.incrementAndGet();
 		boolean enabled = config.hubEnabled();
+		if (!enabled)
+		{
+			// Bumped first, so the cancellations land as answers nobody is waiting for
+			if (hubClient != null)
+			{
+				hubClient.cancelAll();
+			}
+			hubIcons.clear();
+		}
 		panel.update(shown -> shown.setHubEnabled(enabled));
 	}
 
@@ -181,6 +194,12 @@ class HubController
 			{
 				if (!session.isCurrent(queuedUnder))
 				{
+					return;
+				}
+				// Switched off while it downloaded: nothing from the hub lands on disk after that
+				if (!isCurrentHub(queuedUnder, hubQueuedUnder))
+				{
+					panel.update(done -> done.setBusy(entry.getId(), false));
 					return;
 				}
 				boolean installed = false;

@@ -26,6 +26,7 @@ package com.customnpcmodels.packs;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -146,6 +147,36 @@ public class HubClientTest
 		{
 			calls.shutdownNow();
 		}
+	}
+
+	/** A download stopped by cancelAll fails rather than handing over the pack it was fetching. */
+	@Test
+	public void testACancelledDownloadIsNotHandedOver() throws Exception
+	{
+		byte[] bundle = TestPacks.bundleBytes();
+		CompletableFuture<Void> started = new CompletableFuture<>();
+		CompletableFuture<Void> release = new CompletableFuture<>();
+		OkHttpClient http = new OkHttpClient.Builder().addInterceptor(chain ->
+		{
+			started.complete(null);
+			release.join();
+			return new Response.Builder()
+				.request(chain.request())
+				.protocol(Protocol.HTTP_1_1)
+				.code(200)
+				.message("OK")
+				.body(ResponseBody.create(MediaType.parse("application/octet-stream"), bundle))
+				.build();
+		}).build();
+		HubClient client = new HubClient(http, GSON, BASE);
+
+		CompletableFuture<String> result = new CompletableFuture<>();
+		client.download(entry("goblins", bundle), bytes -> result.complete("handed over"), result::complete);
+		started.get(5, TimeUnit.SECONDS);
+		client.cancelAll();
+		release.complete(null);
+
+		assertNotEquals("handed over", result.get(5, TimeUnit.SECONDS));
 	}
 
 	@Test
