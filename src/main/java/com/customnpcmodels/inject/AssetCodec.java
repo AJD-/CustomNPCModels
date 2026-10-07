@@ -277,9 +277,8 @@ public final class AssetCodec
 	 * somewhere far away instead.
 	 * <p>
 	 * Worth being strict about because of where those throws land. A face index past the end of
-	 * the vertex arrays reaches {@code Lighter.computeNormals} by way of
-	 * {@code ModelCache.ensureBuilt}, which only remembers an NPC id as unbuildable when the
-	 * build <em>returns</em> null - a throw skips that, so every spawn of that id retries it. A
+	 * the vertex arrays throws in {@code Lighter.computeNormals} by way of
+	 * {@code ModelCache.ensureBuilt}, which only leaves the NPC vanilla with a debug line. A
 	 * vertex group member past the end reaches {@code Skinner} on the render path, where
 	 * {@code CustomDrawCallbacks} catches it and quietly draws the vanilla model. Neither failure
 	 * names the bundle that caused it. Same contract as the magic and the version: a bundle that is

@@ -140,7 +140,18 @@ public class ModelCache
 			return false;
 		}
 
-		BuiltModel built = build(resolved);
+		BuiltModel built;
+		try
+		{
+			built = build(resolved);
+		}
+		catch (RuntimeException ex)
+		{
+			// Remembered like any other failure, and kept from the caller's loop over the scene
+			log.debug("Could not build '{}' from pack {} for NPC id {}",
+				resolved.getBinding().getName(), resolved.getPackId(), npcId, ex);
+			built = null;
+		}
 		if (built == null)
 		{
 			// Remember the failure so every subsequent spawn does not repeat the work

@@ -165,6 +165,11 @@ public class ChatheadOverlay extends Overlay
 		// The head is bigger than its widget, so it is drawn over the whole dialogue around the widget
 		Widget dialogue = client.getWidget(InterfaceID.ChatLeft.UNIVERSE);
 		Rectangle area = dialogue == null || dialogue.isHidden() ? bounds : dialogue.getBounds();
+		if (area.width <= 0 || area.height <= 0)
+		{
+			// The head is drawn into an image this size, which can't be empty
+			area = bounds;
+		}
 		// The client lightens everything it draws by the player's brightness setting, chatheads too
 		TextureProvider textures = client.getTextureProvider();
 		double brightness = textures == null ? 1 : textures.getBrightness();
