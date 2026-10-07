@@ -267,7 +267,8 @@ If the model still doesn't change, see the "Debugging" section below.
   one whose download fails its checksum. Start the client against it with
   `./gradlew run -PhubUrl=http://localhost:8765/`: the plugin only accepts another hub address in
   developer mode, which `./gradlew run` always is. Restart the fixture with `-Prevision=2` to offer
-  an update. Stop it with Ctrl+C.
+  an update. `-Pdelay=<seconds>` holds every `bundle.dat` back that long, to switch the hub off or
+  stop the plugin while an install is downloading. Stop it with Ctrl+C.
 </details>
 
 <details>
