@@ -67,6 +67,9 @@ public final class AssetCodec
 	public static final int MAX_VERTICES = 6500;
 	public static final int MAX_FACES = 8192;
 
+	/** The furthest a vertex may sit from the model's origin on any axis, as in the engine's models. */
+	public static final int MAX_COORDINATE = 32767;
+
 	/** Render types the lighter draws: gouraud, flat, unshaded. Anything else hides the face. */
 	public static final Set<Integer> DRAWN_RENDER_TYPES = Set.of(
 		Lighter.RENDER_TYPE_GOURAUD, Lighter.RENDER_TYPE_FLAT, Lighter.RENDER_TYPE_UNSHADED);
@@ -320,6 +323,18 @@ public final class AssetCodec
 		{
 			throw new IOException("Asset mesh " + id + " has " + verticesCount + " vertices and " + faceCount
 				+ " faces, past the " + MAX_VERTICES + "/" + MAX_FACES + " ceiling");
+		}
+
+		// The engine's own models store 16-bit coordinates. Far past that, the bounds the renderer
+		// sorts by stop being representable
+		for (int vertex = 0; vertex < verticesCount; vertex++)
+		{
+			if (Math.abs(vx[vertex]) > MAX_COORDINATE || Math.abs(vy[vertex]) > MAX_COORDINATE
+				|| Math.abs(vz[vertex]) > MAX_COORDINATE)
+			{
+				throw malformed("Asset mesh " + id + " vertex " + vertex + " is at (" + vx[vertex] + ", "
+					+ vy[vertex] + ", " + vz[vertex] + "), past the " + MAX_COORDINATE + " a coordinate may reach");
+			}
 		}
 
 		for (int face = 0; face < faceCount; face++)

@@ -70,6 +70,15 @@ public class ModelCache
 	/** NPC id and animation pairs already reported by {@link #reportAction}, so each is said once. */
 	private final Set<Long> reportedActions = new HashSet<>();
 
+	/**
+	 * The GPU plugin's {@code ModelUploader.MAX_DIAMETER}, which is package-private. It draws nothing
+	 * for a model whose diameter reaches it.
+	 */
+	private static final int MAX_DIAMETER = 6000;
+
+	/** NPC ids already reported by {@link #pose(NPC, BuiltModel)} for unusable bounds, so each is said once. */
+	private final Set<Integer> reportedBounds = new HashSet<>();
+
 	/** Which model every NPC id is drawn with, across every enabled pack. Empty until the packs load. */
 	private ModelCatalog catalog = ModelCatalog.empty();
 
@@ -371,6 +380,20 @@ public class ModelCache
 		NpcAppearance.resize(x, y, z, mesh.getVerticesCount(), built.scaleXZ, built.scaleY);
 		model.calculateBoundsCylinder();
 
+		// The renderer sizes its depth sort by the diameter, and the bounds saturate rather than throw
+		// on extreme coordinates, so a pose out of range would throw inside the renderer every frame.
+		// The GPU plugin skips a model at or past its limit outright, so the vanilla NPC is the better
+		// of the two there too.
+		if (model.getRadius() < 0 || model.getDiameter() <= 0 || model.getDiameter() >= MAX_DIAMETER)
+		{
+			if (reportedBounds.add(npc.getId()))
+			{
+				log.debug("NPC {} posed with diameter {}, outside what the renderer draws; drawing it vanilla",
+					npc.getId(), model.getDiameter());
+			}
+			return null;
+		}
+
 		return model;
 	}
 
@@ -413,6 +436,7 @@ public class ModelCache
 
 		substituted.clear();
 		reportedActions.clear();
+		reportedBounds.clear();
 		builtModels.clear();
 		unbuildable.clear();
 		heads.clear();

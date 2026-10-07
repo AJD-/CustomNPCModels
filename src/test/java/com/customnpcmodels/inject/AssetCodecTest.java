@@ -281,6 +281,17 @@ public class AssetCodecTest
 		assertTrue(message, message.contains("NaN"));
 	}
 
+	/** A coordinate this far out saturates the bounds the renderer sorts by, inside the renderer. */
+	@Test
+	public void testRejectsACoordinatePastTheEngineRange() throws IOException
+	{
+		float[] vy = mesh().getVerticesY().clone();
+		vy[0] = 40000;
+
+		String message = refusalFor(meshWith(vy, null, null, null));
+		assertTrue(message, message.contains("past the " + AssetCodec.MAX_COORDINATE));
+	}
+
 	/**
 	 * A rig is one table written as two blocks, so they can disagree without anything else noticing.
 	 * {@link Skinner} bounds its loop on the transform count and indexes the group sets with

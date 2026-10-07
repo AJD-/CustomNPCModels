@@ -169,6 +169,23 @@ public class ModelCacheTest
 	}
 
 	/**
+	 * A pose the renderer can't sort leaves the NPC vanilla rather than throwing inside the renderer:
+	 * one past the GPU plugin's diameter limit, and one so far out that the diameter overflows.
+	 */
+	@Test
+	public void testAPoseOutOfTheRenderersRangeIsDrawnVanilla()
+	{
+		for (int dx : new int[]{1_000_000, Integer.MAX_VALUE})
+		{
+			ModelCache cache = new ModelCache();
+			cache.setCatalog(TestPacks.catalogOf(bundle(binding("far", NPC_ID), dx)));
+			assertTrue(cache.ensureBuilt(NPC_ID));
+			cache.setSubstituted(NPC_ID);
+			assertNull("translated by " + dx, cache.pose(npc(NPC_ID)));
+		}
+	}
+
+	/**
 	 * A blacklisted NPC is refused even when a catalog names it - one not made by the composer, which
 	 * would never resolve it: never built, so never drawn, and never among the ids claimed from Retro
 	 * NPC Swapper.
