@@ -221,7 +221,7 @@ public final class GltfRetargeter
 			SequenceTiming timing = timings.get(sequenceId);
 			if (timing == null)
 			{
-				problems.add("Sequence " + sequenceId + " is not a frame-based live sequence");
+				problems.add("Sequence " + sequenceId + " is not a live sequence");
 				continue;
 			}
 

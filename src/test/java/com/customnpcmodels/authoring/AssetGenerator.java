@@ -156,7 +156,16 @@ public class AssetGenerator
 			return null;
 		}
 		SequenceDefinition sequence = CacheFiles.loadSequence(store, sequenceId);
-		if (sequence == null || sequence.frameIDs == null || sequence.frameLengths == null)
+		if (sequence == null)
+		{
+			return null;
+		}
+		if (sequence.animMayaID != -1)
+		{
+			int cycles = sequence.animMayaEnd - sequence.animMayaStart;
+			return cycles > 0 ? SequenceTiming.skeletal(sequenceId, cycles) : null;
+		}
+		if (sequence.frameIDs == null || sequence.frameLengths == null)
 		{
 			return null;
 		}
@@ -216,7 +225,7 @@ public class AssetGenerator
 				if (timing == null)
 				{
 					problems.add(name + " maps animation '" + entry.getKey() + "' to sequence " + sequenceId
-						+ ", which is not a frame-based live sequence");
+						+ ", which is not a live sequence");
 					continue;
 				}
 				animations.put(entry.getKey(), timing);
@@ -370,7 +379,7 @@ public class AssetGenerator
 			if (timing == null)
 			{
 				problems.add(name + "'s chathead maps animation '" + entry.getKey() + "' to sequence " + entry.getValue()
-					+ ", which is not a frame-based live sequence");
+					+ ", which is not a live sequence");
 				continue;
 			}
 			emotes.put(entry.getKey(), timing);

@@ -305,6 +305,85 @@ public final class CacheFiles
 		return data == null || data.length < 2 ? -1 : (data[0] & 0xFF) << 8 | data[1] & 0xFF;
 	}
 
+	/** The skeleton a skeletal sequence animates, or -1 for a sequence that isn't skeletal or has no data. */
+	public static int skeletonOf(Store store, int sequenceId) throws IOException
+	{
+		SequenceDefinition sequence = loadSequence(store, sequenceId);
+		if (sequence == null || sequence.animMayaID == -1)
+		{
+			return -1;
+		}
+		byte[] data = loadFile(store, IndexType.ANIMAYAS, sequence.animMayaID >> 16, sequence.animMayaID & 0xFFFF);
+		return data == null || data.length < 3 ? -1 : SkeletalAnimation.skeletonOf(data);
+	}
+
+	/**
+	 * Every skeletal sequence in the cache, grouped by the skeleton its animation names, in ascending
+	 * sequence id: the skeletal counterpart of {@link #sequencesByFramemap}.
+	 */
+	public static Map<Integer, List<Integer>> sequencesBySkeleton(Store store) throws IOException
+	{
+		Archive table = store.getIndex(IndexType.CONFIGS).getArchive(ConfigType.SEQUENCE.getId());
+		if (table == null)
+		{
+			return Collections.emptyMap();
+		}
+		SequenceLoader loader = new SequenceLoader()
+			.configureForRevision(store.getIndex(IndexType.CONFIGS).getRevision());
+
+		// Animation archive id to, per file in it, the skeleton that file names
+		Map<Integer, Map<Integer, Integer>> skeletons = new HashMap<>();
+		Map<Integer, List<Integer>> bySkeleton = new TreeMap<>();
+		for (FSFile file : table.getFiles(store.getStorage().loadArchive(table)).getFiles())
+		{
+			SequenceDefinition sequence = loader.load(file.getFileId(), file.getContents());
+			if (sequence.animMayaID == -1)
+			{
+				continue;
+			}
+			int id = sequence.animMayaID;
+			Integer skeleton = skeletons.computeIfAbsent(id >> 16, archive -> skeletonsOfArchive(store, archive))
+				.get(id & 0xFFFF);
+			if (skeleton != null)
+			{
+				bySkeleton.computeIfAbsent(skeleton, s -> new ArrayList<>()).add(file.getFileId());
+			}
+		}
+		for (List<Integer> sequences : bySkeleton.values())
+		{
+			Collections.sort(sequences);
+		}
+		return bySkeleton;
+	}
+
+	/** Per file in a skeletal animation archive, the skeleton it names; empty when unreadable. */
+	private static Map<Integer, Integer> skeletonsOfArchive(Store store, int archiveId)
+	{
+		Map<Integer, Integer> skeletons = new HashMap<>();
+		try
+		{
+			Archive archive = store.getIndex(IndexType.ANIMAYAS).getArchive(archiveId);
+			byte[] container = archive == null ? null : store.getStorage().loadArchive(archive);
+			if (container == null)
+			{
+				return skeletons;
+			}
+			for (FSFile animation : archive.getFiles(container).getFiles())
+			{
+				byte[] data = animation.getContents();
+				if (data != null && data.length >= 3)
+				{
+					skeletons.put(animation.getFileId(), SkeletalAnimation.skeletonOf(data));
+				}
+			}
+		}
+		catch (IOException | RuntimeException e)
+		{
+			// An unreadable archive just contributes no sequences
+		}
+		return skeletons;
+	}
+
 	/** A framemap's skeletal bones, or null when it has none or there is no such framemap. */
 	public static Skeleton loadSkeleton(Store store, int skeletonId) throws IOException
 	{

@@ -151,7 +151,7 @@ public class AnimationDocumentTest
 
 		assertFalse(animation.isPlayable());
 		assertEquals(SEQUENCE, animation.sequenceId);
-		assertTrue(animation.unplayableReason, animation.unplayableReason.contains("not a frame-based"));
+		assertTrue(animation.unplayableReason, animation.unplayableReason.contains("not a live sequence"));
 	}
 
 	@Test

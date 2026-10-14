@@ -136,15 +136,35 @@ public class GltfExporter
 				break;
 			}
 		}
-		if (rig == -1)
+		String kind = "rig";
+		Map<Integer, List<Integer>> byRig;
+		if (rig != -1)
 		{
-			return own;
+			byRig = CacheFiles.sequencesByFramemap(store);
+		}
+		else
+		{
+			// A skeletal NPC's sequences share a skeleton instead
+			for (int sequence : own)
+			{
+				rig = CacheFiles.skeletonOf(store, sequence);
+				if (rig != -1)
+				{
+					break;
+				}
+			}
+			if (rig == -1)
+			{
+				return own;
+			}
+			kind = "skeleton";
+			byRig = CacheFiles.sequencesBySkeleton(store);
 		}
 
-		List<Integer> shared = CacheFiles.sequencesByFramemap(store).getOrDefault(rig, new ArrayList<>());
+		List<Integer> shared = byRig.getOrDefault(rig, new ArrayList<>());
 		if (shared.size() > MAX_RIG_SEQUENCES)
 		{
-			report.accept("  rig " + rig + " animates " + shared.size() + " sequences, too many to tell which are this "
+			report.accept("  " + kind + " " + rig + " animates " + shared.size() + " sequences, too many to tell which are this "
 				+ "NPC's; exporting its definition's " + own.size() + ". Name any others with -Pseqs");
 			return own;
 		}
@@ -152,7 +172,7 @@ public class GltfExporter
 		Set<Integer> sequences = new LinkedHashSet<>(own);
 		sequences.addAll(shared);
 		report.accept("  exporting " + sequences.size() + " sequences: " + own.size() + " from the definition, "
-			+ (sequences.size() - own.size()) + " more on rig " + rig);
+			+ (sequences.size() - own.size()) + " more on " + kind + " " + rig);
 		return sequences;
 	}
 

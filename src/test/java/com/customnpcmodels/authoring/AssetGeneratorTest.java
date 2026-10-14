@@ -534,6 +534,17 @@ public class AssetGeneratorTest
 		assertEquals(NpcID.MOLE_GIANT, model.getAsJsonArray("npcIds").get(0).getAsInt());
 	}
 
+	/** The client counts a skeletal sequence's frame in cycles, so its clip has a frame per cycle. */
+	@Test
+	public void testASkeletalSequenceIsTimedAFramePerCycle() throws Exception
+	{
+		SequenceTiming timing = AssetGenerator.timing(LiveFixtures.store(), LiveFixtures.YAMA_READY);
+
+		assertNotNull(timing);
+		assertEquals(120, timing.frameCount());
+		assertEquals(120, timing.cycles());
+	}
+
 	@Test
 	public void testAnUnknownSequenceIsRefused() throws Exception
 	{
@@ -541,7 +552,7 @@ public class AssetGeneratorTest
 		Manifest manifest = Manifest.read(dir);
 		manifest.models.get(0).animations = Collections.singletonMap(String.valueOf(LiveFixtures.MOLE_READY), 99_999_999);
 
-		assertRefused(manifest, dir, "not a frame-based live sequence");
+		assertRefused(manifest, dir, "not a live sequence");
 	}
 
 	private static void assertRefused(Manifest manifest, Path dir, String expected) throws Exception
