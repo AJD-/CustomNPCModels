@@ -262,7 +262,9 @@ public class SkeletalCapturePlugin extends Plugin
 		{
 			try
 			{
-				Filepath file = getPluginDirectory().joinSegment("capture-" + modelId + ".json");
+				Filepath folder = getPluginDirectory();
+				folder.createDirectories();
+				Filepath file = folder.joinSegment("capture-" + modelId + ".json");
 				try (Writer writer = file.openBufferedWriter())
 				{
 					gson.toJson(capture, writer);
