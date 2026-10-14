@@ -24,6 +24,9 @@
  */
 package com.customnpcmodels.authoring;
 
+import com.customnpcmodels.cache.skeletal.SkeletalAnimation;
+import com.customnpcmodels.cache.skeletal.SkeletalPoser;
+import com.customnpcmodels.cache.skeletal.Skeleton;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.Rig;
@@ -107,7 +110,65 @@ final class GlbWriter
 		Gltf gltf = new Gltf();
 		gltf.asset.generator = "Custom NPC Models authoring pipeline";
 		Glb.BinBuilder bin = new Glb.BinBuilder(gltf);
+		checkParts(mesh, parts, report);
 
+		boolean rigged = mesh.isRigged();
+		Rig rig = null;
+		if (rigged && rigs != null && !clips.isEmpty())
+		{
+			rig = rigs.get(clips.get(0).getRigId());
+			for (Clip clip : clips)
+			{
+				if (clip.getRigId() != clips.get(0).getRigId())
+				{
+					report.add("Clips use more than one rig; the armature is arranged from rig "
+						+ clips.get(0).getRigId() + ", which only changes how it looks in Blender");
+					break;
+				}
+			}
+		}
+		JointTree tree = rigged ? JointTree.build(mesh, rig, report) : null;
+		if (tree != null && rigs != null)
+		{
+			tree = detachFromSingularParents(tree, mesh, rigs, clips, report);
+		}
+
+		int[][] vertexJoints = null;
+		double[][] vertexWeights = null;
+		if (rigged)
+		{
+			vertexJoints = new int[mesh.getVerticesCount()][];
+			vertexWeights = new double[mesh.getVerticesCount()][];
+			for (int group = 0; group < mesh.getVertexGroups().length; group++)
+			{
+				int joint = tree.jointOfGroup(group);
+				for (int vertex : mesh.getVertexGroup(group))
+				{
+					vertexJoints[vertex] = joint == -1 ? null : new int[]{joint};
+					vertexWeights[vertex] = joint == -1 ? null : new double[]{1};
+				}
+			}
+		}
+
+		Gltf.Scene scene = new Gltf.Scene();
+		scene.nodes = new ArrayList<>();
+		gltf.scenes.add(scene);
+		gltf.scene = 0;
+		List<Gltf.Node> meshNodes = writeMeshes(gltf, bin, scene, mesh, parts, vertexJoints, vertexWeights, report);
+
+		if (rigged)
+		{
+			writeSkin(gltf, bin, meshNodes, scene, tree);
+			writeAnimations(gltf, bin, mesh, tree, rigs, clips, timings, report);
+		}
+
+		byte[] data = bin.finish();
+		return Glb.write(gltf, data);
+	}
+
+	/** Checks the parts cover the mesh's faces in order, and reports textures, which glTF export drops. */
+	private static void checkParts(Mesh mesh, List<MeshPart> parts, List<String> report)
+	{
 		int faces = mesh.getFaceCount();
 		int covered = 0;
 		for (MeshPart part : parts)
@@ -135,46 +196,24 @@ final class GlbWriter
 					+ "drops the textures and keeps their base colors");
 			}
 		}
+	}
 
-		boolean rigged = mesh.isRigged();
-		Rig rig = null;
-		if (rigged && rigs != null && !clips.isEmpty())
-		{
-			rig = rigs.get(clips.get(0).getRigId());
-			for (Clip clip : clips)
-			{
-				if (clip.getRigId() != clips.get(0).getRigId())
-				{
-					report.add("Clips use more than one rig; the armature is arranged from rig "
-						+ clips.get(0).getRigId() + ", which only changes how it looks in Blender");
-					break;
-				}
-			}
-		}
-		JointTree tree = rigged ? JointTree.build(mesh, rig, report) : null;
-		if (tree != null && rigs != null)
-		{
-			tree = detachFromSingularParents(tree, mesh, rigs, clips, report);
-		}
-
-		int[] groupOf = new int[mesh.getVerticesCount()];
-		Arrays.fill(groupOf, -1);
-		if (rigged)
-		{
-			for (int group = 0; group < mesh.getVertexGroups().length; group++)
-			{
-				for (int vertex : mesh.getVertexGroup(group))
-				{
-					groupOf[vertex] = group;
-				}
-			}
-		}
-
+	/**
+	 * One glTF mesh per part, so Blender imports each as an object of its own and the painter can
+	 * hide it. A single part keeps the layout files had before parts existed.
+	 *
+	 * @param vertexJoints  per vertex, the joints it is skinned to, or null for a vertex in no group;
+	 *                      null throughout for an unrigged mesh
+	 * @param vertexWeights per vertex, its joints' weights
+	 */
+	private static List<Gltf.Node> writeMeshes(Gltf gltf, Glb.BinBuilder bin, Gltf.Scene scene, Mesh mesh,
+		List<MeshPart> parts, int[][] vertexJoints, double[][] vertexWeights, List<String> report)
+	{
 		// Vertices no face uses still belong to the mesh - they keep its vertex numbering, and a group
 		// centroid counts them - so they ride along after the last part's face corners, referenced by
 		// no triangle
 		boolean[] referenced = new boolean[mesh.getVerticesCount()];
-		for (int face = 0; face < faces; face++)
+		for (int face = 0; face < mesh.getFaceCount(); face++)
 		{
 			referenced[mesh.getFaceIndices1()[face]] = true;
 			referenced[mesh.getFaceIndices2()[face]] = true;
@@ -189,13 +228,6 @@ final class GlbWriter
 			}
 		}
 
-		Gltf.Scene scene = new Gltf.Scene();
-		scene.nodes = new ArrayList<>();
-		gltf.scenes.add(scene);
-		gltf.scene = 0;
-
-		// One glTF mesh per part, so Blender imports each as an object of its own and the painter can
-		// hide it. A single part keeps the layout files had before parts existed.
 		boolean multiPart = parts.size() > 1;
 		List<Gltf.Node> meshNodes = new ArrayList<>();
 		int[] unbound = new int[1];
@@ -204,7 +236,7 @@ final class GlbWriter
 			MeshPart part = parts.get(p);
 			boolean last = p == parts.size() - 1;
 			Gltf.Primitive primitive = writePrimitive(bin, mesh, part, last ? loose : Collections.emptyList(),
-				groupOf, tree, unbound);
+				vertexJoints, vertexWeights, unbound);
 
 			// On the mesh, not the primitive: Blender keeps a mesh's extras as custom properties and
 			// exports them again, but drops a primitive's
@@ -225,15 +257,7 @@ final class GlbWriter
 		{
 			report.add(unbound[0] + " vertex copies sit on vertices in no group; bound to the first joint");
 		}
-
-		if (rigged)
-		{
-			writeSkin(gltf, bin, meshNodes, scene, tree);
-			writeAnimations(gltf, bin, mesh, tree, rigs, clips, timings, report);
-		}
-
-		byte[] data = bin.finish();
-		return Glb.write(gltf, data);
+		return meshNodes;
 	}
 
 	/**
@@ -241,9 +265,9 @@ final class GlbWriter
 	 * triangle names.
 	 */
 	private static Gltf.Primitive writePrimitive(Glb.BinBuilder bin, Mesh mesh, MeshPart part, List<Integer> loose,
-		int[] groupOf, JointTree tree, int[] unbound)
+		int[][] vertexJoints, double[][] vertexWeights, int[] unbound)
 	{
-		boolean rigged = tree != null;
+		boolean rigged = vertexJoints != null;
 
 		// Three vertices per face, corners in reversed order: the Y flip into glTF space is a
 		// reflection, and without the reversal every face would point inward
@@ -286,14 +310,21 @@ final class GlbWriter
 
 			if (rigged)
 			{
-				int joint = groupOf[vertex] == -1 ? -1 : tree.jointOfGroup(groupOf[vertex]);
-				if (joint == -1)
+				int[] vertexJoint = vertexJoints[vertex];
+				if (vertexJoint == null)
 				{
 					unbound[0]++;
-					joint = 0;
+					joints[split * 4] = 0;
+					weights[split * 4] = 1;
 				}
-				joints[split * 4] = joint;
-				weights[split * 4] = 1;
+				else
+				{
+					for (int i = 0; i < vertexJoint.length; i++)
+					{
+						joints[split * 4 + i] = vertexJoint[i];
+						weights[split * 4 + i] = vertexWeights[vertex][i];
+					}
+				}
 			}
 		}
 
@@ -366,6 +397,253 @@ final class GlbWriter
 			doubles[i] = values[i];
 		}
 		return doubles;
+	}
+
+	/** One skeletal sequence to export: its animation and how the live sequence plays. */
+	static final class SkeletalClip
+	{
+		final int sequenceId;
+		final SkeletalAnimation animation;
+		final SequenceTiming timing;
+
+		SkeletalClip(int sequenceId, SkeletalAnimation animation, SequenceTiming timing)
+		{
+			this.sequenceId = sequenceId;
+			this.animation = animation;
+			this.timing = timing;
+		}
+	}
+
+	/**
+	 * A mesh skinned to a skeletal (animaya) rig, which the client poses with bones and weights
+	 * rather than vertex groups: one joint per bone, named {@code group_N} after its index and
+	 * arranged as the bones are, with each vertex weighted to up to four of them. A vertex with no
+	 * bones, which the client never moves, rides a joint named {@code static} that no clip animates.
+	 * Each clip is keyed a frame per cycle, every key the bones' pose at that frame.
+	 * <p>
+	 * The bones work in the engine's model space with y and z negated, so a bone's matrix M is
+	 * C * M * inverse(C) in glTF, with C the scale from that space to glTF's.
+	 *
+	 * @param pose          the bind pose the joints rest in
+	 * @param vertexBones   per vertex, the bones it is weighted to, or null for none
+	 * @param vertexWeights per vertex, each of its bones' weights, summing to 1
+	 */
+	static byte[] writeSkeletal(Mesh mesh, List<MeshPart> parts, Skeleton skeleton, int pose, int[][] vertexBones,
+		double[][] vertexWeights, List<SkeletalClip> clips, List<String> report)
+	{
+		Gltf gltf = new Gltf();
+		gltf.asset.generator = "Custom NPC Models authoring pipeline";
+		Glb.BinBuilder bin = new Glb.BinBuilder(gltf);
+		checkParts(mesh, parts, report);
+
+		int bones = skeleton.getBoneCount();
+		int[][] vertexJoints = new int[mesh.getVerticesCount()][];
+		double[][] weights = new double[mesh.getVerticesCount()][];
+		boolean anyStatic = false;
+		int trimmed = 0;
+		for (int vertex = 0; vertex < vertexJoints.length; vertex++)
+		{
+			if (vertexBones[vertex] == null || vertexBones[vertex].length == 0)
+			{
+				vertexJoints[vertex] = new int[]{bones};
+				weights[vertex] = new double[]{1};
+				anyStatic = true;
+				continue;
+			}
+			int[] joints = vertexBones[vertex];
+			double[] w = vertexWeights[vertex];
+			if (joints.length > 4)
+			{
+				// glTF takes four joints a vertex: keep the heaviest four, scaled back up to a whole
+				trimmed++;
+				Integer[] order = new Integer[joints.length];
+				for (int i = 0; i < order.length; i++)
+				{
+					order[i] = i;
+				}
+				double[] all = w;
+				Arrays.sort(order, (a, b) -> Double.compare(all[b], all[a]));
+				int[] keptJoints = new int[4];
+				double[] keptWeights = new double[4];
+				double sum = 0;
+				for (int i = 0; i < 4; i++)
+				{
+					keptJoints[i] = joints[order[i]];
+					keptWeights[i] = w[order[i]];
+					sum += keptWeights[i];
+				}
+				for (int i = 0; i < 4; i++)
+				{
+					keptWeights[i] /= sum;
+				}
+				joints = keptJoints;
+				w = keptWeights;
+			}
+			vertexJoints[vertex] = joints;
+			weights[vertex] = w;
+		}
+		if (trimmed > 0)
+		{
+			report.add(trimmed + " vertices are weighted to more than four bones; each keeps its heaviest four");
+		}
+
+		Gltf.Scene scene = new Gltf.Scene();
+		scene.nodes = new ArrayList<>();
+		gltf.scenes.add(scene);
+		gltf.scene = 0;
+		List<Gltf.Node> meshNodes = writeMeshes(gltf, bin, scene, mesh, parts, vertexJoints, weights, report);
+
+		int firstJoint = writeSkeletalSkin(gltf, bin, meshNodes, scene, skeleton, pose, anyStatic);
+		writeSkeletalAnimations(gltf, bin, skeleton, firstJoint, clips, report);
+
+		byte[] data = bin.finish();
+		return Glb.write(gltf, data);
+	}
+
+	/** The engine's model space with y and z negated, which bones work in, to glTF's. */
+	private static final double[] GLTF_FROM_SKELETAL = Mat4.scale(1 / Mat4.UNITS_PER_METRE,
+		1 / Mat4.UNITS_PER_METRE, -1 / Mat4.UNITS_PER_METRE);
+	private static final double[] SKELETAL_FROM_GLTF = Mat4.scale(Mat4.UNITS_PER_METRE, Mat4.UNITS_PER_METRE,
+		-Mat4.UNITS_PER_METRE);
+
+	private static double[] toGltf(double[] skeletal)
+	{
+		return Mat4.multiply(GLTF_FROM_SKELETAL, skeletal, SKELETAL_FROM_GLTF);
+	}
+
+	/**
+	 * An armature root, then a joint per bone resting in the bind pose, then the static joint when
+	 * some vertex needs it. Returns the node index of the first bone's joint.
+	 */
+	private static int writeSkeletalSkin(Gltf gltf, Glb.BinBuilder bin, List<Gltf.Node> meshNodes, Gltf.Scene scene,
+		Skeleton skeleton, int pose, boolean withStatic)
+	{
+		Gltf.Node armature = new Gltf.Node();
+		armature.name = "armature";
+		armature.children = new ArrayList<>();
+		gltf.nodes.add(armature);
+		int armatureIndex = gltf.nodes.size() - 1;
+		scene.nodes.add(armatureIndex);
+
+		int bones = skeleton.getBoneCount();
+		int joints = bones + (withStatic ? 1 : 0);
+		int firstJoint = gltf.nodes.size();
+		double[] inverseBinds = new double[joints * 16];
+		List<Integer> jointNodes = new ArrayList<>();
+		for (int bone = 0; bone < bones; bone++)
+		{
+			double[][] trs = Mat4.toTrs(toGltf(skeleton.getLocal(bone, pose)));
+			Gltf.Node node = new Gltf.Node();
+			node.name = JOINT_PREFIX + bone;
+			node.translation = trs[0];
+			node.rotation = trs[1];
+			node.scale = trs[2];
+			gltf.nodes.add(node);
+			jointNodes.add(firstJoint + bone);
+			System.arraycopy(Mat4.invert(toGltf(skeleton.getModel(bone, pose))), 0, inverseBinds, bone * 16, 16);
+		}
+		if (withStatic)
+		{
+			Gltf.Node node = new Gltf.Node();
+			node.name = "static";
+			gltf.nodes.add(node);
+			jointNodes.add(firstJoint + bones);
+			armature.children.add(firstJoint + bones);
+			System.arraycopy(Mat4.identity(), 0, inverseBinds, bones * 16, 16);
+		}
+		for (int bone = 0; bone < bones; bone++)
+		{
+			int parent = skeleton.getParent(bone);
+			Gltf.Node parentNode = parent < 0 ? armature : gltf.nodes.get(firstJoint + parent);
+			if (parentNode.children == null)
+			{
+				parentNode.children = new ArrayList<>();
+			}
+			parentNode.children.add(firstJoint + bone);
+		}
+
+		Gltf.Skin skin = new Gltf.Skin();
+		skin.name = "rig";
+		skin.joints = jointNodes;
+		skin.skeleton = armatureIndex;
+		skin.inverseBindMatrices = bin.floats(inverseBinds, "MAT4", null, false);
+		gltf.skins = new ArrayList<>();
+		gltf.skins.add(skin);
+		for (Gltf.Node meshNode : meshNodes)
+		{
+			meshNode.skin = 0;
+		}
+		return firstJoint;
+	}
+
+	private static void writeSkeletalAnimations(Gltf gltf, Glb.BinBuilder bin, Skeleton skeleton, int firstJoint,
+		List<SkeletalClip> clips, List<String> report)
+	{
+		if (clips.isEmpty())
+		{
+			return;
+		}
+		gltf.animations = new ArrayList<>();
+		int bones = skeleton.getBoneCount();
+		for (SkeletalClip clip : clips)
+		{
+			int frames = clip.timing.frameCount();
+
+			// One extra key at the end repeating the last pose, so the animation lasts as long as the
+			// sequence does in Blender rather than stopping when the last frame starts
+			double[] times = new double[frames + 1];
+			for (int frame = 0; frame <= frames; frame++)
+			{
+				times[frame] = clip.timing.startTime(frame);
+			}
+
+			double[][] translations = new double[bones][(frames + 1) * 3];
+			double[][] rotations = new double[bones][(frames + 1) * 4];
+			double[][] scales = new double[bones][(frames + 1) * 3];
+			double worstShear = 0;
+			for (int frame = 0; frame <= frames; frame++)
+			{
+				double[][] locals = SkeletalPoser.locals(skeleton, clip.animation, Math.min(frame, frames - 1));
+				for (int bone = 0; bone < bones; bone++)
+				{
+					double[] local = toGltf(locals[bone]);
+					worstShear = Math.max(worstShear, Mat4.shear(local));
+					double[][] trs = Mat4.toTrs(local);
+					System.arraycopy(trs[0], 0, translations[bone], frame * 3, 3);
+					double[] q = trs[1];
+					if (frame > 0)
+					{
+						// Keep consecutive keys on the same hemisphere so any interpolation is the short way
+						int prev = (frame - 1) * 4;
+						double dot = q[0] * rotations[bone][prev] + q[1] * rotations[bone][prev + 1]
+							+ q[2] * rotations[bone][prev + 2] + q[3] * rotations[bone][prev + 3];
+						if (dot < 0)
+						{
+							q = new double[]{-q[0], -q[1], -q[2], -q[3]};
+						}
+					}
+					System.arraycopy(q, 0, rotations[bone], frame * 4, 4);
+					System.arraycopy(trs[2], 0, scales[bone], frame * 3, 3);
+				}
+			}
+			if (worstShear > 1e-3)
+			{
+				report.add("Clip " + clip.sequenceId + " shears a bone (" + worstShear
+					+ "); glTF joints cannot express shear, so that pose is approximate");
+			}
+
+			Gltf.Animation animation = new Gltf.Animation();
+			animation.name = String.valueOf(clip.sequenceId);
+			int input = bin.floats(times, "SCALAR", null, true);
+			for (int bone = 0; bone < bones; bone++)
+			{
+				int node = firstJoint + bone;
+				channel(animation, input, bin.floats(translations[bone], "VEC3", null, false), node, "translation");
+				channel(animation, input, bin.floats(rotations[bone], "VEC4", null, false), node, "rotation");
+				channel(animation, input, bin.floats(scales[bone], "VEC3", null, false), node, "scale");
+			}
+			gltf.animations.add(animation);
+		}
 	}
 
 	/**

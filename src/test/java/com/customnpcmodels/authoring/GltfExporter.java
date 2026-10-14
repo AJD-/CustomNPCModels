@@ -26,6 +26,8 @@ package com.customnpcmodels.authoring;
 
 import com.customnpcmodels.cache.CacheFiles;
 import com.customnpcmodels.cache.MeshFactory;
+import com.customnpcmodels.cache.skeletal.SkeletalAnimation;
+import com.customnpcmodels.cache.skeletal.Skeleton;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Mesh;
 import com.customnpcmodels.inject.MeshMerger;
@@ -220,13 +222,19 @@ public class GltfExporter
 			}
 		}
 
-		Map<Integer, Rig> rigs = new LinkedHashMap<>();
-		List<Clip> clips = new ArrayList<>();
-		Map<Integer, SequenceTiming> timings = new LinkedHashMap<>();
-		Map<String, Integer> animations = clips(store, sequences, rigs, clips, timings);
-
 		List<String> report = new ArrayList<>();
-		byte[] glb = GlbWriter.write(mesh, parts, rigs, clips, timings, report);
+		Map<String, Integer> animations = new LinkedHashMap<>();
+		byte[] glb = exportSkeletal(store, npc.models, mesh, parts, sequences, animations, report);
+		int clipCount = animations.size();
+		if (glb == null)
+		{
+			Map<Integer, Rig> rigs = new LinkedHashMap<>();
+			List<Clip> clips = new ArrayList<>();
+			Map<Integer, SequenceTiming> timings = new LinkedHashMap<>();
+			animations = clips(store, sequences, rigs, clips, timings);
+			glb = GlbWriter.write(mesh, parts, rigs, clips, timings, report);
+			clipCount = clips.size();
+		}
 		for (String line : report)
 		{
 			System.out.println("  " + line);
@@ -266,11 +274,128 @@ public class GltfExporter
 		}
 
 		log.info("  wrote {} ({} KB, {} verts, {} faces, {} clips)", out.resolve(file).toAbsolutePath()
-				, glb.length / 1024, mesh.getVerticesCount(), mesh.getFaceCount(), clips.size());
+				, glb.length / 1024, mesh.getVerticesCount(), mesh.getFaceCount(), clipCount);
 		if (!blocked)
 		{
 			System.out.println("  manifest " + out.resolve(Manifest.FILE_NAME).toAbsolutePath());
 		}
+	}
+
+	/**
+	 * The NPC as a skeletal glb, when its models are weighted to bones and some of the sequences are
+	 * skeletal; null otherwise, for the frame-based export. The skeleton is the one most of the
+	 * skeletal sequences animate, and the rest are reported and left out. Fills {@code animations}
+	 * with the manifest's animation map.
+	 */
+	private static byte[] exportSkeletal(Store store, int[] modelIds, Mesh mesh, List<MeshPart> parts,
+		Set<Integer> sequences, Map<String, Integer> animations, List<String> report) throws IOException
+	{
+		List<ModelDefinition> models = new ArrayList<>();
+		boolean weighted = false;
+		for (int modelId : modelIds)
+		{
+			ModelDefinition model = CacheFiles.decodeModel(store, modelId);
+			if (model == null)
+			{
+				throw new IOException("Model " + modelId + " does not decode");
+			}
+			models.add(model);
+			weighted |= model.animayaGroups != null;
+		}
+		if (!weighted)
+		{
+			return null;
+		}
+
+		Map<Integer, List<GlbWriter.SkeletalClip>> bySkeleton = new LinkedHashMap<>();
+		for (int sequenceId : sequences)
+		{
+			SkeletalAnimation animation = CacheFiles.loadSkeletalAnimation(store, CacheFiles.loadSequence(store, sequenceId));
+			SequenceTiming timing = AssetGenerator.timing(store, sequenceId);
+			if (animation == null || timing == null)
+			{
+				report.add("Sequence " + sequenceId + " skipped: not a skeletal live sequence");
+				continue;
+			}
+			bySkeleton.computeIfAbsent(animation.getSkeletonId(), id -> new ArrayList<>())
+				.add(new GlbWriter.SkeletalClip(sequenceId, animation, timing));
+		}
+		if (bySkeleton.isEmpty())
+		{
+			report.add("The models are weighted to bones, but no skeletal sequence was exported; written without "
+				+ "a rig (name its sequences with -Pseqs)");
+			return null;
+		}
+
+		int skeletonId = -1;
+		for (Map.Entry<Integer, List<GlbWriter.SkeletalClip>> entry : bySkeleton.entrySet())
+		{
+			if (skeletonId == -1 || entry.getValue().size() > bySkeleton.get(skeletonId).size())
+			{
+				skeletonId = entry.getKey();
+			}
+		}
+		for (Map.Entry<Integer, List<GlbWriter.SkeletalClip>> entry : bySkeleton.entrySet())
+		{
+			if (entry.getKey() != skeletonId)
+			{
+				for (GlbWriter.SkeletalClip clip : entry.getValue())
+				{
+					report.add("Sequence " + clip.sequenceId + " skipped: it animates skeleton " + entry.getKey()
+						+ ", not " + skeletonId);
+				}
+			}
+		}
+		List<GlbWriter.SkeletalClip> clips = bySkeleton.get(skeletonId);
+		Skeleton skeleton = CacheFiles.loadSkeleton(store, skeletonId);
+		for (GlbWriter.SkeletalClip clip : clips)
+		{
+			animations.put(String.valueOf(clip.sequenceId), clip.sequenceId);
+		}
+
+		// The merge welds and renumbers vertices, keeping each where a face first reaches it, so each
+		// merged vertex takes the bones of the part vertex that first reached it
+		int[][] bones = new int[mesh.getVerticesCount()][];
+		double[][] weights = new double[mesh.getVerticesCount()][];
+		boolean[] seen = new boolean[mesh.getVerticesCount()];
+		int faceBase = 0;
+		for (ModelDefinition model : models)
+		{
+			int[][] corners = {model.faceIndices1, model.faceIndices2, model.faceIndices3};
+			int[][] merged = {mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3()};
+			for (int face = 0; face < model.faceCount; face++)
+			{
+				for (int corner = 0; corner < 3; corner++)
+				{
+					int vertex = merged[corner][faceBase + face];
+					int source = corners[corner][face];
+					if (seen[vertex])
+					{
+						continue;
+					}
+					seen[vertex] = true;
+					int[] groups = model.animayaGroups == null ? null : model.animayaGroups[source];
+					if (groups != null && groups.length > 0)
+					{
+						bones[vertex] = groups.clone();
+						weights[vertex] = new double[groups.length];
+						for (int i = 0; i < groups.length; i++)
+						{
+							weights[vertex][i] = model.animayaScales[source][i] / 255.0;
+						}
+					}
+				}
+			}
+			faceBase += model.faceCount;
+		}
+		if (faceBase != mesh.getFaceCount())
+		{
+			throw new IOException("The models have " + faceBase + " faces, the merged mesh " + mesh.getFaceCount());
+		}
+
+		report.add("Skeletal: " + skeleton.getBoneCount() + " bones on skeleton " + skeletonId + ", "
+			+ clips.size() + " sequences");
+		return GlbWriter.writeSkeletal(mesh, parts, skeleton, 0, bones, weights, clips, report);
 	}
 
 	/** The NPC's model parts merged into one mesh, as the plugin merges them at spawn, under its synthetic id. */

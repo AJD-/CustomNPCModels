@@ -47,6 +47,18 @@ public final class SkeletalPoser
 	{
 	}
 
+	/** Per bone, its matrix relative to its parent at a frame. */
+	public static double[][] locals(Skeleton skeleton, SkeletalAnimation animation, int frame)
+	{
+		int tick = frame + 1;
+		double[][] locals = new double[skeleton.getBoneCount()][];
+		for (int bone = 0; bone < locals.length; bone++)
+		{
+			locals[bone] = animation.getLocal(skeleton, bone, tick);
+		}
+		return locals;
+	}
+
 	/**
 	 * Per bone, its matrix at a frame in model space: its animated matrix composed down from its
 	 * parents.
