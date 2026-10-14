@@ -85,10 +85,11 @@ final class GltfToMeshConverter
 
 	/**
 	 * How far, in engine units, keeping only a vertex's heaviest joint may move it from where its
-	 * weights put it before it gets a blend group of its own: just under what the engine's rotation
-	 * steps already cost a limb.
+	 * weights put it before it gets a blend group of its own: about what the engine's rotation steps
+	 * already cost a limb. Every blend is an op a frame, so a lower threshold costs bundle size for
+	 * error the rotation steps hide anyway.
 	 */
-	static final double BLEND_THRESHOLD = 3;
+	static final double BLEND_THRESHOLD = 5;
 
 	/** How far a {@code _RS_HSL} hint's color may sit from COLOR_0 and still be trusted. */
 	private static final double COLOR_TOLERANCE = 1.5 / 255;
