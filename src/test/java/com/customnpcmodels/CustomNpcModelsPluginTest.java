@@ -24,6 +24,7 @@
  */
 package com.customnpcmodels;
 
+import com.customnpcmodels.dev.SkeletalCapturePlugin;
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;
 
@@ -32,6 +33,10 @@ public class CustomNpcModelsPluginTest
 	public static void main(String[] args) throws Exception
 	{
 		ExternalPluginManager.loadBuiltin(CustomNpcModelsPlugin.class);
+		if (System.getProperty(SkeletalCapturePlugin.NPC_PROPERTY) != null)
+		{
+			ExternalPluginManager.loadBuiltin(SkeletalCapturePlugin.class);
+		}
 		RuneLite.main(args);
 	}
 }
