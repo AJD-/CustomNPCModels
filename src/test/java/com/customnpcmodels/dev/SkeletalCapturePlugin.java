@@ -27,13 +27,16 @@ package com.customnpcmodels.dev;
 import com.google.gson.Gson;
 import java.io.IOException;
 import java.io.Writer;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -55,13 +58,14 @@ import net.runelite.client.util.Filepath;
 /**
  * Records ground truth for the skeletal animation decoders, from the client itself. Dev only: it
  * lives in the test source set and ./gradlew run loads it only when given
- * {@code -Pcapture=<model id>:<sequence id>,<sequence id>...}.
+ * {@code -Pcapture=<model id>:<sequence id>,...;<model id>:<sequence id>,...}.
  * <p>
- * Once logged in it poses that model with each sequence at every frame through
- * {@link Client#applyTransformations}, which needs no NPC at all. Meanwhile, for each skeletal
- * sequence it sees any NPC play, it follows one NPC playing it and records the frame the client
- * reports every cycle, over two of its loops. After {@link #CYCLES} cycles it writes it all to
- * {@code capture-<model id>.json} in its data folder.
+ * Once logged in it poses each model with each of its sequences through
+ * {@link Client#applyTransformations}, which needs no NPC at all, one frame per client cycle.
+ * Meanwhile, for each skeletal sequence it sees any NPC play, it follows one NPC playing it over two
+ * of its loops, recording the frame the client reports every cycle and, once per frame, the model
+ * the client posed for that NPC to draw. After {@link #CYCLES} cycles it writes it all to
+ * {@code capture.json} in its data folder.
  */
 @Slf4j
 @PluginDescriptor(
@@ -73,7 +77,7 @@ public class SkeletalCapturePlugin extends Plugin
 {
 	public static final String PROPERTY = "customnpcmodels.capture";
 
-	/** 30 seconds from login, for an NPC with a skeletal animation to come into view. */
+	/** 30 seconds from login: time to pose a few sequences, and for a skeletal NPC to come into view. */
 	private static final int CYCLES = 1500;
 
 	@Inject
@@ -88,30 +92,40 @@ public class SkeletalCapturePlugin extends Plugin
 	@Inject
 	private ScheduledExecutorService executor;
 
-	private int modelId;
-	private int[] sequenceIds;
+	/** Per model, the sequences to pose it with. */
+	private final Map<Integer, int[]> toPose = new LinkedHashMap<>();
+	/** What is left to pose, one {model, sequence, frame} per cycle. */
+	private final Deque<int[]> poseQueue = new ArrayDeque<>();
 
 	private final Set<NPC> npcs = new HashSet<>();
 	private final Map<Integer, Animation> animations = new HashMap<>();
+	private final Map<Integer, Model> models = new HashMap<>();
+	/** Per model: its rest vertices, and per sequence its timing and poses. */
 	private final Map<Integer, Map<String, Object>> posed = new LinkedHashMap<>();
 	/** Per skeletal sequence: the NPC followed, and per cycle {game cycle, NPC id, frame}. */
 	private final Map<Integer, NPC> followed = new HashMap<>();
 	private final Map<Integer, List<int[]>> counted = new LinkedHashMap<>();
+	/** Per skeletal sequence: the followed NPC's drawn model, once per frame. */
+	private final Map<Integer, Map<Integer, Map<String, Object>>> drawn = new LinkedHashMap<>();
+	private boolean queued;
 	private int cycles;
 	private boolean written;
 
 	@Override
 	protected void startUp()
 	{
-		String[] spec = System.getProperty(PROPERTY, "").split(":");
-		modelId = Integer.parseInt(spec[0].trim());
-		String[] ids = spec.length > 1 ? spec[1].split(",") : new String[0];
-		sequenceIds = new int[ids.length];
-		for (int i = 0; i < ids.length; i++)
+		for (String spec : System.getProperty(PROPERTY, "").split(";"))
 		{
-			sequenceIds[i] = Integer.parseInt(ids[i].trim());
+			String[] parts = spec.split(":");
+			String[] ids = parts.length > 1 ? parts[1].split(",") : new String[0];
+			int[] sequenceIds = new int[ids.length];
+			for (int i = 0; i < ids.length; i++)
+			{
+				sequenceIds[i] = Integer.parseInt(ids[i].trim());
+			}
+			toPose.put(Integer.parseInt(parts[0].trim()), sequenceIds);
 		}
-		log.info("Skeletal capture of model {} with sequences {}", modelId, (Object) ids);
+		log.info("Skeletal capture posing {}", System.getProperty(PROPERTY));
 	}
 
 	@Override
@@ -141,10 +155,12 @@ public class SkeletalCapturePlugin extends Plugin
 		{
 			return;
 		}
-		if (posed.isEmpty())
+		if (!queued)
 		{
-			pose();
+			queued = true;
+			queuePoses();
 		}
+		poseNext();
 
 		for (NPC npc : npcs)
 		{
@@ -178,51 +194,90 @@ public class SkeletalCapturePlugin extends Plugin
 		}
 		NPC following = followed.computeIfAbsent(sequenceId, id -> npc);
 		List<int[]> frames = counted.computeIfAbsent(sequenceId, id -> new ArrayList<>());
-		if (following == npc && frames.size() < 2 * animation.getDuration() + 10)
+		if (following != npc || frames.size() >= 2 * animation.getDuration() + 10)
 		{
-			frames.add(new int[]{client.getGameCycle(), npc.getId(), frame});
+			return;
+		}
+		frames.add(new int[]{client.getGameCycle(), npc.getId(), frame});
+
+		Map<Integer, Map<String, Object>> samples = drawn.computeIfAbsent(sequenceId, id -> new TreeMap<>());
+		if (!samples.containsKey(frame))
+		{
+			Model model = npc.getModel();
+			if (model != null)
+			{
+				Map<String, Object> sample = new LinkedHashMap<>();
+				sample.put("npcId", npc.getId());
+				sample.put("cycle", client.getGameCycle());
+				putVertices(sample, model);
+				samples.put(frame, sample);
+			}
 		}
 	}
 
-	private void pose()
+	private void queuePoses()
 	{
-		Model model = client.loadModel(modelId);
-		for (int sequenceId : sequenceIds)
+		toPose.forEach((modelId, sequenceIds) ->
 		{
+			Model model = client.loadModel(modelId);
 			Map<String, Object> entry = new LinkedHashMap<>();
-			posed.put(sequenceId, entry);
-			Animation animation = animation(sequenceId);
-			if (animation == null || model == null)
+			posed.put(modelId, entry);
+			if (model == null)
 			{
-				continue;
+				return;
 			}
-			entry.put("maya", animation.isMayaAnim());
-			entry.put("duration", animation.getDuration());
-			entry.put("numFrames", animation.getNumFrames());
-
-			// One past the end, to see what the client does there
-			int frames = animation.isMayaAnim() ? animation.getDuration() + 1 : animation.getNumFrames();
-			List<Map<String, Object>> poses = new ArrayList<>();
-			for (int frame = 0; frame < frames; frame++)
-			{
-				// The returned model is shared and overwritten by the next call, so copy it out now
-				Model transformed = client.applyTransformations(model, animation, frame, null, 0);
-				Map<String, Object> sample = new LinkedHashMap<>();
-				sample.put("frame", frame);
-				if (transformed != null)
-				{
-					putVertices(sample, transformed);
-				}
-				poses.add(sample);
-			}
-			entry.put("poses", poses);
-		}
-		if (model != null)
-		{
+			models.put(modelId, model);
 			Map<String, Object> rest = new LinkedHashMap<>();
 			putVertices(rest, model);
-			posed.put(-1, rest);
+			entry.put("rest", rest);
+
+			for (int sequenceId : sequenceIds)
+			{
+				Animation animation = animation(sequenceId);
+				if (animation == null)
+				{
+					continue;
+				}
+				Map<String, Object> sequence = new LinkedHashMap<>();
+				sequence.put("maya", animation.isMayaAnim());
+				sequence.put("duration", animation.getDuration());
+				sequence.put("numFrames", animation.getNumFrames());
+				sequence.put("poses", new ArrayList<Map<String, Object>>());
+				entry.put(String.valueOf(sequenceId), sequence);
+
+				// One past the end, to see what the client does there
+				int frames = animation.isMayaAnim() ? animation.getDuration() + 1 : animation.getNumFrames();
+				for (int frame = 0; frame < frames; frame++)
+				{
+					poseQueue.add(new int[]{modelId, sequenceId, frame});
+				}
+			}
+		});
+	}
+
+	/** Poses one queued frame; one per cycle, in case the client prepares an animation over time. */
+	@SuppressWarnings("unchecked")
+	private void poseNext()
+	{
+		int[] job = poseQueue.poll();
+		if (job == null)
+		{
+			return;
 		}
+		Model model = models.get(job[0]);
+		Animation animation = animations.get(job[1]);
+		Map<String, Object> sequence = (Map<String, Object>) posed.get(job[0]).get(String.valueOf(job[1]));
+
+		// The returned model is shared and overwritten by the next call, so copy it out now
+		Model transformed = client.applyTransformations(model, animation, job[2], null, 0);
+		Map<String, Object> sample = new LinkedHashMap<>();
+		sample.put("frame", job[2]);
+		sample.put("cycle", client.getGameCycle());
+		if (transformed != null)
+		{
+			putVertices(sample, transformed);
+		}
+		((List<Map<String, Object>>) sequence.get("poses")).add(sample);
 	}
 
 	private static void putVertices(Map<String, Object> sample, Model model)
@@ -242,8 +297,8 @@ public class SkeletalCapturePlugin extends Plugin
 	private void write()
 	{
 		Map<String, Object> capture = new LinkedHashMap<>();
-		capture.put("modelId", modelId);
 		capture.put("posed", new LinkedHashMap<>(posed));
+		capture.put("posesLeft", poseQueue.size());
 		Map<Integer, Object> counts = new LinkedHashMap<>();
 		counted.forEach((sequenceId, frames) ->
 		{
@@ -252,10 +307,12 @@ public class SkeletalCapturePlugin extends Plugin
 			entry.put("duration", animation.getDuration());
 			entry.put("numFrames", animation.getNumFrames());
 			entry.put("frames", new ArrayList<>(frames));
+			entry.put("drawn", drawn.getOrDefault(sequenceId, new TreeMap<>()));
 			counts.put(sequenceId, entry);
 		});
 		capture.put("counted", counts);
-		log.info("Skeletal capture: posed {} sequences, counted {} skeletal sequences", posed.size(), counts.size());
+		log.info("Skeletal capture: posed {} models ({} frames left unposed), counted {} skeletal sequences",
+			posed.size(), poseQueue.size(), counts.size());
 
 		// Off the client thread: it is several megabytes
 		executor.submit(() ->
@@ -264,7 +321,7 @@ public class SkeletalCapturePlugin extends Plugin
 			{
 				Filepath folder = getPluginDirectory();
 				folder.createDirectories();
-				Filepath file = folder.joinSegment("capture-" + modelId + ".json");
+				Filepath file = folder.joinSegment("capture.json");
 				try (Writer writer = file.openBufferedWriter())
 				{
 					gson.toJson(capture, writer);
