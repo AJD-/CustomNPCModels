@@ -24,6 +24,8 @@
  */
 package com.customnpcmodels.cache;
 
+import com.customnpcmodels.cache.skeletal.SkeletalAnimation;
+import com.customnpcmodels.cache.skeletal.Skeleton;
 import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Rig;
 import java.io.File;
@@ -301,6 +303,33 @@ public final class CacheFiles
 		int packed = sequence.frameIDs[0];
 		byte[] data = loadFile(store, IndexType.ANIMATIONS, packed >> 16, packed & 0xFFFF);
 		return data == null || data.length < 2 ? -1 : (data[0] & 0xFF) << 8 | data[1] & 0xFF;
+	}
+
+	/** A framemap's skeletal bones, or null when it has none or there is no such framemap. */
+	public static Skeleton loadSkeleton(Store store, int skeletonId) throws IOException
+	{
+		byte[] data = loadFile(store, IndexType.SKELETONS, skeletonId, 0);
+		return data == null ? null : Skeleton.decode(skeletonId, data);
+	}
+
+	/**
+	 * A skeletal sequence's animation, decoded against the skeleton it names, or null for a sequence
+	 * that isn't skeletal or whose data is missing.
+	 */
+	public static SkeletalAnimation loadSkeletalAnimation(Store store, SequenceDefinition sequence) throws IOException
+	{
+		if (sequence == null || sequence.animMayaID == -1)
+		{
+			return null;
+		}
+		int id = sequence.animMayaID;
+		byte[] data = loadFile(store, IndexType.ANIMAYAS, id >> 16, id & 0xFFFF);
+		if (data == null || data.length < 3)
+		{
+			return null;
+		}
+		Skeleton skeleton = loadSkeleton(store, SkeletalAnimation.skeletonOf(data));
+		return skeleton == null ? null : SkeletalAnimation.decode(id, data, skeleton);
 	}
 
 	public static FramemapDefinition loadFramemap(Store store, int framemapId, Map<Integer, Rig> rigs)
