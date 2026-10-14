@@ -63,7 +63,7 @@ tasks.register('run', JavaExec) {
 	}
 
 	// Records what the client does with an NPC's animations, for the skeletal decoders' tests:
-	// -Pcapture=14203 loads the dev-only capture plugin for that NPC id
+	// -Pcapture=10339:12140,12143 loads the dev-only capture plugin for that model and its sequences
 	if (project.hasProperty('capture')) {
 		systemProperty 'customnpcmodels.capture', project.property('capture')
 	}

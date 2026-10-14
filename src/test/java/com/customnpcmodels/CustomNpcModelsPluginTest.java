@@ -33,7 +33,7 @@ public class CustomNpcModelsPluginTest
 	public static void main(String[] args) throws Exception
 	{
 		ExternalPluginManager.loadBuiltin(CustomNpcModelsPlugin.class);
-		if (System.getProperty(SkeletalCapturePlugin.NPC_PROPERTY) != null)
+		if (System.getProperty(SkeletalCapturePlugin.PROPERTY) != null)
 		{
 			ExternalPluginManager.loadBuiltin(SkeletalCapturePlugin.class);
 		}
