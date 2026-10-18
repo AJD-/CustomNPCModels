@@ -63,6 +63,22 @@ public class GltfExporterTest
 		assertEquals(1, report.size());
 	}
 
+	/**
+	 * Yama's sequences are skeletal, so they share a skeleton rather than a framemap: his attacks and
+	 * death are found on it, and Yami's walk too, since the pet shares his skeleton.
+	 */
+	@Test
+	public void testDefaultsToEverySequenceOnTheSkeleton() throws Exception
+	{
+		List<String> report = new ArrayList<>();
+		List<Integer> sequences = new ArrayList<>(GltfExporter.defaultSequences(LiveFixtures.store(),
+			LiveFixtures.npc(LiveFixtures.YAMA), report::add));
+
+		assertEquals(Arrays.asList(LiveFixtures.YAMA_READY, LiveFixtures.YAMA_WALK, 12142, 12143, 12144, 12145, 12146,
+			12147, 12148, 12156, 12160, 12161), sequences);
+		assertTrue("report " + report, report.size() == 1 && report.get(0).contains("skeleton 2404"));
+	}
+
 	/** The humanoid rig animates thousands of sequences, so only the definition's own are taken. */
 	@Test
 	public void testFallsBackToTheDefinitionOnASharedRig() throws Exception

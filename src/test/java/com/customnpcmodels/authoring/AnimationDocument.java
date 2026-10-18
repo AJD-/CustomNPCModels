@@ -176,7 +176,7 @@ final class AnimationDocument
 			}
 			if (timing == null)
 			{
-				reasons.put(name, "Sequence " + sequenceId + " is not a frame-based live sequence");
+				reasons.put(name, "Sequence " + sequenceId + " is not a live sequence");
 				continue;
 			}
 			playable.put(name, timing);

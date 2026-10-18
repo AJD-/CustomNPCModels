@@ -83,6 +83,11 @@ final class LiveFixtures
 	static final int GIANT_SPIDER_READY = AnimationID.SPIDER_UPDATE_READY;
 	static final int GIANT_SPIDER_DEATH = AnimationID.SPIDER_UPDATE_DEATH;
 
+	/** Yama, whose sequences are all skeletal: his standing is 120 cycles long, on skeleton 2404. */
+	static final int YAMA = NpcID.YAMA;
+	static final int YAMA_READY = AnimationID.NPC_YAMA01_IDLE01;
+	static final int YAMA_WALK = AnimationID.NPC_YAMA01_WALK01;
+
 	private static Store store;
 	private static NpcManager npcs;
 	private static final Map<Integer, Mesh> meshes = new HashMap<>();

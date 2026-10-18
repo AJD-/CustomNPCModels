@@ -24,6 +24,8 @@
  */
 package com.customnpcmodels.authoring;
 
+import java.util.Arrays;
+
 /**
  * How a live sequence plays: how many frames it has and how long each is held.
  * <p>
@@ -31,6 +33,9 @@ package com.customnpcmodels.authoring;
  * over that sequence's frame index. So the clip has to have exactly this many frames, and sampling
  * the authored animation at these frame start times is what lines its poses up with the client's
  * playback.
+ * <p>
+ * A skeletal (animaya) sequence has no frame list: the client counts its frame in cycles, from 0 to
+ * its length, so it is timed as that many frames of one cycle each.
  */
 final class SequenceTiming
 {
@@ -44,6 +49,14 @@ final class SequenceTiming
 	{
 		this.sequenceId = sequenceId;
 		this.frameLengths = frameLengths;
+	}
+
+	/** A skeletal sequence {@code cycles} long: a frame per cycle. */
+	static SequenceTiming skeletal(int sequenceId, int cycles)
+	{
+		int[] frameLengths = new int[cycles];
+		Arrays.fill(frameLengths, 1);
+		return new SequenceTiming(sequenceId, frameLengths);
 	}
 
 	int frameCount()

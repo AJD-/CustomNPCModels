@@ -202,9 +202,14 @@ public class ModernNpcDumper
 		{
 			return sequenceId + " (not in cache)";
 		}
+		if (sequence.animMayaID != -1)
+		{
+			return sequenceId + " (skeletal, " + (sequence.animMayaEnd - sequence.animMayaStart) + " cycles, skeleton "
+				+ CacheFiles.skeletonOf(store, sequenceId) + ")";
+		}
 		if (sequence.frameIDs == null)
 		{
-			return sequenceId + " (skeletal, no frame list)";
+			return sequenceId + " (no frame list)";
 		}
 		return sequenceId + " (" + sequence.frameIDs.length + " frames)";
 	}

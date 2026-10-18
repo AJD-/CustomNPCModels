@@ -40,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -82,6 +83,14 @@ final class GltfToMeshConverter
 	/** Translate, pivot, rotate and scale, in that order, for every joint. */
 	static final int TRANSFORMS_PER_JOINT = 4;
 
+	/**
+	 * How far, in engine units, keeping only a vertex's heaviest joint may move it from where its
+	 * weights put it before it gets a blend group of its own: about what the engine's rotation steps
+	 * already cost a limb. Every blend is an op a frame, so a lower threshold costs bundle size for
+	 * error the rotation steps hide anyway.
+	 */
+	static final double BLEND_THRESHOLD = 5;
+
 	/** How far a {@code _RS_HSL} hint's color may sit from COLOR_0 and still be trusted. */
 	private static final double COLOR_TOLERANCE = 1.5 / 255;
 
@@ -105,6 +114,17 @@ final class GltfToMeshConverter
 
 	/** Per node, its parent node, or -1. */
 	private int[] nodeParents;
+
+	/** Per mesh vertex, the joint slots the file weights it to, and how much. */
+	private int[][] vertexSlots;
+	private double[][] vertexWeights;
+
+	/** Split vertices weighted to more than one joint, and the most weight any of them has off its heaviest. */
+	private int materialWeights;
+	private double worstDiscarded;
+
+	/** How far, at worst, the engine puts a blended vertex from where its weights put it. */
+	private double blendResidual;
 
 	private GltfToMeshConverter(Glb glb)
 	{
@@ -272,6 +292,8 @@ final class GltfToMeshConverter
 		final List<Integer> rsVertex = new ArrayList<>();     // or null
 		final List<Integer> rsHsl = new ArrayList<>();        // or null
 		final List<Integer> groups = new ArrayList<>();       // -1 when unskinned
+		final List<int[]> slots = new ArrayList<>();          // the joint slots weighted, or null
+		final List<double[]> weights = new ArrayList<>();     // their weights, summing to 1
 		final List<int[]> triangles = new ArrayList<>();      // split vertex indices, glTF winding
 		final List<Integer> renderTypes = new ArrayList<>();  // per face, null entries when absent
 		final List<Integer> renderPriorities = new ArrayList<>();
@@ -301,12 +323,8 @@ final class GltfToMeshConverter
 			}
 		}
 
-		if (geometry.materialWeights > 0)
-		{
-			result.report.add(geometry.materialWeights + " vertices are weighted to more than one joint; each "
-				+ "keeps only its heaviest, discarding up to " + Math.round(geometry.worstDiscarded * 100)
-				+ "% of its weight - the engine binds a vertex to exactly one group");
-		}
+		materialWeights = geometry.materialWeights;
+		worstDiscarded = geometry.worstDiscarded;
 		if (geometry.missingColor)
 		{
 			result.report.add("Some faces have no COLOR_0 and were given a neutral grey");
@@ -344,9 +362,13 @@ final class GltfToMeshConverter
 		int[] rsHsl = attributes.containsKey(GlbWriter.RS_HSL) ? glb.readInts(attributes.get(GlbWriter.RS_HSL)) : null;
 
 		int[] groups = null;
+		int[][] slots = null;
+		double[][] weights = null;
 		if (groupOfSlot != null)
 		{
-			groups = dominantGroups(geometry, attributes, count, groupOfSlot);
+			slots = new int[count][];
+			weights = new double[count][];
+			groups = dominantGroups(geometry, attributes, count, groupOfSlot, slots, weights);
 		}
 
 		for (int v = 0; v < count; v++)
@@ -370,6 +392,8 @@ final class GltfToMeshConverter
 			geometry.rsVertex.add(rsVertex == null ? null : rsVertex[v]);
 			geometry.rsHsl.add(rsHsl == null ? null : rsHsl[v]);
 			geometry.groups.add(groups == null ? -1 : groups[v]);
+			geometry.slots.add(slots == null ? null : slots[v]);
+			geometry.weights.add(weights == null ? null : weights[v]);
 		}
 
 		int[] indices;
@@ -406,8 +430,12 @@ final class GltfToMeshConverter
 		readExtras(geometry, extras, faces);
 	}
 
-	/** Per vertex, the group of its heaviest joint across JOINTS_0/WEIGHTS_0 and JOINTS_1/WEIGHTS_1. */
-	private int[] dominantGroups(Geometry geometry, Map<String, Integer> attributes, int count, int[] groupOfSlot)
+	/**
+	 * Per vertex, the group of its heaviest joint across JOINTS_0/WEIGHTS_0 and JOINTS_1/WEIGHTS_1;
+	 * every joint it is weighted to, and how much, go into {@code slots} and {@code weightsOut}.
+	 */
+	private int[] dominantGroups(Geometry geometry, Map<String, Integer> attributes, int count, int[] groupOfSlot,
+		int[][] slots, double[][] weightsOut)
 	{
 		if (!attributes.containsKey("JOINTS_0") || !attributes.containsKey("WEIGHTS_0"))
 		{
@@ -418,6 +446,11 @@ final class GltfToMeshConverter
 		double[] bestWeight = new double[count];
 		double[] total = new double[count];
 		Arrays.fill(bestSlot, -1);
+		List<Map<Integer, Double>> weighted = new ArrayList<>();
+		for (int v = 0; v < count; v++)
+		{
+			weighted.add(new LinkedHashMap<>());
+		}
 
 		for (int set = 0; attributes.containsKey("JOINTS_" + set); set++)
 		{
@@ -429,6 +462,10 @@ final class GltfToMeshConverter
 				{
 					double weight = weights[v * 4 + k];
 					total[v] += weight;
+					if (weight > 0)
+					{
+						weighted.get(v).merge(joints[v * 4 + k], weight, Double::sum);
+					}
 					if (weight > bestWeight[v])
 					{
 						bestWeight[v] = weight;
@@ -446,6 +483,17 @@ final class GltfToMeshConverter
 				throw new GltfException("Vertex " + v + " has no joint with any weight");
 			}
 			groups[v] = groupOfSlot[bestSlot[v]];
+
+			Map<Integer, Double> mix = weighted.get(v);
+			slots[v] = new int[mix.size()];
+			weightsOut[v] = new double[mix.size()];
+			int i = 0;
+			for (Map.Entry<Integer, Double> entry : mix.entrySet())
+			{
+				slots[v][i] = entry.getKey();
+				weightsOut[v][i] = entry.getValue() / total[v];
+				i++;
+			}
 
 			double discarded = total[v] <= 0 ? 0 : (total[v] - bestWeight[v]) / total[v];
 			if (discarded > MATERIAL_WEIGHT)
@@ -528,6 +576,8 @@ final class GltfToMeshConverter
 		float[] vy = new float[vertices];
 		float[] vz = new float[vertices];
 		int[] groupOf = new int[vertices];
+		vertexSlots = new int[vertices][];
+		vertexWeights = new double[vertices][];
 		for (int split = 0; split < splits; split++)
 		{
 			double[] p = geometry.positions.get(split);
@@ -536,6 +586,11 @@ final class GltfToMeshConverter
 			vy[v] = (float) p[1];
 			vz[v] = (float) p[2];
 			groupOf[v] = geometry.groups.get(split);
+			if (vertexSlots[v] == null)
+			{
+				vertexSlots[v] = geometry.slots.get(split);
+				vertexWeights[v] = geometry.weights.get(split);
+			}
 		}
 
 		int faces = geometry.triangles.size();
@@ -804,6 +859,18 @@ final class GltfToMeshConverter
 			restJoints[slot] = Mat4.transformPoint(Mat4.RS_FROM_GLTF, bind[12], bind[13], bind[14]);
 		}
 
+		// Blending moves vertices out of their joints' groups, so it comes before the centroids the
+		// engine will pivot those groups about
+		Map<String, Gltf.Animation> byName = new LinkedHashMap<>();
+		if (gltf.animations != null)
+		{
+			for (Gltf.Animation animation : gltf.animations)
+			{
+				byName.put(animation.name, animation);
+			}
+		}
+		List<Blend> blends = planBlends(skin, inverseBinds, animations, byName);
+
 		Mesh mesh = result.mesh;
 		double[][] centroids = new double[slots][];
 		for (int slot = 0; slot < slots; slot++)
@@ -823,10 +890,11 @@ final class GltfToMeshConverter
 		}
 		reportDistantJoints(restJoints, centroids, groupOfSlot);
 
-		// The rig: per joint in order, translate subtree, pivot own group, rotate subtree, scale subtree
+		// The rig: per joint in order, translate subtree, pivot own group, rotate subtree, scale
+		// subtree; then a translate for each blend
 		int joints = order.size();
-		int[] types = new int[joints * TRANSFORMS_PER_JOINT];
-		int[][] rigGroups = new int[joints * TRANSFORMS_PER_JOINT][];
+		int[] types = new int[joints * TRANSFORMS_PER_JOINT + blends.size()];
+		int[][] rigGroups = new int[joints * TRANSFORMS_PER_JOINT + blends.size()][];
 		for (int k = 0; k < joints; k++)
 		{
 			int slot = order.get(k);
@@ -844,16 +912,13 @@ final class GltfToMeshConverter
 			types[base + 3] = Rig.TYPE_SCALE;
 			rigGroups[base + 3] = subtreeGroups.clone();
 		}
+		for (int b = 0; b < blends.size(); b++)
+		{
+			types[joints * TRANSFORMS_PER_JOINT + b] = Rig.TYPE_TRANSLATE;
+			rigGroups[joints * TRANSFORMS_PER_JOINT + b] = new int[]{blends.get(b).group};
+		}
 		result.rig = new Rig(rigId, types, rigGroups);
 
-		Map<String, Gltf.Animation> byName = new LinkedHashMap<>();
-		if (gltf.animations != null)
-		{
-			for (Gltf.Animation animation : gltf.animations)
-			{
-				byName.put(animation.name, animation);
-			}
-		}
 		for (String name : byName.keySet())
 		{
 			if (!animations.containsKey(name))
@@ -872,10 +937,185 @@ final class GltfToMeshConverter
 					+ "(it has " + byName.keySet() + ")");
 			}
 			Clip clip = buildClip(rigId, entry.getValue(), animation, skin, order, parentSlot, inverseBinds,
-				restJoints, centroids, types);
+				restJoints, centroids, types, blends);
 			result.clips.add(clip);
 			result.clipsByAnimation.put(entry.getKey(), clip);
 		}
+		if (!blends.isEmpty())
+		{
+			result.report.add(blends.size() + " vertices blend the joints they are weighted to, each as a group of "
+				+ "its own; each lands within " + String.format("%.1f", blendResidual) + " units of where its weights "
+				+ "put it");
+		}
+	}
+
+	/** A vertex that rides a mix of joints, as a group of its own. */
+	private static final class Blend
+	{
+		final int group;
+		final int vertex;
+		/** The joint slots mixed, and how much of each, summing to 1. */
+		final int[] slots;
+		final double[] weights;
+
+		Blend(int group, int vertex, int[] slots, double[] weights)
+		{
+			this.group = group;
+			this.vertex = vertex;
+			this.slots = slots;
+			this.weights = weights;
+		}
+	}
+
+	/**
+	 * The engine binds a vertex to one group, so a vertex weighted to several joints keeps only its
+	 * heaviest - unless that moves it more than {@link #BLEND_THRESHOLD} from where its weights put
+	 * it, in some frame of the mapped animations. Each of those becomes a group of its own, which the
+	 * clips move to where its weights put it; the mesh is rebuilt with it moved out of its heaviest
+	 * joint's group. A lone vertex only needs moving, never turning or scaling, so a blend costs a
+	 * single op a frame. With no animations to measure against, every vertex keeps its heaviest joint.
+	 */
+	private List<Blend> planBlends(Gltf.Skin skin, double[][] inverseBinds, Map<String, SequenceTiming> animations,
+		Map<String, Gltf.Animation> byName)
+	{
+		List<Blend> blends = new ArrayList<>();
+		Mesh mesh = result.mesh;
+		int vertices = mesh.getVerticesCount();
+
+		int[] heaviest = new int[vertices];
+		int[][] mixSlots = new int[vertices][];
+		double[][] mixWeights = new double[vertices][];
+		List<Integer> candidates = new ArrayList<>();
+		for (int v = 0; v < vertices; v++)
+		{
+			int[] slots = vertexSlots[v];
+			if (slots == null || slots.length < 2)
+			{
+				continue;
+			}
+			double[] weights = vertexWeights[v];
+			TreeMap<Integer, Double> mix = new TreeMap<>();
+			int best = 0;
+			for (int i = 0; i < slots.length; i++)
+			{
+				best = weights[i] > weights[best] ? i : best;
+				mix.merge(slots[i], weights[i], Double::sum);
+			}
+			heaviest[v] = slots[best];
+			if (mix.size() < 2)
+			{
+				continue;
+			}
+			mixSlots[v] = mix.keySet().stream().mapToInt(Integer::intValue).toArray();
+			mixWeights[v] = mix.values().stream().mapToDouble(Double::doubleValue).toArray();
+			candidates.add(v);
+		}
+
+		if (candidates.isEmpty() || animations.isEmpty())
+		{
+			if (materialWeights > 0)
+			{
+				result.report.add(materialWeights + " vertices are weighted to more than one joint; each keeps only "
+					+ "its heaviest, discarding up to " + Math.round(worstDiscarded * 100) + "% of its weight - the "
+					+ "engine binds a vertex to exactly one group");
+			}
+			return blends;
+		}
+
+		// How far its heaviest joint alone takes each candidate from its mix, at worst over every frame
+		double[] error = new double[vertices];
+		int slots = skin.joints.size();
+		for (Map.Entry<String, SequenceTiming> entry : animations.entrySet())
+		{
+			Gltf.Animation animation = byName.get(entry.getKey());
+			if (animation == null)
+			{
+				continue;
+			}
+			Channels channels = new Channels(animation);
+			SequenceTiming timing = entry.getValue();
+			for (int frame = 0; frame < timing.frameCount(); frame++)
+			{
+				double[][] target = skinning(skin, inverseBinds, channels, timing.startTime(frame));
+				for (int v : candidates)
+				{
+					double x = mesh.getVerticesX()[v];
+					double y = mesh.getVerticesY()[v];
+					double z = mesh.getVerticesZ()[v];
+					error[v] = Math.max(error[v], distance(Mat4.transformPoint(target[heaviest[v]], x, y, z),
+						mixed(target, mixSlots[v], mixWeights[v], x, y, z)));
+				}
+			}
+		}
+
+		int[][] groups = mesh.getVertexGroups();
+		int nextGroup = groups.length;
+		boolean[] blended = new boolean[vertices];
+		double collapsed = 0;
+		int kept = 0;
+		for (int v : candidates)
+		{
+			if (error[v] <= BLEND_THRESHOLD)
+			{
+				collapsed = Math.max(collapsed, error[v]);
+				kept++;
+				continue;
+			}
+			blends.add(new Blend(nextGroup++, v, mixSlots[v], mixWeights[v]));
+			blended[v] = true;
+		}
+		if (kept > 0)
+		{
+			result.report.add(kept + " vertices weighted to more than one joint keep only their heaviest, which moves "
+				+ "each at most " + String.format("%.1f", collapsed) + " units from where its weights put it");
+		}
+		if (blends.isEmpty())
+		{
+			return blends;
+		}
+
+		int[][] regrouped = new int[nextGroup][];
+		for (int g = 0; g < groups.length; g++)
+		{
+			regrouped[g] = Arrays.stream(groups[g]).filter(v -> !blended[v]).toArray();
+		}
+		for (Blend blend : blends)
+		{
+			regrouped[blend.group] = new int[]{blend.vertex};
+		}
+		result.mesh = new Mesh(mesh.getId(), mesh.getPriority(), mesh.getVerticesX(), mesh.getVerticesY(),
+			mesh.getVerticesZ(), mesh.getFaceIndices1(), mesh.getFaceIndices2(), mesh.getFaceIndices3(),
+			mesh.getFaceColors(), mesh.getFaceRenderTypes(), mesh.getFaceTransparencies(),
+			mesh.getFaceRenderPriorities(), mesh.getFaceTextures(), mesh.getTextureCoords(), mesh.getTexIndices1(),
+			mesh.getTexIndices2(), mesh.getTexIndices3(), regrouped);
+		return blends;
+	}
+
+	/** Per joint slot, its glTF skinning transform at a time, in engine space. */
+	private double[][] skinning(Gltf.Skin skin, double[][] inverseBinds, Channels channels, double time)
+	{
+		Map<Integer, double[]> worlds = new HashMap<>();
+		double[][] target = new double[skin.joints.size()][];
+		for (int slot = 0; slot < target.length; slot++)
+		{
+			double[] world = world(skin.joints.get(slot), channels, time, worlds);
+			target[slot] = Mat4.multiply(Mat4.RS_FROM_GLTF, Mat4.multiply(world, inverseBinds[slot]), Mat4.GLTF_FROM_RS);
+		}
+		return target;
+	}
+
+	/** Where a mix of joints' skinning transforms puts a point. */
+	private static double[] mixed(double[][] target, int[] slots, double[] weights, double x, double y, double z)
+	{
+		double[] mixed = new double[3];
+		for (int i = 0; i < slots.length; i++)
+		{
+			double[] p = Mat4.transformPoint(target[slots[i]], x, y, z);
+			mixed[0] += weights[i] * p[0];
+			mixed[1] += weights[i] * p[1];
+			mixed[2] += weights[i] * p[2];
+		}
+		return mixed;
 	}
 
 	/** The report's line for an animation the map leaves out. */
@@ -939,7 +1179,7 @@ final class GltfToMeshConverter
 
 	private Clip buildClip(int rigId, SequenceTiming timing, Gltf.Animation animation, Gltf.Skin skin,
 		List<Integer> order, int[] parentSlot, double[][] inverseBinds, double[][] restJoints,
-		double[][] centroids, int[] types)
+		double[][] centroids, int[] types, List<Blend> blends)
 	{
 		Channels channels = new Channels(animation);
 		int frames = timing.frameCount();
@@ -963,7 +1203,8 @@ final class GltfToMeshConverter
 		int[][] dx = new int[frames][];
 		int[][] dy = new int[frames][];
 		int[][] dz = new int[frames][];
-		double worstSkew = 0;
+		double[] worstSkew = new double[1];
+		Mesh mesh = result.mesh;
 
 		for (int frame = 0; frame < frames; frame++)
 		{
@@ -987,84 +1228,21 @@ final class GltfToMeshConverter
 			{
 				int slot = order.get(k);
 				double[] parent = parentSlot[slot] == -1 ? Mat4.identity() : realized[parentSlot[slot]];
-				double[] joint = restJoints[slot];
+				realized[slot] = solveJoint(target[slot], parent, restJoints[slot], centroids[slot],
+					k * TRANSFORMS_PER_JOINT, masks, values, worstSkew);
+			}
 
-				// Translate the subtree so the joint lands where the file puts it
-				double[] goal = Mat4.transformPoint(target[slot], joint[0], joint[1], joint[2]);
-				double[] current = Mat4.transformPoint(parent, joint[0], joint[1], joint[2]);
-				int[] t = {rint(goal[0] - current[0]), rint(goal[1] - current[1]), rint(goal[2] - current[2])};
-				double[] after = Mat4.multiply(Mat4.translation(t[0], t[1], t[2]), parent);
-				double[] pivot = Mat4.transformPoint(after, joint[0], joint[1], joint[2]);
-
-				// Whatever linear change is left after the ancestors, split into the rotate op and then
-				// the scale op the engine applies after it about the same pivot: remaining = S * R,
-				// with S along the model axes. That is exact whenever the rows of what remains are
-				// orthogonal - always, for a joint that only rotates - and approximate otherwise. A row
-				// scaled to nothing, as when a clip hides a group, is completed around the others.
-				double[] remaining = Mat4.multiply(target[slot], Mat4.invert(after));
-				double[][] rows = new double[3][3];
-				double[] scale = new double[3];
-				for (int row = 0; row < 3; row++)
-				{
-					for (int col = 0; col < 3; col++)
-					{
-						rows[row][col] = Mat4.get(remaining, row, col);
-					}
-					scale[row] = Math.sqrt(rows[row][0] * rows[row][0] + rows[row][1] * rows[row][1]
-						+ rows[row][2] * rows[row][2]);
-				}
-				double[][] unitRows = Mat4.unitAxes(rows, scale);
-				double[] rotation = Mat4.identity();
-				for (int row = 0; row < 3; row++)
-				{
-					for (int col = 0; col < 3; col++)
-					{
-						Mat4.set(rotation, row, col, unitRows[row][col]);
-					}
-				}
-				worstSkew = Math.max(worstSkew, Mat4.shear(transpose(rotation)));
-
-				double[] euler = Mat4.rsEuler(Mat4.rotationOnly(rotation));
-				int ax = Mat4.quantizeAngle(euler[0]);
-				int ay = Mat4.quantizeAngle(euler[1]);
-				int az = Mat4.quantizeAngle(euler[2]);
-				int sx = rint(scale[0] * Rig.SCALE_UNIT);
-				int sy = rint(scale[1] * Rig.SCALE_UNIT);
-				int sz = rint(scale[2] * Rig.SCALE_UNIT);
-				boolean rotates = ax != 0 || ay != 0 || az != 0;
-				boolean scales = sx != Rig.SCALE_UNIT || sy != Rig.SCALE_UNIT || sz != Rig.SCALE_UNIT;
-
-				// The pivot the engine will compute is the centroid of the joint's own group plus the
-				// op's delta, so the delta is whatever closes the gap to the joint - or, for a joint
-				// with no vertices of its own, the joint's absolute position
-				int[] delta = {0, 0, 0};
-				double[] realizedPivot = pivot;
-				if (rotates || scales)
-				{
-					double[] centroid = centroids[slot] == null ? new double[3]
-						: Mat4.transformPoint(after, centroids[slot][0], centroids[slot][1], centroids[slot][2]);
-					delta = new int[]{rint(pivot[0] - centroid[0]), rint(pivot[1] - centroid[1]), rint(pivot[2] - centroid[2])};
-					realizedPivot = new double[]{centroid[0] + delta[0], centroid[1] + delta[1], centroid[2] + delta[2]};
-				}
-
-				// What the engine will actually do, rounding and quantisation included - the next joint
-				// down is solved against this, so errors never compound along a limb
-				double[] linear = Mat4.multiply(
-					Mat4.scale(sx / (double) Rig.SCALE_UNIT, sy / (double) Rig.SCALE_UNIT, sz / (double) Rig.SCALE_UNIT),
-					Mat4.rsRotation(ax, ay, az));
-				realized[slot] = rotates || scales
-					? Mat4.multiply(
-						Mat4.translation(realizedPivot[0], realizedPivot[1], realizedPivot[2]),
-						linear,
-						Mat4.translation(-realizedPivot[0], -realizedPivot[1], -realizedPivot[2]),
-						after)
-					: after;
-
-				int base = k * TRANSFORMS_PER_JOINT;
-				masks[base] = mask(t[0], t[1], t[2], 0, values);
-				masks[base + 1] = rotates || scales ? mask(delta[0], delta[1], delta[2], 0, values) : 0;
-				masks[base + 2] = rotates ? mask(ax, ay, az, 0, values) : 0;
-				masks[base + 3] = scales ? mask(sx, sy, sz, Rig.SCALE_UNIT, values) : 0;
+			// Each blend moves on its own, to where the mix of its joints' skinning transforms puts it
+			for (int b = 0; b < blends.size(); b++)
+			{
+				Blend blend = blends.get(b);
+				double x = mesh.getVerticesX()[blend.vertex];
+				double y = mesh.getVerticesY()[blend.vertex];
+				double z = mesh.getVerticesZ()[blend.vertex];
+				double[] to = mixed(target, blend.slots, blend.weights, x, y, z);
+				int[] t = {rint(to[0] - x), rint(to[1] - y), rint(to[2] - z)};
+				masks[order.size() * TRANSFORMS_PER_JOINT + b] = mask(t[0], t[1], t[2], 0, values);
+				blendResidual = Math.max(blendResidual, distance(new double[]{x + t[0], y + t[1], z + t[2]}, to));
 			}
 
 			int[][] ops = FrameOps.build(types, masks, values.stream().mapToInt(Integer::intValue).toArray());
@@ -1074,14 +1252,102 @@ final class GltfToMeshConverter
 			dz[frame] = ops[3];
 		}
 
-		if (worstSkew > 1e-3)
+		if (worstSkew[0] > 1e-3)
 		{
 			result.report.add("Animation '" + animation.name + "' scales a joint along axes of its own rather than "
-				+ "the model's (skew " + String.format("%.3f", worstSkew) + "); the engine scales along the model "
+				+ "the model's (skew " + String.format("%.3f", worstSkew[0]) + "); the engine scales along the model "
 				+ "axes only, so that joint's pose is approximate");
 		}
 
 		return new Clip(timing.sequenceId, rigId, transforms, dx, dy, dz);
+	}
+
+	/**
+	 * Solves one joint's four ops - translate, pivot, rotate and scale, from {@code base} - taking it
+	 * from {@code parent} to {@code target}, the skinning transform it has to realize, and returns what
+	 * the engine will actually do, rounding and quantisation included.
+	 *
+	 * @param joint    where the joint sits at rest
+	 * @param centroid the rest centroid of the joint's own group, which the engine pivots about, or
+	 *                 null when the group has no vertices
+	 */
+	private static double[] solveJoint(double[] target, double[] parent, double[] joint, double[] centroid, int base,
+		int[] masks, List<Integer> values, double[] worstSkew)
+	{
+		// Translate the subtree so the joint lands where the file puts it
+		double[] goal = Mat4.transformPoint(target, joint[0], joint[1], joint[2]);
+		double[] current = Mat4.transformPoint(parent, joint[0], joint[1], joint[2]);
+		int[] t = {rint(goal[0] - current[0]), rint(goal[1] - current[1]), rint(goal[2] - current[2])};
+		double[] after = Mat4.multiply(Mat4.translation(t[0], t[1], t[2]), parent);
+		double[] pivot = Mat4.transformPoint(after, joint[0], joint[1], joint[2]);
+
+		// Whatever linear change is left after the ancestors, split into the rotate op and then
+		// the scale op the engine applies after it about the same pivot: remaining = S * R,
+		// with S along the model axes. That is exact whenever the rows of what remains are
+		// orthogonal - always, for a joint that only rotates - and approximate otherwise. A row
+		// scaled to nothing, as when a clip hides a group, is completed around the others.
+		double[] remaining = Mat4.multiply(target, Mat4.invert(after));
+		double[][] rows = new double[3][3];
+		double[] scale = new double[3];
+		for (int row = 0; row < 3; row++)
+		{
+			for (int col = 0; col < 3; col++)
+			{
+				rows[row][col] = Mat4.get(remaining, row, col);
+			}
+			scale[row] = Math.sqrt(rows[row][0] * rows[row][0] + rows[row][1] * rows[row][1]
+				+ rows[row][2] * rows[row][2]);
+		}
+		double[][] unitRows = Mat4.unitAxes(rows, scale);
+		double[] rotation = Mat4.identity();
+		for (int row = 0; row < 3; row++)
+		{
+			for (int col = 0; col < 3; col++)
+			{
+				Mat4.set(rotation, row, col, unitRows[row][col]);
+			}
+		}
+		worstSkew[0] = Math.max(worstSkew[0], Mat4.shear(transpose(rotation)));
+
+		double[] euler = Mat4.rsEuler(Mat4.rotationOnly(rotation));
+		int ax = Mat4.quantizeAngle(euler[0]);
+		int ay = Mat4.quantizeAngle(euler[1]);
+		int az = Mat4.quantizeAngle(euler[2]);
+		int sx = rint(scale[0] * Rig.SCALE_UNIT);
+		int sy = rint(scale[1] * Rig.SCALE_UNIT);
+		int sz = rint(scale[2] * Rig.SCALE_UNIT);
+		boolean rotates = ax != 0 || ay != 0 || az != 0;
+		boolean scales = sx != Rig.SCALE_UNIT || sy != Rig.SCALE_UNIT || sz != Rig.SCALE_UNIT;
+
+		// The pivot the engine will compute is the centroid of the joint's own group plus the
+		// op's delta, so the delta is whatever closes the gap to the joint - or, for a joint
+		// with no vertices of its own, the joint's absolute position
+		int[] delta = {0, 0, 0};
+		double[] realizedPivot = pivot;
+		if (rotates || scales)
+		{
+			double[] moved = centroid == null ? new double[3]
+				: Mat4.transformPoint(after, centroid[0], centroid[1], centroid[2]);
+			delta = new int[]{rint(pivot[0] - moved[0]), rint(pivot[1] - moved[1]), rint(pivot[2] - moved[2])};
+			realizedPivot = new double[]{moved[0] + delta[0], moved[1] + delta[1], moved[2] + delta[2]};
+		}
+
+		masks[base] = mask(t[0], t[1], t[2], 0, values);
+		masks[base + 1] = rotates || scales ? mask(delta[0], delta[1], delta[2], 0, values) : 0;
+		masks[base + 2] = rotates ? mask(ax, ay, az, 0, values) : 0;
+		masks[base + 3] = scales ? mask(sx, sy, sz, Rig.SCALE_UNIT, values) : 0;
+
+		// The next joint down is solved against this, so errors never compound along a limb
+		double[] linear = Mat4.multiply(
+			Mat4.scale(sx / (double) Rig.SCALE_UNIT, sy / (double) Rig.SCALE_UNIT, sz / (double) Rig.SCALE_UNIT),
+			Mat4.rsRotation(ax, ay, az));
+		return rotates || scales
+			? Mat4.multiply(
+				Mat4.translation(realizedPivot[0], realizedPivot[1], realizedPivot[2]),
+				linear,
+				Mat4.translation(-realizedPivot[0], -realizedPivot[1], -realizedPivot[2]),
+				after)
+			: after;
 	}
 
 	/**
