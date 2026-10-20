@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -555,7 +556,31 @@ public final class AssetCodec
 		int[][] dy = readIntMatrix(data);
 		int[][] dz = readIntMatrix(data);
 		checkClip(sequenceId, transforms, dx, dy, dz);
+		shareRepeatedFrames(transforms, dx, dy, dz);
 		return new Clip(sequenceId, rigId, transforms, dx, dy, dz);
+	}
+
+	/**
+	 * Points each frame that repeats the one before it at that frame's rows, so they are held once.
+	 * <p>
+	 * A skeletal clip holds each pose for several frames - about three in four of Yama's repeat the
+	 * one before - and a clip is only ever read, so sharing its rows changes nothing but the memory
+	 * it takes.
+	 */
+	private static void shareRepeatedFrames(int[][] transforms, int[][] dx, int[][] dy, int[][] dz)
+	{
+		for (int frame = 1; frame < transforms.length; frame++)
+		{
+			int previous = frame - 1;
+			if (Arrays.equals(transforms[frame], transforms[previous]) && Arrays.equals(dx[frame], dx[previous])
+				&& Arrays.equals(dy[frame], dy[previous]) && Arrays.equals(dz[frame], dz[previous]))
+			{
+				transforms[frame] = transforms[previous];
+				dx[frame] = dx[previous];
+				dy[frame] = dy[previous];
+				dz[frame] = dz[previous];
+			}
+		}
 	}
 
 	/**
