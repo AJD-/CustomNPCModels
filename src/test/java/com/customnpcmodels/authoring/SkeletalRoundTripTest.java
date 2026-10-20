@@ -33,7 +33,6 @@ import com.customnpcmodels.inject.Clip;
 import com.customnpcmodels.inject.Skinner;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -66,12 +65,47 @@ public class SkeletalRoundTripTest
 	@Test
 	public void testYamiAnimatesAsTheClientDoes() throws Exception
 	{
+		StringBuilder report = new StringBuilder();
+		double[] measured = againstTheClient(NpcID.YAMA_PET,
+			new int[]{AnimationID.NPC_YAMA01_IDLE01, AnimationID.NPC_YAMA01_WALK03}, false, report);
+		assertTrue(report.toString(), measured[0] <= WORST);
+	}
+
+	/**
+	 * Kephri's waking clip scales bones 24 to 28 to nothing for a moment, and the bones that hang from
+	 * them go with them. The converter must still build it, and every vertex the client collapses must
+	 * land where the client puts it. Only those are compared: her two long front limbs and her squashed
+	 * dung ball pose further off than WORST in this clip for reasons of their own (measured: up to 37).
+	 */
+	@Test
+	public void testKephriWakesWithBonesScaledToNothing() throws Exception
+	{
+		StringBuilder report = new StringBuilder();
+		double[] measured = againstTheClient(NpcID.TOA_KEPHRI_BOSS_WEAK,
+			new int[]{AnimationID.NPC_KEPHRI_STUNNED_WAKEUP}, true, report);
+		assertTrue(report.toString(), measured[1] > 0);
+		assertTrue(report.toString(), measured[0] <= WORST);
+	}
+
+	/**
+	 * Exports the NPC with the sequences, converts it as the asset generator does, and poses it with
+	 * the plugin's skinner against the skeletal decoders. With collapsedOnly, only the vertices the
+	 * client has scaled to nothing on a frame are compared on it. Returns the worst vertex error, in
+	 * engine units, and how many vertex poses were compared, with a line per sequence added to report.
+	 */
+	private double[] againstTheClient(int npcId, int[] sequences, boolean collapsedOnly, StringBuilder report)
+		throws Exception
+	{
 		Store store = LiveFixtures.store();
-		NpcDefinition yami = LiveFixtures.npc(NpcID.YAMA_PET);
-		int[] sequences = {AnimationID.NPC_YAMA01_IDLE01, AnimationID.NPC_YAMA01_WALK03};
+		NpcDefinition npc = LiveFixtures.npc(npcId);
 
 		Path out = folder.newFolder().toPath();
-		GltfExporter.export(store, yami, new LinkedHashSet<>(Arrays.asList(sequences[0], sequences[1])), out);
+		LinkedHashSet<Integer> exported = new LinkedHashSet<>();
+		for (int sequence : sequences)
+		{
+			exported.add(sequence);
+		}
+		GltfExporter.export(store, npc, exported, out);
 		Path glb;
 		try (Stream<Path> files = Files.list(out))
 		{
@@ -86,10 +120,11 @@ public class SkeletalRoundTripTest
 		GltfToMeshConverter.Result result = GltfToMeshConverter.convert(Files.readAllBytes(glb), 1, 1, timings);
 		assertTrue("vertex numbering kept", result.keptVertexNumbering);
 
-		ModelDefinition model = CacheFiles.loadModel(store, yami.models[0]);
+		ModelDefinition model = CacheFiles.loadModel(store, npc.models[0]);
 		Skinner skinner = new Skinner();
-		StringBuilder report = new StringBuilder(String.join("\n", result.report)).append('\n');
+		report.append(String.join("\n", result.report)).append('\n');
 		double worst = 0;
+		long compared = 0;
 		for (int sequence : sequences)
 		{
 			Clip clip = result.clipsByAnimation.get(String.valueOf(sequence));
@@ -105,10 +140,16 @@ public class SkeletalRoundTripTest
 				float[] y = new float[vertices];
 				float[] z = new float[vertices];
 				skinner.pose(result.mesh, result.rig, clip, frame, x, y, z);
+				double[][] finals = SkeletalPoser.finalMatrices(skeleton, animation, frame);
 				float[][] truth = SkeletalPoser.skin(model.vertexX, model.vertexY, model.vertexZ, model.animayaGroups,
-					model.animayaScales, SkeletalPoser.finalMatrices(skeleton, animation, frame));
+					model.animayaScales, finals);
 				for (int v = 0; v < vertices; v++)
 				{
+					if (collapsedOnly && !collapsed(model.animayaGroups[v], finals))
+					{
+						continue;
+					}
+					compared++;
 					sequenceWorst = Math.max(sequenceWorst, Math.max(Math.abs(x[v] - truth[0][v]),
 						Math.max(Math.abs(y[v] - truth[1][v]), Math.abs(z[v] - truth[2][v]))));
 				}
@@ -117,6 +158,23 @@ public class SkeletalRoundTripTest
 				clip.getFrameCount(), ops, sequenceWorst));
 			worst = Math.max(worst, sequenceWorst);
 		}
-		assertTrue(report.toString(), worst <= WORST);
+		return new double[]{worst, compared};
+	}
+
+	/** Whether every bone a vertex is weighted to has been scaled to nothing. */
+	private static boolean collapsed(int[] bones, double[][] finals)
+	{
+		if (bones == null || bones.length == 0)
+		{
+			return false;
+		}
+		for (int bone : bones)
+		{
+			if (!Mat4.isCollapsed(finals[bone]))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 }

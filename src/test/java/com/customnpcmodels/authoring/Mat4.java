@@ -142,6 +142,22 @@ final class Mat4
 		return Math.abs(determinant(m)) >= SINGULAR;
 	}
 
+	/** Whether a transform's linear part has scaled every axis to nothing. */
+	static boolean isCollapsed(double[] m)
+	{
+		for (int col = 0; col < 3; col++)
+		{
+			double x = m[col * 4];
+			double y = m[col * 4 + 1];
+			double z = m[col * 4 + 2];
+			if (Math.sqrt(x * x + y * y + z * z) >= COLLAPSED)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	/** Determinant of an affine matrix's linear part. */
 	private static double determinant(double[] m)
 	{

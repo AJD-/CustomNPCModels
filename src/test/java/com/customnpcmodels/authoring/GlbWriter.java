@@ -764,7 +764,7 @@ final class GlbWriter
 				double[][] world = worldPose(mesh, tree, rig, clip, Math.min(frame, frames - 1));
 				for (int joint = 0; joint < joints; joint++)
 				{
-					alwaysCollapsed[joint] &= isCollapsed(world[joint]);
+					alwaysCollapsed[joint] &= Mat4.isCollapsed(world[joint]);
 
 					double[] local = tree.parents[joint] == -1
 						? world[joint]
@@ -880,22 +880,6 @@ final class GlbWriter
 		report.add("Vertex groups " + detached + " hang from a joint some clip flattens; each is parented to "
 			+ "the nearest ancestor that stays whole instead");
 		return tree.reparentedAround(singular);
-	}
-
-	/** Whether a transform's linear part has scaled every axis to nothing. */
-	private static boolean isCollapsed(double[] m)
-	{
-		for (int col = 0; col < 3; col++)
-		{
-			double x = m[col * 4];
-			double y = m[col * 4 + 1];
-			double z = m[col * 4 + 2];
-			if (Math.sqrt(x * x + y * y + z * z) >= Mat4.COLLAPSED)
-			{
-				return false;
-			}
-		}
-		return true;
 	}
 
 	/** The faces with at least one corner in the group. */

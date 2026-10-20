@@ -1281,6 +1281,18 @@ final class GltfToMeshConverter
 		double[] after = Mat4.multiply(Mat4.translation(t[0], t[1], t[2]), parent);
 		double[] pivot = Mat4.transformPoint(after, joint[0], joint[1], joint[2]);
 
+		// A parent scaled to nothing, as skeletal clips do to hide bones, has already gathered this
+		// joint's whole subtree into one point, and no rotate or scale can spread a point out again.
+		// The joint's own transform is collapsed with its parent's, so the translate alone lands it
+		if (Mat4.isCollapsed(after))
+		{
+			masks[base] = mask(t[0], t[1], t[2], 0, values);
+			masks[base + 1] = 0;
+			masks[base + 2] = 0;
+			masks[base + 3] = 0;
+			return after;
+		}
+
 		// Whatever linear change is left after the ancestors, split into the rotate op and then
 		// the scale op the engine applies after it about the same pivot: remaining = S * R,
 		// with S along the model axes. That is exact whenever the rows of what remains are
