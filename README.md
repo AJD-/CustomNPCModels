@@ -19,6 +19,8 @@ first draws its models, and the other stands down, so turn one of them off. If y
 Interact Highlight outlines` option, turn it on in only one of the two. An upcoming Retro NPC
 Swapper release will run alongside this plugin.
 
+**Custom Servants** can share the renderer with this plugin; they stack on each other in either order.
+
 ## The side panel
 
 The plugin's button in the sidebar opens a list of every model pack it found. From there you can:

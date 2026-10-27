@@ -38,14 +38,15 @@ import org.junit.Test;
 /**
  * Walking the stack of model-substituting decorators in the draw callbacks slot.
  *
- * <p>Retro NPC Swapper's decorator is only ever named here, never stubbed: a class declared under
- * its real name would sit on the {@code run} task's classpath, and the Hub plugin's parent-first
+ * <p>Retro NPC Swapper's and Custom Servants' decorators are only ever named here, never stubbed: a class declared under
+ * a real name would sit on the {@code run} task's classpath, and the Hub plugin's parent-first
  * classloader could resolve Retro's own decorator to it. So the partner is covered by name through
  * {@link RendererChain#canUnwrap}, and chains are built from this plugin's real decorator.
  */
 public class RendererChainTest
 {
 	private static final String RETRO = "com.retronpcswapper.RetroDrawCallbacks";
+	private static final String SERVANTS = "com.customservants.ServantDrawCallbacks";
 
 	private final DrawCallbacks renderer = mock(DrawCallbacks.class);
 
@@ -58,6 +59,12 @@ public class RendererChainTest
 	public void testRetroIsSeenThroughWhenItSuppliesItsDelegate()
 	{
 		assertTrue(RendererChain.canUnwrap(RETRO, mock(DrawCallbacks.class, withSettings().extraInterfaces(Supplier.class))));
+	}
+
+	@Test
+	public void testCustomServantsIsSeenThroughWhenItSuppliesItsDelegate()
+	{
+		assertTrue(RendererChain.canUnwrap(SERVANTS, mock(DrawCallbacks.class, withSettings().extraInterfaces(Supplier.class))));
 	}
 
 	@Test

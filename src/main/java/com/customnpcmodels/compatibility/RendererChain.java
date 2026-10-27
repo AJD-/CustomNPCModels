@@ -31,7 +31,7 @@ import net.runelite.api.hooks.DrawCallbacks;
 /**
  * Sees through the stack of model-substituting decorators sitting in the draw callbacks slot.
  * <p>
- * This plugin and Retro NPC Swapper each wrap the renderer to swap NPC models, and can stack on
+ * This plugin, Retro NPC Swapper and Custom Servants each wrap the renderer to swap NPC models, and can stack on
  * top of one another. They are loaded by different classloaders, so neither can name the other's
  * decorator type. Instead, each decorator also implements {@link Supplier}, a JDK type both can see,
  * returning the callbacks it wraps. Only the decorators named here are unwrapped: anything else is
@@ -42,7 +42,8 @@ public final class RendererChain
 {
 	/** Decorators known to forward everything but {@code drawTemp} and to supply their delegate. */
 	static final Set<String> KNOWN_DECORATORS = Set.of(
-			"com.customnpcmodels.CustomDrawCallbacks", "com.retronpcswapper.RetroDrawCallbacks");
+			"com.customnpcmodels.CustomDrawCallbacks", "com.retronpcswapper.RetroDrawCallbacks",
+			"com.customservants.ServantDrawCallbacks");
 
 	/** More than the two known decorators could ever stack; stops a pathological chain. */
 	private static final int MAX_DEPTH = 8;
