@@ -157,7 +157,6 @@ public class CustomNpcModelsPlugin extends Plugin
 		packLoader.load();
 		clientThread.invoke(() ->
 		{
-			outlineTakeover.restoreStaleStash();
 			recheckLoadedNpcs();
 			attach();
 		});
