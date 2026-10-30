@@ -182,6 +182,7 @@ class OutlineTakeover
 		log.debug("Handshake done; Retro NPC Swapper {} the outlines",
 			partnerOutlines.isOwning() ? "draws" : "does not draw");
 		partnerOutlines.setHandshakeDone();
+		restoreStaleStashIfIdle();
 		publish(true);
 		sync();
 	}
@@ -230,16 +231,30 @@ class OutlineTakeover
 	{
 		// The carrier may still hold a model Retro posed
 		outliner.clear();
+		restoreStaleStashIfIdle();
 		sync();
 	}
 
 	/**
-	 * A session that died while suppressing left Interact Highlight's NPC outlines off. Puts them
-	 * back, before the next {@link #sync} decides whether to suppress again.
+	 * Whether a stash left by a session that died while suppressing can be put back: not while this
+	 * plugin or Retro has the outlines, when the suppression is live and a restore would undo it -
+	 * and look to Retro like the user re-enabling Interact Highlight's outlines.
 	 */
-	void restoreStaleStash()
+	static boolean shouldRestoreStaleStash(boolean takenOver, boolean partnerOwning)
 	{
-		interactHighlight.restoreStaleStash();
+		return !takenOver && !partnerOwning;
+	}
+
+	/**
+	 * Puts a stale stash back once the handshake says nobody has the outlines, before the next
+	 * {@link #sync} decides whether to suppress again.
+	 */
+	private void restoreStaleStashIfIdle()
+	{
+		if (partnerOutlines.isHandshakeDone() && shouldRestoreStaleStash(takenOver, partnerOutlines.isOwning()))
+		{
+			interactHighlight.restoreStaleStash();
+		}
 	}
 
 	/**
@@ -255,7 +270,7 @@ class OutlineTakeover
 		outliner.clear();
 		takenOver = false;
 
-		interactHighlight.restoreStaleStash();
+		restoreStaleStashIfIdle();
 		sync();
 		// sync() sees no change when the new profile is not taken over either, but Retro may still
 		// think we draw the outlines

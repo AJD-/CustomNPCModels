@@ -58,6 +58,15 @@ public class OutlineTakeoverDecisionTest
 	}
 
 	@Test
+	public void testRestoresAStaleStashOnlyWhileNobodyHasTheOutlines()
+	{
+		assertTrue(OutlineTakeover.shouldRestoreStaleStash(false, false));
+		// A partner's suppression is live, not stale, and so is ours
+		assertFalse(OutlineTakeover.shouldRestoreStaleStash(false, true));
+		assertFalse(OutlineTakeover.shouldRestoreStaleStash(true, false));
+	}
+
+	@Test
 	public void testLetsGoWhenNoLongerWanted()
 	{
 		assertFalse(OutlineTakeover.shouldTakeOver(false, true, true, false));
