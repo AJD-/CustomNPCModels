@@ -27,6 +27,7 @@ package com.customnpcmodels.inject;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -184,6 +185,41 @@ public class AssetCodecTest
 		assertEquals(-5, restoredClip.getDx(0, 1));
 		assertEquals(128, restoredClip.getDy(0, 1));
 		assertEquals(3, restoredClip.getDz(0, 1));
+	}
+
+	/**
+	 * A skeletal clip holds each pose for several frames, so most of its frames repeat the one
+	 * before: decoding shares those frames' rows instead of holding a copy of each. A frame that
+	 * matches its predecessor in all but one column is a different frame and keeps its own.
+	 */
+	@Test
+	public void testARepeatedFrameSharesThePreviousFramesRows() throws IOException
+	{
+		Clip held = new Clip(262, 338,
+			new int[][]{{0, 1}, {0, 1}, {1}, {0, 1}, {0, 1}},
+			new int[][]{{5, -5}, {5, -5}, {0}, {5, -5}, {5, -5}},
+			new int[][]{{0, 128}, {0, 128}, {7}, {0, 128}, {0, 128}},
+			new int[][]{{-3, 3}, {-3, 3}, {0}, {-3, 3}, {-3, 4}});
+		Map<Integer, Rig> rigs = new LinkedHashMap<>();
+		rigs.put(338, rig());
+		Clip restored = roundTrip(new AssetBundle(new LinkedHashMap<>(), rigs, Collections.singletonList(held)))
+			.getClip(338, 262);
+
+		assertSame(restored.getTransforms()[0], restored.getTransforms()[1]);
+		assertSame(restored.getAllDx()[0], restored.getAllDx()[1]);
+		assertSame(restored.getAllDy()[0], restored.getAllDy()[1]);
+		assertSame(restored.getAllDz()[0], restored.getAllDz()[1]);
+		assertNotSame("a different frame keeps its own rows", restored.getTransforms()[1], restored.getTransforms()[2]);
+		assertNotSame("only the frame just before is shared", restored.getTransforms()[2], restored.getTransforms()[3]);
+		assertNotSame("a frame differing in one column is its own", restored.getAllDz()[3], restored.getAllDz()[4]);
+
+		for (int frame = 0; frame < held.getFrameCount(); frame++)
+		{
+			assertArrayEquals(held.getTransforms()[frame], restored.getTransforms()[frame]);
+			assertArrayEquals(held.getAllDx()[frame], restored.getAllDx()[frame]);
+			assertArrayEquals(held.getAllDy()[frame], restored.getAllDy()[frame]);
+			assertArrayEquals(held.getAllDz()[frame], restored.getAllDz()[frame]);
+		}
 	}
 
 	@Test
