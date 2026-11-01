@@ -24,6 +24,8 @@
  */
 package com.customnpcmodels.compatibility;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -31,30 +33,73 @@ import net.runelite.api.Model;
 import net.runelite.api.NPC;
 
 /**
- * What Retro NPC Swapper last said about Interact Highlight's NPC outlines: whether it draws them,
- * and how to pose the NPCs it swaps so ours can be drawn around them. Recorded as soon as a message
- * arrives, on whatever thread posted it, so a decision made after it always sees it.
+ * What each partner in {@link ModelSwapProtocol#PARTNERS} last said about Interact Highlight's NPC
+ * outlines: whether it draws them, and how to pose the NPCs it swaps so ours can be drawn around
+ * them.
+ * <p>
+ * Recorded as soon as a message arrives, on whatever thread posted it, so a decision made after it
+ * always sees it. Our own messages and those of unknown sources are ignored. State is kept per
+ * source, so one partner stopping ({@link #forget}) leaves the other's alone.
+ * <p>
+ * {@link #pose(NPC)} tries the partners' posers in {@link ModelSwapProtocol#PARTNERS} order and
+ * takes the first model, so Custom Servants' wins over Retro NPC Swapper's: a servant it claims is
+ * its to draw, so its poser has the model on screen. A partner that draws nothing for the NPC, or
+ * fails to pose it, passes it on to the next. Posing is client thread only.
  */
 @Singleton
 @Slf4j
 public class PartnerOutlines
 {
-	private volatile boolean owning;
-	private volatile Function<NPC, Model> poser;
+	// Written by accept, on the sender's thread, and read on the client thread
+	private final Map<String, ModelSwapProtocol.Outlines> bySource = new ConcurrentHashMap<>();
 
-	// Whether this start has asked Retro for its state, and so whether its silence means it is absent
+	// Whether this start has asked the partners for their state, and so whether their silence means
+	// they are absent
 	private volatile boolean handshakeDone;
 
-	public void accept(ModelSwapProtocol.Outlines outlines)
+	/**
+	 * Records {@code source}'s outlines state, replacing what it said before. A source not in
+	 * {@link ModelSwapProtocol#PARTNERS}, ours included, is ignored. Any thread.
+	 */
+	public void accept(String source, ModelSwapProtocol.Outlines outlines)
 	{
-		owning = outlines.isOwning();
-		poser = outlines.getPoser();
+		// List.of throws on a null lookup, and a partner's message must not throw in our handler
+		if (source == null || outlines == null || !ModelSwapProtocol.PARTNERS.contains(source))
+		{
+			log.debug("Ignoring outlines {} from {}", outlines, source);
+			return;
+		}
+
+		bySource.put(source, outlines);
 	}
 
-	/** Whether Retro has taken Interact Highlight's NPC outlines over. */
-	public boolean isOwning()
+	/** Forgets {@code source}'s state, as it stops. Any thread. */
+	public void forget(String source)
 	{
-		return owning;
+		if (source != null)
+		{
+			bySource.remove(source);
+		}
+	}
+
+	/** Whether {@code source} has taken Interact Highlight's NPC outlines over. Any thread. */
+	public boolean isOwning(String source)
+	{
+		ModelSwapProtocol.Outlines outlines = source == null ? null : bySource.get(source);
+		return outlines != null && outlines.isOwning();
+	}
+
+	/** Whether any partner has taken Interact Highlight's NPC outlines over. Any thread. */
+	public boolean isAnyOwning()
+	{
+		for (String source : ModelSwapProtocol.PARTNERS)
+		{
+			if (isOwning(source))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public boolean isHandshakeDone()
@@ -67,28 +112,41 @@ public class PartnerOutlines
 		handshakeDone = true;
 	}
 
-	/** Forgets Retro's state, as it stops. */
-	public void forget()
-	{
-		owning = false;
-		poser = null;
-	}
-
-	/** Forgets everything, as this plugin stops. */
+	/** Forgets everything, as this plugin stops. Any thread. */
 	public void reset()
 	{
-		forget();
+		bySource.clear();
 		handshakeDone = false;
 	}
 
 	/**
-	 * The model Retro draws an NPC with, or null when it draws none for it. Client thread only, and
-	 * the model is overwritten by Retro's next pose, so it has to be used straight away.
+	 * The model a partner draws an NPC with, trying them in {@link ModelSwapProtocol#PARTNERS}
+	 * order, or null when none draws one for it. Client thread only, and the model is overwritten
+	 * by that partner's next pose, so it has to be used straight away.
 	 */
 	public Model pose(NPC npc)
 	{
-		Function<NPC, Model> partnerPoser = poser;
-		if (partnerPoser == null)
+		for (String source : ModelSwapProtocol.PARTNERS)
+		{
+			Model model = pose(source, npc);
+			if (model != null)
+			{
+				return model;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The model {@code source} draws an NPC with, or null when it has no poser or draws none for
+	 * it. Client thread only, and the model is overwritten by that partner's next pose, so it has to
+	 * be used straight away.
+	 */
+	public Model pose(String source, NPC npc)
+	{
+		ModelSwapProtocol.Outlines outlines = source == null ? null : bySource.get(source);
+		Function<NPC, Model> poser = outlines == null ? null : outlines.getPoser();
+		if (poser == null)
 		{
 			return null;
 		}
@@ -96,11 +154,11 @@ public class PartnerOutlines
 		// Another plugin's code: whatever goes wrong in it costs that NPC its outline, not the frame
 		try
 		{
-			return partnerPoser.apply(npc);
+			return poser.apply(npc);
 		}
 		catch (RuntimeException e)
 		{
-			log.debug("Retro NPC Swapper could not pose NPC {}", npc.getId(), e);
+			log.debug("{} could not pose NPC {}", source, npc.getId(), e);
 			return null;
 		}
 	}

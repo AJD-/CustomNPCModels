@@ -27,6 +27,7 @@ package com.customnpcmodels.compatibility;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -35,28 +36,32 @@ import net.runelite.api.NPC;
 import net.runelite.client.events.PluginMessage;
 
 /**
- * The messages this plugin and Retro NPC Swapper exchange over the event bus so both can run at once.
+ * The messages this plugin exchanges over the event bus with its partners, Retro NPC Swapper and
+ * Custom Servants, so they can all run at once.
  * <p>
  * This plugin posts a {@code claims} message naming every NPC id it is currently drawing a custom
  * model for, and Retro NPC Swapper leaves those NPCs alone entirely - no retro model and no retro
  * animations, since this plugin's clips are keyed to the live sequences.
  * <p>
- * Both plugins can draw Interact Highlight's NPC outlines in its place, and only one may at a time:
- * two would each turn that plugin's settings off and stash the other's {@code false} as the user's
- * choice. Each posts an {@code outlines} message saying whether it has taken the outlines over, and
- * the first to do so keeps them until it posts that it has let go. The message also carries a
- * poser, so the one drawing can outline the NPCs the other swaps around the model on screen. The
- * one drawing posts {@code outlinesOptOut} when the user turns Interact Highlight's own outlines back
- * on, and the other turns its fix off too rather than taking the outlines over again.
+ * Any of the three plugins may draw Interact Highlight's NPC outlines in its place, and only one may
+ * at a time: two would each turn that plugin's settings off and stash the other's {@code false} as
+ * the user's choice. Each posts an {@code outlines} message saying whether it has taken the outlines
+ * over, and the first to do so keeps them until it posts that it has let go; the others hold back
+ * while any partner says it owns them. The message also carries a poser, so the one drawing can
+ * outline the NPCs the others swap around the model on screen. The one drawing posts
+ * {@code outlinesOptOut} when the user turns Interact Highlight's own outlines back on, and the
+ * others turn their fix off too rather than taking the outlines over again.
  * <p>
- * Each plugin posts {@code modelSyncReq} once it is listening, which the other answers by posting
- * its claims and outlines again, so start order does not matter. A plugin hears its own messages, so
- * every read names the partner it expects them from.
+ * Each plugin posts {@code modelSyncReq} once it is listening, which the others answer by posting
+ * their claims and outlines again, so start order does not matter. A plugin hears its own messages,
+ * so this one reads {@code outlines}, {@code outlinesOptOut} and {@code modelSyncReq} from every
+ * source in {@link #PARTNERS}, and never from its own.
  * <p>
- * The two plugins are loaded by different classloaders, so everything in a message is a JDK type or
- * a RuneLite API type, which both see through the client's classloader. A copy of this class lives in
- * each plugin and the two must stay in step; {@link #VERSION} is bumped on any incompatible change,
- * and a message of another version is ignored.
+ * The plugins are loaded by different classloaders, so everything in a message is a JDK type or a
+ * RuneLite API type, which all of them see through the client's classloader. A copy of this class
+ * lives in each of the three plugins and the copies must stay in step; {@link #VERSION} is bumped
+ * only on an incompatible change, and a message of another version is ignored. A third party taking
+ * part in the outlines added no message and no key, so the version is unchanged.
  */
 public final class ModelSwapProtocol
 {
@@ -77,6 +82,14 @@ public final class ModelSwapProtocol
 
 	public static final String SOURCE_CUSTOM_NPC_MODELS = "custom-npc-models";
 	public static final String SOURCE_RETRO_NPC_SWAPPER = "retro-npc-swapper";
+	public static final String SOURCE_CUSTOM_SERVANTS = "custom-servants";
+
+	/**
+	 * The other sources this plugin reads outlines, opt-outs and sync requests from, in the order
+	 * their posers are tried. Custom Servants comes first: a servant it claims is its to draw, so its
+	 * poser has the model on screen.
+	 */
+	public static final List<String> PARTNERS = List.of(SOURCE_CUSTOM_SERVANTS, SOURCE_RETRO_NPC_SWAPPER);
 
 	static final String KEY_VERSION = "version";
 	static final String KEY_SOURCE = "source";
@@ -230,6 +243,22 @@ public final class ModelSwapProtocol
 		return new Outlines((Boolean) owning, poser instanceof Function ? (Function<NPC, Model>) poser : null);
 	}
 
+	/**
+	 * The partner a {@code name} message is from, or null when {@code message} is anything else - of
+	 * another name or version, or from a source not in {@link #PARTNERS}.
+	 */
+	public static String partnerSource(PluginMessage message, String name)
+	{
+		if (!isMessage(message, name))
+		{
+			return null;
+		}
+
+		// List.of throws on a null lookup, and a malformed message must not throw in the handler
+		Object source = message.getData().get(KEY_SOURCE);
+		return source instanceof String && PARTNERS.contains(source) ? (String) source : null;
+	}
+
 	private static Map<String, Object> header(String source)
 	{
 		Map<String, Object> data = new HashMap<>();
@@ -240,11 +269,16 @@ public final class ModelSwapProtocol
 
 	private static boolean isFrom(PluginMessage message, String name, String source)
 	{
+		return isMessage(message, name) && source.equals(message.getData().get(KEY_SOURCE));
+	}
+
+	/** Whether {@code message} is a {@code name} message of this protocol, in a version it speaks. */
+	private static boolean isMessage(PluginMessage message, String name)
+	{
 		return message != null
 			&& NAMESPACE.equals(message.getNamespace())
 			&& name.equals(message.getName())
 			&& message.getData() != null
-			&& Integer.valueOf(VERSION).equals(message.getData().get(KEY_VERSION))
-			&& source.equals(message.getData().get(KEY_SOURCE));
+			&& Integer.valueOf(VERSION).equals(message.getData().get(KEY_VERSION));
 	}
 }

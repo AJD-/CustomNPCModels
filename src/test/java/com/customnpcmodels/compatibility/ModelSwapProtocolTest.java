@@ -172,4 +172,63 @@ public class ModelSwapProtocolTest
 		assertFalse(ModelSwapProtocol.isOptOut(ModelSwapProtocol.synMessage(ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER),
 			ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
 	}
+
+	@Test
+	public void testThePartnersAreCustomServantsThenRetro()
+	{
+		// The order is the order their posers are tried in, so it is part of the contract
+		assertEquals(Arrays.asList(ModelSwapProtocol.SOURCE_CUSTOM_SERVANTS, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER),
+			ModelSwapProtocol.PARTNERS);
+	}
+
+	@Test
+	public void testPartnerSourceNamesEachPartner()
+	{
+		for (String partner : ModelSwapProtocol.PARTNERS)
+		{
+			assertEquals(partner, ModelSwapProtocol.partnerSource(
+				ModelSwapProtocol.outlinesMessage(partner, true, null), ModelSwapProtocol.OUTLINES));
+			assertEquals(partner, ModelSwapProtocol.partnerSource(
+				ModelSwapProtocol.optOutMessage(partner), ModelSwapProtocol.OUTLINES_OPT_OUT));
+			assertEquals(partner, ModelSwapProtocol.partnerSource(
+				ModelSwapProtocol.synMessage(partner), ModelSwapProtocol.SYN));
+		}
+	}
+
+	@Test
+	public void testPartnerSourceIgnoresEveryoneElse()
+	{
+		String outlines = ModelSwapProtocol.OUTLINES;
+		String servants = ModelSwapProtocol.SOURCE_CUSTOM_SERVANTS;
+
+		// Ourselves, a stranger, no source, and a source that is not a string
+		assertNull(ModelSwapProtocol.partnerSource(
+			ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_CUSTOM_NPC_MODELS, true, null), outlines));
+		assertNull(ModelSwapProtocol.partnerSource(ModelSwapProtocol.outlinesMessage("some-plugin", true, null), outlines));
+		Map<String, Object> data = new HashMap<>(ModelSwapProtocol.outlinesMessage(servants, true, null).getData());
+		data.remove(ModelSwapProtocol.KEY_SOURCE);
+		assertNull(ModelSwapProtocol.partnerSource(new PluginMessage(ModelSwapProtocol.NAMESPACE, outlines, data), outlines));
+		data.put(ModelSwapProtocol.KEY_SOURCE, 1);
+		assertNull(ModelSwapProtocol.partnerSource(new PluginMessage(ModelSwapProtocol.NAMESPACE, outlines, data), outlines));
+
+		// Another version, another name, another namespace, or not a message at all
+		data = new HashMap<>(ModelSwapProtocol.outlinesMessage(servants, true, null).getData());
+		data.put(ModelSwapProtocol.KEY_VERSION, ModelSwapProtocol.VERSION + 1);
+		assertNull(ModelSwapProtocol.partnerSource(new PluginMessage(ModelSwapProtocol.NAMESPACE, outlines, data), outlines));
+		assertNull(ModelSwapProtocol.partnerSource(ModelSwapProtocol.optOutMessage(servants), outlines));
+		assertNull(ModelSwapProtocol.partnerSource(new PluginMessage("some-plugin", outlines,
+			new HashMap<>(ModelSwapProtocol.outlinesMessage(servants, true, null).getData())), outlines));
+		assertNull(ModelSwapProtocol.partnerSource(new PluginMessage(ModelSwapProtocol.NAMESPACE, outlines), outlines));
+		assertNull(ModelSwapProtocol.partnerSource(null, outlines));
+	}
+
+	@Test
+	public void testCustomServantsOutlinesAreReadByTheirSource()
+	{
+		PluginMessage message = ModelSwapProtocol.outlinesMessage(ModelSwapProtocol.SOURCE_CUSTOM_SERVANTS, true, null);
+		ModelSwapProtocol.Outlines outlines = ModelSwapProtocol.readOutlines(message, ModelSwapProtocol.SOURCE_CUSTOM_SERVANTS);
+		assertNotNull(outlines);
+		assertTrue(outlines.isOwning());
+		assertNull(ModelSwapProtocol.readOutlines(message, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER));
+	}
 }
