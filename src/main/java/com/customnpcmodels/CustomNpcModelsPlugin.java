@@ -249,10 +249,10 @@ public class CustomNpcModelsPlugin extends Plugin
 	@Subscribe
 	public void onPluginMessage(PluginMessage event)
 	{
-		if (ModelSwapProtocol.isSyncReq(event, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER))
+		if (ModelSwapProtocol.partnerSource(event, ModelSwapProtocol.SYN) != null)
 		{
-			// Retro NPC Swapper has just started and knows nothing of our claims yet. It posts from
-			// its startUp, off the client thread, and working out the claims reads the client.
+			// A partner has just started and knows nothing of our claims yet. It posts from its
+			// startUp, off the client thread, and working out the claims reads the client.
 			clientThread.invoke(() ->
 			{
 				retroClaims.publish(canSubstitute(), true);
@@ -261,14 +261,21 @@ public class CustomNpcModelsPlugin extends Plugin
 			return;
 		}
 
-		ModelSwapProtocol.Outlines outlines = ModelSwapProtocol.readOutlines(event, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER);
-		if (outlines != null)
+		String outlinesSource = ModelSwapProtocol.partnerSource(event, ModelSwapProtocol.OUTLINES);
+		if (outlinesSource != null)
 		{
-			outlineTakeover.onPartnerOutlines(outlines);
+			ModelSwapProtocol.Outlines outlines = ModelSwapProtocol.readOutlines(event, outlinesSource);
+			if (outlines != null)
+			{
+				outlineTakeover.onPartnerOutlines(outlinesSource, outlines);
+			}
+			return;
 		}
-		else if (ModelSwapProtocol.isOptOut(event, ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER))
+
+		String optOutSource = ModelSwapProtocol.partnerSource(event, ModelSwapProtocol.OUTLINES_OPT_OUT);
+		if (optOutSource != null)
 		{
-			outlineTakeover.onPartnerOptOut();
+			outlineTakeover.onPartnerOptOut(optOutSource);
 		}
 	}
 
@@ -324,7 +331,7 @@ public class CustomNpcModelsPlugin extends Plugin
 			// Its startUp re-registers its overlay, so the suppression has to be re-applied
 			clientThread.invoke(outlineTakeover::sync);
 		}
-		else if (RetroClaims.isRetroPlugin(event.getPlugin()))
+		else if (partnerSourceOf(event.getPlugin()) != null)
 		{
 			if (event.isLoaded())
 			{
@@ -339,9 +346,26 @@ public class CustomNpcModelsPlugin extends Plugin
 			}
 			else
 			{
-				outlineTakeover.onPartnerStopped();
+				outlineTakeover.onPartnerStopped(partnerSourceOf(event.getPlugin()));
 			}
 		}
+	}
+
+	/** Another Hub plugin, so recognized by class name alone like Retro NPC Swapper. */
+	private static final String SERVANTS_PLUGIN_CLASS = "com.customservants.CustomServantsPlugin";
+
+	/** The protocol source a partner plugin posts under, or null for any other plugin. */
+	private static String partnerSourceOf(Plugin plugin)
+	{
+		if (RetroClaims.isRetroPlugin(plugin))
+		{
+			return ModelSwapProtocol.SOURCE_RETRO_NPC_SWAPPER;
+		}
+		if (plugin != null && SERVANTS_PLUGIN_CLASS.equals(plugin.getClass().getName()))
+		{
+			return ModelSwapProtocol.SOURCE_CUSTOM_SERVANTS;
+		}
+		return null;
 	}
 
 	@Subscribe

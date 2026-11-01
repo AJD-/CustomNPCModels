@@ -50,8 +50,8 @@ import net.runelite.client.ui.overlay.outline.ModelOutlineRenderer;
  * That object is never activated. It is a model carrier handed straight to the outline renderer,
  * never registered with the client, so it adds nothing to the scene and no clickbox of its own.
  * <p>
- * An NPC Retro NPC Swapper swaps is outlined around its retro model the same way, posed by Retro
- * through {@link PartnerOutlines}, so only one of the two plugins needs to draw the outlines.
+ * An NPC a partner swaps is outlined around the partner's model the same way, posed by it
+ * through {@link PartnerOutlines}, so only one of the plugins needs to draw the outlines.
  */
 @Singleton
 public class CustomNpcOutliner
@@ -125,7 +125,7 @@ public class CustomNpcOutliner
 	}
 
 	/**
-	 * Drops the scratch object, releasing its reference to a posed model, which may be Retro's.
+	 * Drops the scratch object, releasing its reference to a posed model, which may be a partner's.
 	 */
 	public void clear()
 	{
