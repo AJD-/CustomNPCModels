@@ -253,7 +253,7 @@ class OutlineTakeover
 	 */
 	private void restoreStaleStashIfIdle()
 	{
-		if (partnerOutlines.isHandshakeDone() && shouldRestoreStaleStash(takenOver, partnerOutlines.isOwning()))
+		if (partnerOutlines.isHandshakeDone() && shouldRestoreStaleStash(takenOver, partnerOutlines.isAnyOwning()))
 		{
 			interactHighlight.restoreStaleStash();
 		}
