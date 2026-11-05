@@ -1,0 +1,42 @@
+# Builds the plugin jar and attaches it to a GitHub release. Runs when a release is published, or
+# by hand from the Actions tab for a release that already exists (give its tag, eg v1.1.2).
+name: Release jar
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of the release to attach the jar to, eg v1.1.2
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  jar:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Only the main source set: the plugin itself, as sideloaded. The tag's leading v is dropped
+      # for the jar's version, so v1.1.2 builds custom-npc-models-1.1.2.jar
+      - name: Build jar
+        run: ./gradlew jar -Pversion="${TAG#v}"
+
+      - name: Attach jar to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" build/libs/custom-npc-models-*.jar --clobber
